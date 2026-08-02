@@ -1,0 +1,65 @@
+#character-switch-dropdown,
+.character-switch-dropdown {
+  /* 工具箱接管切换角色入口，隐藏原脚本残留的下拉层。 */
+  display: none !important;
+}
+[class*='EquipmentPanel_buttonContainer'] {
+  /* 装备面板按钮行空间很窄，强制横向排列避免撑开原游戏布局。 */
+  display: flex !important;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: nowrap;
+  gap: 0.25rem;
+  width: max-content;
+  max-width: 100%;
+}
+.mst-eds-profit-menu {
+  position: relative;
+  display: inline-flex;
+}
+.mst-eds-profit-submenu {
+  /* 利润网站复制菜单挂在按钮下方，需要高层级避开游戏面板裁切。 */
+  position: absolute;
+  top: calc(100% + 0.25rem);
+  left: 50%;
+  z-index: 2147483000;
+  display: flex;
+  min-width: max-content;
+  transform: translateX(-50%);
+  flex-direction: column;
+  gap: 0.25rem;
+  padding: 0.35rem;
+  border: 1px solid var(--color-midnight-100, #454771);
+  border-radius: var(--radius-sm, 0.25rem);
+  background: var(--color-midnight-600, #27283b);
+  box-shadow: var(--shadow-md, 0 4px 10px rgba(0, 0, 0, 0.35));
+}
+.mst-eds-profit-submenu[hidden] {
+  display: none;
+}
+.mst-eds-profit-submenu button {
+  width: 100%;
+  margin: 0;
+}
+.mst-eds-loadout-actions {
+  /* Milkonomy 按钮与原站配装操作共用一行，允许窄屏换行。 */
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 0.25rem 0.5rem;
+  width: 100%;
+  margin: -0.25rem 0 -0.375rem;
+}
+.mst-eds-loadout-actions button {
+  width: auto !important;
+  max-width: 100%;
+  margin: 0;
+  border-color: var(--color-space-400, #7686cc) !important;
+  background: var(--color-midnight-400, #323450) !important;
+  color: var(--color-text-dark-mode, #e7e7e7) !important;
+}
+.mst-eds-loadout-actions button:hover {
+  border-color: var(--color-space-200, #bbc5f1) !important;
+  background: var(--color-midnight-300, #393b5c) !important;
+}

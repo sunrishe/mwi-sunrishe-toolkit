@@ -1,0 +1,16 @@
+{
+  "printWidth": 120,
+  "tabWidth": 2,
+  "useTabs": false,
+  "singleQuote": true,
+  "semi": true,
+  "trailingComma": "none",
+  "bracketSpacing": false,
+  "endOfLine": "lf",
+  "objectWrap": "preserve",
+  "plugins": [
+    "prettier-plugin-multiline-arrays-2"
+  ],
+  "multilineArraysWrapThreshold": 10,
+  "multilineArraysLinePattern": "5"
+}

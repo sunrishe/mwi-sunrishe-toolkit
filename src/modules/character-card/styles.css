@@ -1,0 +1,1272 @@
+.mst-character-card-modal {
+  box-sizing: border-box;
+}
+.mst-swal2-theme .swal2-popup.mst-character-card-modal {
+  height: auto;
+  max-height: calc(100vh - 1rem);
+  max-height: calc(100dvh - 1rem);
+  max-height: calc(100svh - 1rem);
+  overflow: hidden;
+}
+.swal2-popup.mst-character-card-modal .swal2-html-container {
+  white-space: normal;
+  min-height: 0;
+  max-height: calc(100vh - 4.5rem);
+  max-height: calc(100dvh - 4.5rem);
+  max-height: calc(100svh - 4.5rem);
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+.swal2-popup.mst-character-card-modal:not(.mst-team-card-modal) .swal2-html-container {
+  scrollbar-gutter: stable;
+}
+.mst-character-card-modal .mst-modal-content {
+  background: transparent;
+  border-radius: var(--radius-sm, 0.25rem);
+  padding: 0;
+  width: 100%;
+  max-width: 100%;
+  overflow: visible;
+  position: relative;
+  transition: max-width 0.3s ease;
+}
+/* 当强制使用桌面布局时，扩大容器尺寸 */
+.mst-character-card-modal .mst-modal-content.mst-desktop-layout {
+  max-width: 95vw;
+}
+/* 当强制使用桌面布局时，使用桌面端的完整尺寸 */
+.mst-character-card-modal .mst-modal-content.mst-desktop-layout .mst-character-card {
+  max-width: none;
+  width: var(--mst-card-desktop-width);
+}
+/* 当强制使用移动端布局时，使用移动端的紧凑尺寸 */
+.mst-character-card-modal .mst-modal-content.mst-mobile-layout .mst-character-card {
+  max-width: none;
+  width: var(--mst-card-base-width);
+}
+.mst-character-card {
+  background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
+  border: var(--mst-card-border-width) solid #4a90e2;
+  border-radius: 12px;
+  padding: var(--mst-card-padding);
+  color: white;
+  font-family: 'Arial', sans-serif;
+  max-width: 800px;
+  margin: 0 auto;
+  box-shadow: 0 8px 23px rgba(0, 0, 0, 0.5);
+  box-sizing: border-box;
+}
+.mst-standalone-card-host {
+  width: 100%;
+  max-width: 100%;
+  overflow-x: auto;
+  overflow-y: hidden;
+  overscroll-behavior-x: contain;
+}
+.mst-standalone-card-wrap {
+  position: relative;
+  margin: 0 auto;
+  overflow: visible;
+}
+.mst-standalone-card-host .mst-standalone-card-wrap {
+  width: max-content;
+  min-width: 100%;
+}
+.mst-standalone-card-wrap .mst-character-card {
+  position: relative;
+}
+.mst-card-header {
+  text-align: center;
+  margin-bottom: 8px;
+  border-bottom: 2px solid #4a90e2;
+  padding: 2px 2px 4px;
+  min-height: 22px;
+  display: flex;
+  gap: 5px;
+  align-items: center;
+  justify-content: center;
+}
+.mst-card-header h2 {
+  margin: 0;
+  color: #4a90e2;
+  font-size: 18px;
+  text-shadow: 0 0 8px rgba(74, 144, 226, 0.5);
+}
+.mst-card-header-identity {
+  min-width: 0;
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.mst-card-character-name {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 0;
+}
+.mst-card-header .mst-card-chat-icon {
+  width: 18px !important;
+  height: 18px !important;
+  flex: 0 0 18px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-right: 2px !important;
+}
+.mst-card-header .mst-card-name {
+  min-width: 0;
+  margin: 0;
+  padding: 1px 0 2px;
+  font-size: 14px;
+  font-weight: bold;
+  line-height: 20px;
+  vertical-align: middle;
+  transform: none;
+}
+.mst-card-header .mst-card-name span {
+  display: inline-flex;
+  align-items: center;
+  height: auto;
+  min-height: 20px;
+  line-height: 20px;
+  font-size: inherit;
+  font-weight: inherit;
+  vertical-align: middle;
+}
+.mst-card-game-mode {
+  font-size: 9px;
+  opacity: 0.8;
+}
+.mst-card-build-score {
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  color: orange;
+  font-weight: bold;
+  line-height: 1.15;
+  white-space: nowrap;
+  cursor: help;
+}
+.mst-card-build-score-label {
+  font-size: 8px;
+  font-weight: 500;
+}
+.mst-card-build-score-value {
+  font-size: 10px;
+}
+.mst-card-content {
+  display: grid;
+  gap: var(--mst-card-column-gap);
+}
+.mst-character-card.mst-layout-desktop .mst-card-content {
+  grid-template-columns: repeat(2, var(--mst-card-content-width));
+  align-items: start;
+}
+.mst-character-card.mst-card-content-all.mst-layout-desktop .mst-card-content {
+  grid-template-areas: 'equipment progression' 'life-equipment life-progression';
+  grid-template-rows: var(--mst-card-main-panel-height) var(--mst-card-life-panel-height);
+}
+.mst-character-card.mst-card-content-combat.mst-layout-desktop .mst-card-content {
+  grid-template-areas: 'equipment progression';
+  grid-template-rows: var(--mst-card-main-panel-height);
+}
+.mst-character-card.mst-card-content-life.mst-layout-desktop .mst-card-content {
+  grid-template-areas: 'equipment life-equipment' 'equipment life-progression';
+  grid-template-rows: repeat(2, var(--mst-card-life-panel-height));
+}
+.mst-character-card.mst-layout-desktop {
+  width: var(--mst-card-desktop-width);
+  max-width: none;
+}
+.mst-character-card.mst-layout-mobile .mst-card-content {
+  grid-template-columns: 1fr;
+}
+.mst-character-card.mst-card-content-all.mst-layout-mobile .mst-card-content {
+  grid-template-areas: 'equipment' 'life-equipment' 'life-progression' 'progression';
+}
+.mst-character-card.mst-card-content-life.mst-layout-mobile .mst-card-content {
+  grid-template-areas: 'equipment' 'life-equipment' 'life-progression';
+}
+.mst-character-card.mst-card-content-combat.mst-layout-mobile .mst-card-content {
+  grid-template-areas: 'equipment' 'progression';
+}
+.mst-character-card.mst-layout-mobile {
+  width: var(--mst-card-base-width);
+  max-width: none;
+}
+.mst-card-main-equipment,
+.mst-card-main-progression,
+.mst-card-life-equipment,
+.mst-card-life-progression {
+  min-width: 0;
+}
+.mst-card-main-equipment:empty,
+.mst-card-main-progression:empty,
+.mst-card-life-equipment:empty,
+.mst-card-life-progression:empty {
+  display: none;
+}
+.mst-card-content-all .mst-card-main-equipment,
+.mst-card-content-life .mst-card-main-equipment,
+.mst-card-content-combat .mst-card-main-equipment {
+  grid-area: equipment;
+}
+.mst-card-content-all .mst-card-main-progression,
+.mst-card-content-combat .mst-card-main-progression {
+  grid-area: progression;
+}
+.mst-card-content-all .mst-card-life-equipment,
+.mst-card-content-life .mst-card-life-equipment {
+  grid-area: life-equipment;
+}
+.mst-card-content-all .mst-card-life-progression,
+.mst-card-content-life .mst-card-life-progression {
+  grid-area: life-progression;
+}
+.mst-equipment-skills-panel,
+.mst-progression-panel {
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  padding: 4px;
+  border: 1px solid rgba(74, 144, 226, 0.3);
+  box-sizing: border-box;
+  min-width: 0;
+  width: 100%;
+  height: var(--mst-card-main-panel-height);
+}
+.mst-equipment-skills-panel,
+.mst-progression-panel {
+  display: flex;
+  flex-direction: column;
+}
+.mst-equipment-panel,
+.mst-skill-panel {
+  min-width: 0;
+  width: 100%;
+  margin: 0;
+  padding: 0;
+  background: none;
+  border: 0;
+}
+.mst-equipment-skills-panel > .mst-panel-title,
+.mst-progression-panel > .mst-panel-title {
+  margin-bottom: 5px;
+}
+.mst-equipment-skills-panel > .mst-skill-panel {
+  margin-top: auto;
+}
+.mst-panel-title {
+  margin: 0 0 10px 0;
+  color: #4a90e2;
+  font-size: 12px;
+  border-bottom: 1px solid rgba(74, 144, 226, 0.3);
+  padding-bottom: 4px;
+  text-align: center;
+}
+.mst-character-card.mst-limited-profile .mst-limited-profile-note {
+  grid-column: 1 / -1;
+  color: #b7c7d9;
+  font-size: 9px;
+  line-height: 1.5;
+  text-align: center;
+  padding: 5px 6px;
+}
+.mst-card-timestamps {
+  display: flex;
+  justify-content: flex-end;
+  text-align: right;
+  margin-top: 9px;
+  padding-top: 6px;
+  border-top: 1px solid rgba(74, 144, 226, 0.3);
+  color: #b7c7d9;
+  font-size: 9px;
+  line-height: 1.4;
+}
+/* 只为模态框内的装备面板添加网格布局，不影响游戏原生UI */
+.mst-character-card .EquipmentPanel_playerModel__3LRB6 {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  grid-template-rows: repeat(4, auto);
+  gap: 5px;
+  padding: 0 5px 5px;
+  max-width: 100%;
+  margin: 0 auto;
+}
+/* 确保装备槽的基本布局 */
+.mst-character-card .ItemSelector_itemSelector__2eTV6 {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.mst-character-card .ItemSelector_itemSelector__2eTV6 .ItemSelector_itemContainer__3olqe,
+.mst-character-card .Item_itemContainer__x7kH1 .Item_item__2De2O {
+  width: 46px;
+  height: 46px;
+}
+.mst-character-card .Item_itemContainer__x7kH1 .Item_item__2De2O {
+  grid-template-columns: 46px;
+  grid-template-rows: 46px;
+}
+.mst-character-card .Item_enhancementLevel__19g-e,
+.mst-character-card .mst-item-level {
+  grid-area: 1/1;
+  align-self: start;
+  width: auto;
+  height: auto;
+  display: flex;
+  color: var(--color-orange-400, orange);
+  font-size: 8px !important;
+  line-height: 1 !important;
+  text-shadow:
+    -1px 0 var(--color-background-game, #131419),
+    0 1px var(--color-background-game, #131419),
+    1px 0 var(--color-background-game, #131419),
+    0 -1px var(--color-background-game, #131419);
+  z-index: 9;
+}
+.mst-character-card .Item_itemContainer__x7kH1 .Item_item__2De2O .Item_enhancementLevel__19g-e {
+  position: static;
+  justify-self: start;
+  margin: 3px 0 0 2px;
+}
+.mst-character-card .mst-item-level {
+  position: static;
+  justify-self: end;
+  margin: 3px 2px 0 0;
+  text-align: right;
+}
+.mst-character-card .script_itemLevel {
+  display: none !important;
+}
+/* 技能面板样式 - 仅作用于角色名片内 */
+.mst-character-card .AbilitiesPanel_abilityGrid__-p-VF {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 5px;
+  padding: 10px 5px 0;
+}
+/* 技能项容器 */
+.mst-character-card .Ability_ability__1njrh {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  width: 46px;
+  height: 54px;
+  min-height: 54px;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(74, 144, 226, 0.3);
+  transition: all 0.2s ease;
+}
+.mst-character-card .Ability_ability__1njrh.Ability_clickable__w9HcM:hover {
+  background: rgba(74, 144, 226, 0.1);
+  border-color: #4a90e2;
+}
+/* 技能图标容器 */
+.mst-character-card .Ability_iconContainer__3syNQ {
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0 0 3px;
+}
+/* 技能等级文字 */
+.mst-character-card .Ability_level__1L-do {
+  font-size: 9px;
+  font-weight: bold;
+  color: #fff;
+  text-align: center;
+}
+.mst-life-equipment-panel,
+.mst-life-progression-panel {
+  display: flex;
+  min-width: 0;
+  width: 100%;
+  height: var(--mst-card-life-panel-height);
+  flex-direction: column;
+  box-sizing: border-box;
+  padding: 4px;
+  border: 1px solid rgba(74, 144, 226, 0.3);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.1);
+}
+.mst-life-equipment-panel > .mst-panel-title,
+.mst-life-progression-panel > .mst-panel-title {
+  margin-bottom: 5px;
+}
+.mst-life-tools-grid,
+.mst-life-progression-grid {
+  display: grid;
+  flex: 1;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  grid-template-rows: repeat(2, minmax(0, 1fr));
+  gap: 5px;
+  padding: 0 5px 2px;
+}
+.mst-life-progression-grid {
+  padding-right: 0;
+  padding-left: 0;
+}
+.mst-life-tool-slot {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: center;
+}
+.mst-life-tool-empty-name {
+  display: flex;
+  width: 100%;
+  height: 100%;
+  box-sizing: border-box;
+  align-items: center;
+  justify-content: center;
+  margin: 0 !important;
+  padding: 4px;
+  text-align: center;
+  font-size: 8px !important;
+  line-height: 1.15 !important;
+  word-break: normal;
+  overflow-wrap: anywhere;
+  -webkit-hyphens: auto;
+  hyphens: auto;
+  hyphenate-character: '-';
+}
+.mst-life-equipment-panel .Item_iconContainer__5z7j4 {
+  width: 60% !important;
+  height: 60% !important;
+  margin: 20% !important;
+}
+.mst-life-progress-slot {
+  display: grid;
+  min-width: 0;
+  grid-template-rows: repeat(2, minmax(0, 1fr));
+  gap: 2px;
+}
+.mst-life-level-row,
+.mst-life-house-row {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: 16px minmax(0, 1fr);
+  align-items: center;
+  gap: 2px;
+  padding: 1px 2px;
+  box-sizing: border-box;
+  border: 1px solid rgba(74, 144, 226, 0.2);
+  border-radius: 3px;
+  background: rgba(255, 255, 255, 0.045);
+}
+.mst-life-progress-icon,
+.mst-progression-icon {
+  display: flex;
+  aspect-ratio: 1/1;
+  align-items: center;
+  justify-content: center;
+  align-self: center;
+}
+.mst-life-progress-icon {
+  width: 16px;
+  min-width: 16px;
+  max-width: 16px;
+  height: 16px;
+  min-height: 16px;
+  max-height: 16px;
+}
+.mst-progression-icon {
+  width: 18px;
+  min-width: 18px;
+  max-width: 18px;
+  height: 18px;
+  min-height: 18px;
+  max-height: 18px;
+}
+.mst-life-progress-icon svg,
+.mst-progression-icon svg {
+  display: block;
+  width: 100% !important;
+  height: 100% !important;
+  aspect-ratio: 1/1;
+}
+.mst-life-progress-level {
+  display: flex;
+  height: 16px;
+  min-width: 0;
+  align-items: center;
+  color: #fff;
+  font-size: 8px;
+  font-weight: bold;
+  line-height: 16px;
+  white-space: nowrap;
+  transform: translateY(1px);
+}
+/* 房屋最高等级特殊样式 */
+.mst-character-card .mst-house-max-level {
+  color: #ff8c00 !important;
+  font-weight: bold;
+  text-shadow: 0 0 4px rgba(255, 140, 0, 0.5);
+}
+.mst-progression-grid {
+  display: grid;
+  flex: 1;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-rows: repeat(8, 30px);
+  align-content: space-between;
+  gap: 4.5px;
+}
+.mst-progression-row {
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr) auto;
+  align-items: center;
+  min-height: 30px;
+  gap: 4px;
+  padding: 3px 4px;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.045);
+  border: 1px solid rgba(74, 144, 226, 0.2);
+}
+.mst-house-summary-row {
+  grid-template-columns: 18px minmax(0, 1fr) auto;
+}
+.mst-progression-name {
+  min-width: 0;
+  height: 20px;
+  display: flex;
+  align-items: center;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 9px;
+  line-height: 20px;
+}
+.mst-progression-row .mst-progression-level {
+  height: 20px;
+  display: flex;
+  align-items: center;
+  font-size: 9px;
+  line-height: 20px;
+}
+.mst-unavailable-level {
+  color: #7d8b9a;
+}
+.mst-progression-level {
+  color: #fff;
+  font-weight: bold;
+}
+@media (max-width: 48rem) {
+  /* 移动端布局覆盖 - 当在移动设备上且没有强制模式时 */
+  .mst-character-card:not(.mst-layout-desktop) .mst-card-content {
+    grid-template-columns: 1fr !important;
+    gap: 12px;
+  }
+  /* 移动端指示横幅调整 */
+  .mst-instruction-banner {
+    padding: var(--spacing-sm, 0.5rem);
+    font-size: var(--font-size-base, 0.875rem);
+  }
+}
+.mst-instruction-banner {
+  background: var(--color-midnight-400, #323450);
+  color: var(--color-text-dark-mode, #e7e7e7);
+  padding: var(--spacing-sm, 0.5rem);
+  border-radius: var(--radius-sm, 0.25rem);
+  margin-bottom: var(--spacing-sm, 0.5rem);
+  font-size: var(--font-size-base, 0.875rem);
+  font-weight: var(--font-weight-semibold, 600);
+  text-align: center;
+}
+.mst-character-card-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: var(--button-min-width-normal, 5.25rem);
+  height: var(--button-height-normal, 1.875rem);
+  padding: 0 var(--button-padding-x-normal, 0.625rem);
+  border: 0;
+  border-radius: var(--radius-sm, 0.25rem);
+  background: var(--color-primary, #4357af);
+  color: var(--color-text-dark-mode, #e7e7e7);
+  font:
+    var(--font-weight-semibold, 600) var(--font-size-base, 0.875rem)/1 Roboto,
+    Helvetica,
+    Arial,
+    sans-serif;
+  cursor: pointer;
+}
+.mst-character-card-btn:hover {
+  background: var(--color-primary-hover, #344386);
+}
+.mst-my-character-card-btn {
+  display: inline-flex;
+  align-items: center;
+  padding: 0 var(--spacing-xs, 0.25rem);
+  margin: 0;
+  border: var(--border-width-thin, 1px) solid var(--color-space-400, #7184d8);
+  border-radius: var(--radius-xs, 0.125rem);
+  background: var(--color-midnight-500, #2c2e45);
+  color: var(--color-space-100, #dde2f8);
+  font:
+    var(--font-weight-medium, 500) var(--font-size-sm, 0.8125rem)/1.2 Roboto,
+    Helvetica,
+    Arial,
+    sans-serif;
+  vertical-align: middle;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.mst-my-character-card-btn:hover {
+  border-color: var(--color-space-300, #98a7e9);
+  background: var(--color-midnight-400, #323450);
+  color: var(--color-text-dark-mode, #e7e7e7);
+}
+.mst-my-character-name-card-btn {
+  display: inline-flex !important;
+  box-sizing: border-box;
+  max-width: 100%;
+  align-items: center;
+  justify-content: flex-end;
+  padding: 0 var(--spacing-xs, 0.25rem);
+  border: var(--border-width-thin, 1px) solid var(--color-space-400, #7184d8);
+  border-radius: var(--radius-xs, 0.125rem);
+  background: rgba(44, 46, 69, 0.72);
+  cursor: pointer;
+}
+.mst-my-character-name-card-btn:hover {
+  border-color: var(--color-space-300, #98a7e9);
+  background: var(--color-midnight-400, #323450);
+}
+.mst-my-character-name-card-btn:focus-visible {
+  outline: 1px solid var(--color-space-200, #bbc5f1);
+  outline-offset: 1px;
+}
+.mst-header-card-level-layout {
+  display: grid !important;
+  grid-template-columns: auto auto;
+  align-items: center !important;
+  justify-content: end !important;
+  column-gap: var(--spacing-xs, 0.25rem);
+  row-gap: var(--spacing-xs, 0.25rem);
+}
+.mst-header-card-level-layout > [class*='Header_name'] {
+  grid-column: 1/-1;
+  justify-self: end;
+}
+.mst-header-card-level-layout > .mst-my-character-card-btn {
+  grid-column: 2;
+  grid-row: 2;
+  justify-self: end;
+}
+.mst-header-card-level-layout > [class*='Header_totalLevel'] {
+  grid-column: 1;
+  grid-row: 2;
+  justify-self: end;
+  white-space: nowrap;
+}
+.mst-download-section {
+  text-align: center;
+  margin-bottom: var(--spacing-sm-plus, 0.75rem);
+}
+/* 统一名片工具栏按钮外观 */
+.mst-download-card-btn,
+.mst-download-team-card-btn,
+.mst-copy-card-btn,
+.mst-copy-team-card-btn,
+.mst-reset-team-card-btn,
+.mst-reset-character-card-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  min-width: var(--button-min-width-normal, 5.25rem);
+  height: var(--button-height-normal, 1.875rem);
+  background: var(--color-primary, #4357af);
+  color: var(--color-text-dark-mode, #e7e7e7);
+  border: none;
+  padding: 0 var(--button-padding-x-normal, 0.625rem);
+  border-radius: var(--radius-sm, 0.25rem);
+  font-family: Roboto, Helvetica, Arial, sans-serif;
+  font-size: var(--font-size-base, 0.875rem);
+  font-weight: var(--font-weight-semibold, 600);
+  line-height: 1;
+  cursor: pointer;
+  transition: background-color 0.15s ease;
+}
+.mst-download-card-btn:hover:not(:disabled),
+.mst-download-team-card-btn:hover:not(:disabled),
+.mst-copy-card-btn:hover:not(:disabled),
+.mst-copy-team-card-btn:hover:not(:disabled),
+.mst-reset-team-card-btn:hover:not(:disabled),
+.mst-reset-character-card-btn:hover:not(:disabled) {
+  background: var(--color-primary-hover, #344386);
+}
+.mst-download-card-btn:disabled,
+.mst-download-team-card-btn:disabled,
+.mst-copy-card-btn:disabled,
+.mst-copy-team-card-btn:disabled,
+.mst-reset-team-card-btn:disabled,
+.mst-reset-character-card-btn:disabled {
+  background: var(--color-disabled, #56576b);
+  cursor: not-allowed;
+}
+.mst-card-layout-select {
+  box-sizing: border-box;
+  min-width: 8.5rem;
+  height: var(--button-height-normal, 1.875rem);
+  padding: 0 1.75rem 0 0.625rem;
+  border: 1px solid var(--color-space-400, #7184d8);
+  border-radius: var(--radius-sm, 0.25rem);
+  background-color: var(--color-midnight-500, #2c2e45);
+  color: var(--color-text-dark-mode, #e7e7e7);
+  font:
+    var(--font-weight-semibold, 600) var(--font-size-base, 0.875rem)/1 Roboto,
+    Helvetica,
+    Arial,
+    sans-serif;
+  cursor: pointer;
+}
+.mst-card-layout-select:hover,
+.mst-card-layout-select:focus {
+  border-color: var(--color-space-300, #98a7e9);
+  outline: none;
+}
+.mst-card-layout-select option {
+  background: var(--color-midnight-500, #2c2e45);
+  color: var(--color-text-dark-mode, #e7e7e7);
+}
+.mst-card-column-toggle {
+  display: inline-flex;
+  height: var(--button-height-normal, 1.875rem);
+  box-sizing: border-box;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0 0.5rem;
+  border: 1px solid var(--color-space-400, #7184d8);
+  border-radius: var(--radius-sm, 0.25rem);
+  background: var(--color-midnight-500, #2c2e45);
+  color: var(--color-text-dark-mode, #e7e7e7);
+  font:
+    var(--font-weight-semibold, 600) var(--font-size-base, 0.875rem)/1 Roboto,
+    Helvetica,
+    Arial,
+    sans-serif;
+  cursor: pointer;
+}
+.mst-card-column-toggle:hover {
+  border-color: var(--color-space-300, #98a7e9);
+}
+.mst-card-column-checkbox {
+  width: 1rem;
+  height: 1rem;
+  margin: 0;
+  cursor: pointer;
+}
+/* 技能提示样式 */
+.mst-skill-hint {
+  margin-top: var(--spacing-sm, 0.5rem);
+  text-align: center;
+}
+.mst-skill-hint span {
+  color: var(--color-neutral-300, #bdbdbd);
+  font-size: var(--font-size-sm, 0.75rem);
+  line-height: 1.4;
+}
+/* 按钮行样式 */
+.mst-button-row {
+  display: flex;
+  gap: var(--spacing-xs, 0.25rem);
+  justify-content: center;
+  align-items: center;
+  margin-bottom: var(--spacing-sm, 0.5rem);
+  flex-wrap: wrap;
+}
+/* 仅为角色名片内的SVG图标添加优化，不影响游戏原生UI */
+.mst-character-card .Icon_icon__2LtL_ {
+  width: 100%;
+  height: 100%;
+  filter: drop-shadow(0 0 2px rgba(0, 0, 0, 0.3));
+  image-rendering: -webkit-optimize-contrast;
+  image-rendering: -moz-crisp-edges;
+  image-rendering: pixelated;
+}
+/* 空白技能槽样式 */
+.mst-character-card .mst-empty-skill-slot {
+  cursor: pointer;
+  opacity: 0.3;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.mst-character-card .mst-empty-skill-slot:hover {
+  opacity: 1;
+  border-color: #4a90e2;
+  background: rgba(74, 144, 226, 0.1);
+}
+.mst-character-card .mst-card-readonly-empty-skill-slot {
+  cursor: default;
+}
+.mst-character-card .mst-card-readonly-empty-skill-slot:hover {
+  opacity: 0.3;
+  border-color: rgba(74, 144, 226, 0.3);
+  background: rgba(255, 255, 255, 0.05);
+}
+.mst-character-card .mst-card-empty-skill-label {
+  color: #999;
+  font-size: 10px;
+  line-height: 1;
+}
+/* 技能选择器模态框样式 */
+.mst-skill-selector-modal {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(0, 0, 0, 0.8);
+  z-index: 2147482101;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  padding: var(--spacing-sm, 0.5rem);
+  box-sizing: border-box;
+}
+.mst-skill-selector-content {
+  display: grid;
+  grid-template-rows: auto auto minmax(0, 1fr) auto;
+  width: min(34rem, calc(100vw - 1rem));
+  max-height: calc(100vh - 1rem);
+  max-height: calc(100dvh - 1rem);
+  max-height: calc(100svh - 1rem);
+  background: var(--color-midnight-900, #131419);
+  border-radius: var(--radius-sm, 0.25rem);
+  padding: var(--spacing-sm, 0.5rem);
+  overflow: hidden;
+  position: relative;
+  border: var(--border-width-thin, 1px) solid var(--color-neutral-200, #d0d0d0);
+  box-shadow: 0 0 0.25rem 0.25rem rgba(208, 208, 208, 0.28);
+}
+.mst-skill-selector-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: var(--spacing-xs, 0.25rem);
+  border-bottom: var(--border-width-thin, 1px) solid var(--color-midnight-100, #454771);
+  padding-bottom: var(--spacing-xs, 0.25rem);
+}
+.mst-skill-selector-header h3 {
+  margin: 0;
+  color: #fff;
+  font-size: var(--font-size-base, 0.875rem);
+}
+.mst-close-skill-selector {
+  background: none;
+  border: none;
+  font-size: 1.25rem;
+  cursor: pointer;
+  color: #ccc;
+  padding: 0;
+  width: 1.625rem;
+  height: 1.625rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.mst-close-skill-selector:hover {
+  color: #fff;
+  background: var(--color-midnight-500, #2c2e45);
+}
+.mst-skill-selector-search {
+  width: 100%;
+  height: var(--button-height-normal, 1.875rem);
+  margin: 0 0 var(--spacing-xs, 0.25rem);
+  padding: 0 var(--spacing-sm, 0.5rem);
+  box-sizing: border-box;
+  border: var(--border-width-thin, 1px) solid var(--color-midnight-100, #454771);
+  border-radius: var(--radius-xs, 0.125rem);
+  outline: none;
+  background: var(--color-midnight-800, #191a24);
+  color: var(--color-text-dark-mode, #e7e7e7);
+  font:
+    var(--font-weight-medium, 500) var(--font-size-sm, 0.8125rem)/1.3 Roboto,
+    Helvetica,
+    Arial,
+    sans-serif;
+}
+.mst-skill-selector-search:focus {
+  border-color: var(--color-space-300, #98a7e9);
+  box-shadow: 0 0 0 1px var(--color-space-600, #4357af);
+}
+.mst-skill-selector-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, 5.25rem);
+  grid-auto-rows: 5.25rem;
+  align-content: start;
+  justify-content: center;
+  gap: var(--spacing-xs, 0.25rem);
+  padding: var(--spacing-xxs, 0.125rem);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+.mst-skill-option {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-width: 0;
+  gap: var(--spacing-xs, 0.25rem);
+  padding: 0.35rem;
+  border: var(--border-width-thin, 1px) solid var(--color-midnight-100, #454771);
+  border-radius: var(--radius-xs, 0.125rem);
+  cursor: pointer;
+  transition:
+    background-color 120ms ease,
+    border-color 120ms ease;
+  background: var(--color-midnight-700, #20212e);
+  color: var(--color-text-dark-mode, #e7e7e7);
+}
+.mst-skill-option:hover,
+.mst-skill-option.mst-skill-option-selected {
+  border-color: var(--color-space-300, #98a7e9);
+  background: var(--color-midnight-500, #2c2e45);
+}
+.mst-skill-option[hidden] {
+  display: none !important;
+}
+.mst-skill-option-icon {
+  display: flex;
+  width: 2.5rem;
+  height: 2.5rem;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 2.5rem;
+}
+.mst-skill-option-level {
+  position: absolute;
+  top: 0.25rem;
+  left: 0.3rem;
+  z-index: 1;
+  color: var(--color-cowbell, #f6c95c);
+  font-size: var(--font-size-small, 0.75rem);
+  font-weight: 600;
+  line-height: 1;
+  text-shadow: 0 1px 2px #000;
+}
+.mst-skill-option-name {
+  display: -webkit-box;
+  max-width: 100%;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  color: inherit;
+  font-size: var(--font-size-small, 0.75rem);
+  font-weight: 600;
+  line-height: 1.15;
+  text-align: center;
+  white-space: normal;
+}
+/* 空技能选项样式 */
+.mst-skill-option.mst-empty-skill-option {
+  border: var(--border-width-thin, 1px) dashed var(--color-space-300, #98a7e9);
+  background: rgba(255, 255, 255, 0.02);
+}
+.mst-skill-option.mst-empty-skill-option:hover {
+  border-color: var(--color-space-300, #98a7e9);
+  background: rgba(74, 144, 226, 0.1);
+}
+.mst-empty-skill-icon {
+  width: 2.5rem;
+  height: 2.5rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: var(--border-width-thin, 1px) dashed var(--color-space-300, #98a7e9);
+  border-radius: var(--radius-xs, 0.125rem);
+  color: var(--color-space-300, #98a7e9);
+  font-size: 1rem;
+  font-weight: bold;
+}
+.mst-team-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: var(--spacing-xs, 0.25rem);
+  margin-bottom: var(--spacing-xs, 0.25rem);
+}
+.mst-team-member-combobox {
+  position: relative;
+  width: min(11.875rem, 100%);
+  flex: 0 0 min(11.875rem, 100%);
+}
+.mst-team-member-search {
+  width: 100%;
+  height: var(--button-height-normal, 1.875rem);
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0 var(--spacing-sm, 0.5rem);
+  border: var(--border-width-thin, 1px) solid var(--color-midnight-100, #454771);
+  border-radius: var(--radius-sm, 0.25rem);
+  outline: 0;
+  background: var(--color-midnight-800, #191a24);
+  color: var(--color-text-dark-mode, #e7e7e7);
+  font:
+    var(--font-weight-medium, 500) var(--font-size-base, 0.875rem)/1.2 Roboto,
+    Helvetica,
+    Arial,
+    sans-serif;
+}
+.mst-team-member-search:focus {
+  border-color: var(--color-space-300, #98a7e9);
+  box-shadow: 0 0 0 1px var(--color-space-600, #4357af);
+}
+.mst-team-member-search:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+.mst-team-member-options {
+  position: absolute;
+  z-index: 30;
+  top: calc(100% + var(--spacing-xxs, 0.125rem));
+  right: 0;
+  left: 0;
+  max-height: min(16rem, 40svh);
+  overflow-y: auto;
+  border: var(--border-width-thin, 1px) solid var(--color-midnight-100, #454771);
+  border-radius: var(--radius-sm, 0.25rem);
+  background: var(--color-midnight-800, #191a24);
+  box-shadow: 0 0.375rem 0.875rem rgba(0, 0, 0, 0.45);
+}
+.mst-team-member-options[hidden] {
+  display: none;
+}
+.mst-team-cache-option {
+  display: flex;
+  width: 100%;
+  flex-direction: column;
+  gap: var(--spacing-xxs, 0.125rem);
+  padding: var(--spacing-sm, 0.5rem);
+  border: 0;
+  border-bottom: var(--border-width-thin, 1px) solid var(--color-midnight-300, #393a5b);
+  background: transparent;
+  color: var(--color-text-dark-mode, #e7e7e7);
+  text-align: left;
+  cursor: pointer;
+}
+.mst-team-cache-option:last-child {
+  border-bottom: 0;
+}
+.mst-team-cache-option:hover,
+.mst-team-cache-option[aria-selected='true'] {
+  background: var(--color-midnight-500, #2c2e45);
+}
+.mst-team-cache-option-name,
+.mst-team-cache-option-meta {
+  display: block;
+  width: 100%;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.mst-team-cache-option-name {
+  font-size: var(--font-size-base, 0.875rem);
+  font-weight: var(--font-weight-semibold, 600);
+  line-height: 1.2;
+}
+.mst-team-cache-option-meta {
+  color: var(--color-neutral-400, #a7a7a7);
+  font-size: var(--font-size-sm, 0.75rem);
+  line-height: 1.2;
+}
+.mst-team-cache-empty {
+  padding: var(--spacing-sm, 0.5rem);
+  color: var(--color-neutral-400, #a7a7a7);
+  font-size: var(--font-size-sm, 0.75rem);
+  text-align: center;
+}
+.mst-skill-selector-empty {
+  padding: var(--spacing-sm-plus, 0.75rem) var(--spacing-xs, 0.25rem) var(--spacing-xs, 0.25rem);
+  color: var(--color-neutral-400, #9a9a9a);
+  font-size: var(--font-size-sm, 0.75rem);
+  text-align: center;
+}
+/* 移动端技能选择器调整 */
+@media (max-width: 48rem) {
+  .mst-team-toolbar {
+    width: 100%;
+  }
+  .mst-skill-selector-content {
+    width: calc(100vw - 1rem);
+    padding: var(--spacing-xs, 0.25rem);
+  }
+  .mst-skill-selector-grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    grid-auto-rows: 5.25rem;
+    gap: var(--spacing-xs, 0.25rem);
+  }
+  .mst-skill-option-icon {
+    width: 2rem;
+    height: 2rem;
+    flex-basis: 2rem;
+  }
+  .mst-skill-option-level {
+    font-size: var(--font-size-xs, 0.625rem);
+  }
+  .mst-empty-skill-icon {
+    width: 2rem;
+    height: 2rem;
+    font-size: var(--font-size-base, 0.875rem);
+  }
+}
+
+.mst-team-card-modal .mst-modal-content {
+  max-width: 98vw;
+}
+.mst-team-cards-container {
+  display: flex;
+  gap: 6px;
+  flex-wrap: nowrap;
+  align-items: flex-start;
+  overflow-x: auto;
+  padding-bottom: 8px;
+  justify-content: center;
+  min-height: 200px;
+}
+/* 当内容宽度超过容器时，切换到靠左显示以便滚动 */
+.mst-team-cards-container.mst-overflow-mode {
+  justify-content: flex-start;
+}
+.mst-team-card-wrap {
+  width: var(--mst-card-base-width);
+  flex: 0 0 var(--mst-card-base-width);
+  position: relative;
+}
+.mst-team-card-wrap .mst-character-card {
+  position: relative;
+  width: var(--mst-card-base-width);
+  max-width: none;
+}
+.mst-team-cards-container.mst-team-layout-desktop .mst-team-card-wrap {
+  width: var(--mst-card-desktop-width);
+  flex-basis: var(--mst-card-desktop-width);
+}
+.mst-team-cards-container.mst-team-layout-desktop .mst-team-card-wrap .mst-character-card {
+  width: var(--mst-card-desktop-width);
+}
+.mst-team-mode .mst-card-header {
+  margin-bottom: 8px;
+}
+.mst-team-card-wrap .mst-card-header {
+  cursor: grab;
+  user-select: none;
+}
+.mst-team-card-wrap .mst-card-header:active {
+  cursor: grabbing;
+}
+.mst-team-card-wrap.mst-character-card-dragging {
+  opacity: 0.55;
+}
+.mst-team-card-delete {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  z-index: 20;
+  display: flex;
+  width: 24px;
+  height: 24px;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 1px solid var(--color-scarlet-300, #df6971);
+  border-radius: 2px;
+  background: var(--color-scarlet-700, #701f27);
+  color: #fff;
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+  opacity: 0;
+  pointer-events: none;
+  transition:
+    opacity 120ms ease,
+    background-color 120ms ease;
+}
+.mst-team-card-wrap:hover .mst-team-card-delete,
+.mst-team-card-delete:focus-visible {
+  opacity: 1;
+  pointer-events: auto;
+}
+.mst-team-card-delete:hover {
+  background: var(--color-scarlet-500, #d0333d);
+}
+.mst-team-hint {
+  margin: 0 0 var(--spacing-sm, 0.5rem);
+  padding-top: var(--spacing-xxs, 0.125rem);
+  color: var(--color-neutral-300, #bdbdbd);
+  font-size: var(--font-size-sm, 0.75rem);
+  line-height: 1.4;
+  text-align: center;
+}
+/* 轻量全局提示条 */
+.mst-character-card-toast-notice {
+  position: fixed;
+  top: 16px;
+  right: 16px;
+  padding: 8px 12px;
+  border-radius: 4px;
+  color: #fff;
+  font-size: 12px;
+  z-index: 20001;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+  opacity: 0;
+  transform: translateY(-6px);
+  transition:
+    opacity 0.2s ease,
+    transform 0.2s ease;
+}
+.mst-character-card-toast-notice.mst-character-card-toast-visible {
+  opacity: 1;
+  transform: translateY(0);
+}
+.mst-character-card-toast-success {
+  background: #344386;
+}
+.mst-character-card-toast-error {
+  background: #4f171f;
+}
+.mst-character-card-toast-info {
+  background: #344386;
+}
+/* 空队伍提示样式 */
+.mst-empty-team-placeholder {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 200px;
+  border: 2px dashed #4a90e2;
+  border-radius: 15px;
+  background: rgba(74, 144, 226, 0.1);
+  color: #4a90e2;
+  text-align: center;
+  padding: 20px;
+  margin: 10px 0;
+}
+.mst-empty-team-placeholder .mst-empty-icon {
+  font-size: 48px;
+  margin-bottom: 15px;
+  opacity: 0.7;
+}
+.mst-empty-team-placeholder .mst-empty-title {
+  font-size: 18px;
+  font-weight: bold;
+  margin-bottom: 10px;
+}
+.mst-empty-team-placeholder .mst-empty-subtitle {
+  font-size: 14px;
+  opacity: 0.8;
+}

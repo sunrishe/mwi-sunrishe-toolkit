@@ -1,0 +1,7 @@
+node_modules
+dist
+references/**
+!references/README.md
+docs/data
+.playwright-cli
+.playwright-mcp
