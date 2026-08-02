@@ -3,7 +3,7 @@ import globals from 'globals';
 // 油猴运行时和浏览器页面共享全局对象，ESLint 只在这里集中声明白名单。
 export default [
   {ignores: [
-      'node_modules/**', 'dist/**', 'references/**'
+      'node_modules/**', 'dist/**', 'references/**', 'vendor/**'
     ]}, {
     files: [
       'src/**/*.js', 'tests/**/*.js', '*.config.mjs'
