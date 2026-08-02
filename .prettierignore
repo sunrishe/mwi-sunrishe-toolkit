@@ -2,6 +2,7 @@ node_modules
 dist
 references/**
 !references/README.md
+vendor/**/*.min.js
 docs/data
 .playwright-cli
 .playwright-mcp
