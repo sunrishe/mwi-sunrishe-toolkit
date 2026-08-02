@@ -9,7 +9,10 @@
 // @description:en     MST toolkit for character/party cards, ability/house/combat upgrade planning, equipment comparison, dungeon profit, loadout sync, and Market Mate enhancements.
 // @author             sunrishe
 // @website            https://greasyfork.org/zh-CN/scripts/574037
+// @website            https://gf.qytechs.cn/zh-CN/scripts/574037
+// @website            https://home.greasyfork.org.cn/zh-hans/info#/zh-CN/scripts/574037
 // @homepage           https://github.com/sunrishe/mwi-sunrishe-toolkit
+// @license            ISC
 // @match              https://www.milkywayidle.com/*
 // @match              https://milkywayidle.com/*
 // @match              https://test.milkywayidle.com/*
