@@ -429,6 +429,13 @@ const swalDraggingMethods = {
       }
     };
     const onViewportChange = () => clampPosition(true);
+    const resizeObserver =
+      typeof ResizeObserver === 'undefined'
+        ? null
+        : new ResizeObserver(() => {
+            clampPosition(true);
+          });
+    resizeObserver?.observe(popup);
     document.body.addEventListener('mousemove', onDragMove);
     document.body.addEventListener('touchmove', onDragMove, {passive: true});
     document.body.addEventListener('mouseup', onDragEnd);
@@ -452,13 +459,16 @@ const swalDraggingMethods = {
       window.removeEventListener('resize', onViewportChange);
       window.visualViewport?.removeEventListener('resize', onViewportChange);
       window.visualViewport?.removeEventListener('scroll', onViewportChange);
+      resizeObserver?.disconnect();
       delete popup._mstDragCleanup;
     };
+    popup._mstClampPosition = () => clampPosition(true);
     requestAnimationFrame(onViewportChange);
   },
 
   _disableBoundedDragging(popup) {
     popup?._mstDragCleanup?.();
+    delete popup?._mstClampPosition;
   }
 };
 

@@ -32,6 +32,7 @@
 - 版本号遵循 SemVer：不兼容变更提升 major，向后兼容的新功能提升 minor，修复和兼容性调整提升 patch。
 - 功能或用户可见行为发生变化时必须提升版本号；仅修改文档、注释、格式、测试或不影响产物行为的工程配置时可以不提升。
 - 提升版本号时必须同步更新 `docs/usage.md` 双语更新日志和 `docs/待办与状态.md` 当前版本；业务规则、工程规范或专项算法变化还要更新对应文档。
+- `docs/usage.md` 更新日志必须从用户角度出发，只写用户能感知的变化，简短直接，不写实现细节、不记流水账、不堆技术名词。
 - 开发构建的 `-dev.<timestamp>` 后缀由构建流程生成，不单独修改正式版本号。
 
 ## 验证分级
@@ -61,4 +62,4 @@
 yarn run check
 ```
 
-`yarn run check` 会依次执行 lint、format check、测试、dev 构建和 prod 构建。Yarn Classic 自带同名 `yarn check` 命令，因此不得省略 `run`。新增目录或配置后，要确认该命令仍然覆盖关键文件。是否需要执行完整检查及 Playwright MCP 浏览器验证，按“验证分级”判断。
+`yarn build` 会先执行 `lint:fix` 与 `format`，再生成正式构建产物；`yarn build:dev` 保持轻量，只生成开发构建产物。`yarn run check` 会先执行同一套源码修复，再执行测试、dev 打包和 prod 打包，避免重复修复。Yarn Classic 自带同名 `yarn check` 命令，因此不得省略 `run`。新增目录或配置后，要确认该命令仍然覆盖关键文件。是否需要执行完整检查及 Playwright MCP 浏览器验证，按“验证分级”判断。

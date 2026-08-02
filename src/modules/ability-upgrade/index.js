@@ -362,6 +362,7 @@ const abilityUpgradePickerView = {
       : `<div class="mst-calculator-empty">${utils.escapeHtml(i18n.t('noAbilityMatch'))}</div>`;
     TemplateRenderer.renderHtml(optionsHtml, container);
     container.scrollTop = scrollTop;
+    feature.popup?._mstClampPosition?.();
   },
 
   setPickerOpen(feature, isOpen) {
@@ -376,6 +377,7 @@ const abilityUpgradePickerView = {
     feature.renderOptions();
     feature.popup.querySelector('.mst-ability-options').scrollTop = 0;
     search.focus();
+    feature.popup._mstClampPosition?.();
   }
 };
 

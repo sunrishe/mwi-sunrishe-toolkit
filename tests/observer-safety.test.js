@@ -21,6 +21,7 @@ const houseCalculatorCss = fs.readFileSync(houseCalculatorCssPath, 'utf8');
 const integratedCss = fs.readFileSync(integratedCssPath, 'utf8');
 const languageToggleCss = fs.readFileSync(languageToggleCssPath, 'utf8');
 const swalThemeCss = fs.readFileSync(swalThemeCssPath, 'utf8');
+const packageManifest = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'package.json'), 'utf8'));
 const integratedStyleSource = appBaseCss + integratedCss;
 
 function loadStyleService(document) {
@@ -148,6 +149,37 @@ test('综合样式不保留旧版技能面板和冲突的等级控件布局', ()
   });
 });
 
+test('等级组合输入在主流浏览器隐藏原生数字加减箭头', () => {
+  assert.match(
+    integratedCss,
+    /\.mst-combat-upgrade-calculator \.mst-target-level-control input\s*\{[^}]*-moz-appearance:\s*textfield[^}]*appearance:\s*textfield/s
+  );
+  assert.match(
+    integratedCss,
+    /\.mst-ability-table \.mst-target-level-control input\s*\{[^}]*-moz-appearance:\s*textfield[^}]*appearance:\s*textfield/s
+  );
+  assert.match(
+    integratedCss,
+    /\.mst-target-level-control input::\-webkit-inner-spin-button,\s*\.mst-target-level-control input::\-webkit-outer-spin-button\s*\{[^}]*-webkit-appearance:\s*none/s
+  );
+  assert.match(
+    integratedCss,
+    /\.mst-combat-upgrade-calculator \.mst-calculator-toolbar input\[type='number'\][\s\S]*?input\[data-row-field='hourlyExperienceOverride'\]\s*\{[^}]*-moz-appearance:\s*textfield[^}]*appearance:\s*textfield/s
+  );
+});
+
+test('动态弹窗和工具箱菜单按实际视口约束位置', () => {
+  assert.match(source, /new ResizeObserver\(\(\) => \{\s*clampPosition\(true\);/);
+  assert.match(source, /popup\._mstClampPosition = \(\) => clampPosition\(true\)/);
+  assert.match(source, /feature\.popup\?\._mstClampPosition\?\.\(\)/);
+  assert.match(source, /document\.body\.appendChild\(dropdown\)/);
+  assert.match(source, /window\.visualViewport\?\.addEventListener\('resize', positionDropdown\)/);
+  assert.match(source, /window\.visualViewport\?\.addEventListener\('scroll', positionDropdown\)/);
+  assert.match(integratedCss, /#mst-toolkit-character-dropdown\s*\{[^}]*position:\s*fixed/s);
+  assert.match(integratedCss, /\.mst-ability-picker\s*\{[^}]*position:\s*fixed[^}]*env\(safe-area-inset-top\)/s);
+  assert.match(integratedCss, /\.mst-ability-picker-panel\s*\{[^}]*100dvw[^}]*100dvh/s);
+});
+
 test('技能升级为纵向滚动条预留宽度，装备提升按内容收紧弹窗和列宽', () => {
   assert.match(source, /width: 'min\(51rem, calc\(100vw - 1rem\)\)'/);
   assert.match(integratedCss, /\.mst-ability-table\s*\{[^}]*min-width:\s*48\.5rem/s);
@@ -176,6 +208,18 @@ test('开发专用语言切换样式通过 raw CSS 构建插件注入', () => {
   assert.doesNotMatch(source, /#mst-hccp-modal\s*\{/);
   assert.doesNotMatch(source, /\.mst-swal2-theme\{--swal2-backdrop/);
   assert.doesNotMatch(source, /#mst-toolkit-character-dropdown\s*\{/);
+});
+
+test('构建脚本执行源码修复且完整检查避免重复修复', () => {
+  const scripts = packageManifest.scripts;
+  assert.equal(scripts['build:prepare'], 'yarn lint:fix && yarn format');
+  assert.equal(scripts.build, 'yarn build:prepare && yarn build:prod');
+  assert.equal(scripts['build:dev'], 'cross-env MST_BUILD_ENV=development rollup -c rollup.config.mjs');
+  assert.equal(scripts.check, 'yarn build:prepare && yarn test && yarn build:dev && yarn build:prod');
+  assert.doesNotMatch(scripts['build:dev'], /lint:fix|format/);
+  assert.doesNotMatch(scripts.check, /yarn build(?:\s|$)/);
+  assert.match(scripts['build:prod'], /MST_BUILD_ENV=production/);
+  assert.match(scripts['build:dev'], /MST_BUILD_ENV=development/);
 });
 
 test('正式构建保留 JS 可读输出，并继续压缩内嵌 CSS', () => {

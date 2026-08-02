@@ -1,13 +1,16 @@
 #mst-toolkit-character-dropdown {
-  position: absolute;
-  top: 100%;
-  right: 0;
+  position: fixed;
+  top: max(0.5rem, env(safe-area-inset-top));
+  right: max(0.5rem, env(safe-area-inset-right));
   z-index: 2147483200;
   display: flex;
   min-width: 14rem;
   max-width: calc(100vw - 1rem);
+  max-width: calc(100dvw - 1rem);
   max-height: min(26rem, calc(100svh - 5rem));
+  max-height: min(26rem, calc(100dvh - 1rem));
   overflow: auto;
+  overscroll-behavior: contain;
   flex-direction: column;
   gap: 0.25rem;
   padding: 0.5rem;
@@ -704,11 +707,12 @@
   margin-top: 0.25rem;
 }
 .mst-ability-picker {
-  position: absolute;
-  inset: 0;
-  z-index: 5;
+  position: fixed;
+  inset: max(0.5rem, env(safe-area-inset-top)) max(0.5rem, env(safe-area-inset-right))
+    max(0.5rem, env(safe-area-inset-bottom)) max(0.5rem, env(safe-area-inset-left));
+  z-index: 2147483300;
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   justify-content: center;
   padding: 0;
   background: rgba(14, 15, 24, 0.92);
@@ -718,8 +722,11 @@
 }
 .mst-ability-picker-panel {
   display: flex;
-  width: 100%;
-  max-height: min(28rem, calc(100svh - 10rem));
+  width: min(48.5rem, calc(100vw - 1rem));
+  width: min(48.5rem, calc(100dvw - 1rem));
+  max-height: calc(100vh - 1rem);
+  max-height: calc(100dvh - 1rem);
+  max-height: calc(100svh - 1rem);
   box-sizing: border-box;
   flex-direction: column;
   gap: 0.4rem;
@@ -730,7 +737,7 @@
   box-shadow: var(--shadow-md, 0 0.35rem 1rem rgba(0, 0, 0, 0.4));
 }
 .mst-ability-upgrade-calculator.mst-ability-picker-open {
-  min-height: min(28rem, calc(100svh - 10rem));
+  min-height: 0;
 }
 .mst-ability-search {
   width: 100%;
@@ -1144,6 +1151,8 @@
   border: 0 !important;
   border-radius: inherit;
   background: transparent;
+  -moz-appearance: textfield;
+  appearance: textfield;
 }
 .mst-combat-start-control {
   display: flex;
@@ -1443,6 +1452,7 @@
   border-radius: inherit;
   background: transparent;
   -moz-appearance: textfield;
+  appearance: textfield;
 }
 .mst-target-level-control select {
   position: absolute;
@@ -1769,10 +1779,10 @@
 }
 @media (max-width: 48rem) {
   #mst-toolkit-character-dropdown {
-    position: fixed;
     top: max(0.5rem, env(safe-area-inset-top));
     right: max(0.5rem, env(safe-area-inset-right));
     min-width: min(15rem, calc(100vw - 1rem));
+    min-width: min(15rem, calc(100dvw - 1rem));
   }
   .mst-equipment-compare-table-wrap {
     max-height: calc(100svh - 24rem);

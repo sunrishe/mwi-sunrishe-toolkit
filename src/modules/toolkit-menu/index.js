@@ -11,9 +11,10 @@ export class ToolkitMenuFeature {
     this.abilityCalculator = abilityCalculator;
     this.equipmentComparison = equipmentComparison;
     this.dungeonCalculator = dungeonCalculator;
+    this.dropdownCleanup = null;
     this.outsideClickHandler = (event) => {
       const dropdown = document.getElementById('mst-toolkit-character-dropdown');
-      if (dropdown && !dropdown.contains(event.target)) dropdown.remove();
+      if (dropdown && !dropdown.contains(event.target)) this.closeDropdown();
     };
     this.openHandler = (event) => this.toggleDropdown(event?.detail?.trigger || null);
   }
@@ -57,18 +58,71 @@ export class ToolkitMenuFeature {
     const {GameUiAdapter} = this.ctx;
     const old = document.getElementById('mst-toolkit-character-dropdown');
     if (old) {
-      old.remove();
+      this.closeDropdown();
       return;
     }
     // 优先挂到点击来源附近；找不到来源时回退到游戏头部角色信息区域。
     const host = trigger?.closest?.('[class*="Header_characterInfo"]') || GameUiAdapter.query('headerCharacterInfo');
     if (!host) return;
-    host.style.position = 'relative';
     const dropdown = document.createElement('div');
     dropdown.id = 'mst-toolkit-character-dropdown';
     this.renderDropdown(dropdown);
-    host.appendChild(dropdown);
-    setTimeout(() => document.addEventListener('click', this.outsideClickHandler, {once: true}), 0);
+    document.body.appendChild(dropdown);
+    this.bindDropdownPosition(dropdown, trigger || host);
+    setTimeout(() => document.addEventListener('click', this.outsideClickHandler), 0);
+  }
+
+  closeDropdown() {
+    document.removeEventListener('click', this.outsideClickHandler);
+    this.dropdownCleanup?.();
+    this.dropdownCleanup = null;
+    document.getElementById('mst-toolkit-character-dropdown')?.remove();
+  }
+
+  bindDropdownPosition(dropdown, trigger) {
+    const positionDropdown = () => {
+      if (!dropdown.isConnected) return;
+      const viewport = window.visualViewport;
+      const viewportLeft = viewport?.offsetLeft || 0;
+      const viewportTop = viewport?.offsetTop || 0;
+      const viewportWidth = viewport?.width || document.documentElement.clientWidth || window.innerWidth;
+      const viewportHeight = viewport?.height || document.documentElement.clientHeight || window.innerHeight;
+      const viewportRight = viewportLeft + viewportWidth;
+      const viewportBottom = viewportTop + viewportHeight;
+      const margin = 8;
+      const gap = 6;
+      const triggerRect = trigger?.getBoundingClientRect?.() || {
+        left: viewportRight - margin,
+        right: viewportRight - margin,
+        top: viewportTop + margin,
+        bottom: viewportTop + margin
+      };
+      dropdown.style.maxHeight = Math.max(8 * 16, viewportHeight - margin * 2) + 'px';
+      const dropdownRect = dropdown.getBoundingClientRect();
+      const preferredLeft = triggerRect.right - dropdownRect.width;
+      const left = Math.max(
+        viewportLeft + margin,
+        Math.min(preferredLeft, viewportRight - dropdownRect.width - margin)
+      );
+      const belowTop = triggerRect.bottom + gap;
+      const aboveTop = triggerRect.top - dropdownRect.height - gap;
+      const top =
+        belowTop + dropdownRect.height <= viewportBottom - margin
+          ? belowTop
+          : Math.max(viewportTop + margin, Math.min(aboveTop, viewportBottom - dropdownRect.height - margin));
+      dropdown.style.left = `${left}px`;
+      dropdown.style.top = `${top}px`;
+      dropdown.style.right = 'auto';
+    };
+    window.addEventListener('resize', positionDropdown);
+    window.visualViewport?.addEventListener('resize', positionDropdown);
+    window.visualViewport?.addEventListener('scroll', positionDropdown);
+    this.dropdownCleanup = () => {
+      window.removeEventListener('resize', positionDropdown);
+      window.visualViewport?.removeEventListener('resize', positionDropdown);
+      window.visualViewport?.removeEventListener('scroll', positionDropdown);
+    };
+    requestAnimationFrame(positionDropdown);
   }
 
   renderDropdown(dropdown) {

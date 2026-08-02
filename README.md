@@ -33,4 +33,4 @@ yarn test
 yarn run check
 ```
 
-首次开发先执行 `yarn install`。开发时使用 `yarn watch` 持续生成 `dist/mst.script.dev.user.js`；正式发布使用 `yarn build` 生成 `dist/mst.script.user.js`。源码可以多模块，发布仍然只安装一个 `.user.js`。
+首次开发先执行 `yarn install`。开发时使用 `yarn watch` 持续生成 `dist/mst.script.dev.user.js`；正式发布使用 `yarn build` 生成 `dist/mst.script.user.js`。`yarn build` 会先执行 `lint:fix` 与 `format`，`yarn build:dev` 保持轻量。源码可以多模块，发布仍然只安装一个 `.user.js`。
