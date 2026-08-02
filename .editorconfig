@@ -1,0 +1,16 @@
+# 编辑器基础规则，具体代码排版由 Prettier 负责。
+root = true
+
+[*]
+charset = utf-8
+end_of_line = lf
+insert_final_newline = true
+indent_style = space
+indent_size = 2
+tab_width = 2
+trim_trailing_whitespace = true
+max_line_length = 120
+
+# Markdown 行尾双空格可能用于强制换行。
+[*.md]
+trim_trailing_whitespace = false

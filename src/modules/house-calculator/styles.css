@@ -1,0 +1,345 @@
+#mst-hccp-house-calculator {
+  /* 弹窗内部固定高度，内容区滚动，避免 SweetAlert 外层跟着页面抖动。 */
+  --hccp-panel-height: min(37.5rem, calc(100svh - 7rem));
+  position: static;
+  width: 100%;
+  height: var(--hccp-panel-height);
+  max-height: calc(100svh - 7rem);
+  box-sizing: border-box;
+  font-family: Roboto, Helvetica, Arial, sans-serif;
+  font-size: var(--font-size-base, 0.875rem);
+  color: var(--color-text-dark-mode, #fff);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  resize: none;
+  color-scheme: dark;
+}
+.mst-hccp-calculator-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding-top: var(--spacing-xs, 0.25rem);
+  padding-right: var(--spacing-xs, 0.25rem);
+  display: flex;
+  flex-direction: column;
+  scrollbar-color: var(--color-space-300, #98a7e9) transparent;
+  scrollbar-width: thin;
+}
+.mst-hccp-calculator-body::-webkit-scrollbar {
+  width: var(--scrollbar-width, 0.25rem);
+}
+.mst-hccp-calculator-body::-webkit-scrollbar-thumb {
+  background: var(--color-space-300, #98a7e9);
+  border-radius: var(--scrollbar-border-radius, 0.25rem);
+}
+.mst-hccp-calculator-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: var(--spacing-xs, 0.25rem);
+  margin-bottom: var(--spacing-xs, 0.25rem);
+  flex: 0 0 auto;
+}
+.mst-hccp-select-groups {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: var(--spacing-xs, 0.25rem);
+  flex: 0 0 auto;
+}
+.mst-hccp-toolbar-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--spacing-xs, 0.25rem);
+  margin-left: auto;
+  min-width: 0;
+}
+.mst-hccp-select-all-label {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--spacing-xs, 0.25rem);
+  flex: 0 0 auto;
+  cursor: pointer;
+  user-select: none;
+  font-size: var(--font-size-base, 0.875rem);
+  color: var(--color-space-200, #bbc5f1);
+  white-space: nowrap;
+  line-height: var(--line-height-tight, 1.2);
+}
+.mst-hccp-select-all-label input {
+  margin: 0;
+  transform: scale(1.05);
+  accent-color: var(--color-space-500, #546ddb);
+  vertical-align: middle;
+}
+#mst-hccp-refresh-levels,
+#mst-hccp-export-csv,
+#mst-hccp-add-to-cart {
+  height: var(--button-height-small, 1.5rem);
+  padding: 0 var(--button-padding-x-small, 0.375rem);
+  background: var(--color-space-600, #4357af);
+  color: var(--color-text-dark-mode, #fff);
+  border: none;
+  border-radius: var(--radius-sm, 0.25rem);
+  cursor: pointer;
+  transition: background 0.2s;
+  font-family: Roboto, Helvetica, Arial, sans-serif;
+  font-size: var(--font-size-sm, 0.8125rem);
+  font-weight: var(--font-weight-semibold, 600);
+  line-height: 1;
+}
+#mst-hccp-refresh-levels:hover,
+#mst-hccp-export-csv:hover,
+#mst-hccp-add-to-cart:hover {
+  background: var(--color-space-500, #546ddb);
+}
+.mst-hccp-batch-level {
+  display: inline-flex;
+  align-items: center;
+  flex: 0 0 auto;
+  width: 6.75rem;
+}
+#mst-hccp-batch-from-level option,
+#mst-hccp-batch-to-level option,
+.mst-hccp-level-input option {
+  text-align: center;
+}
+#mst-hccp-refresh-levels {
+  flex: 0 0 auto;
+  padding: 0 var(--button-padding-x-normal, 0.625rem);
+  white-space: nowrap;
+}
+#mst-hccp-rooms-container {
+  /* 房屋数量固定且名称较短，三列能在桌面弹窗内保持信息密度。 */
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  align-content: start;
+  justify-content: center;
+  gap: var(--spacing-xs, 0.25rem);
+  margin-bottom: var(--spacing-xs, 0.25rem);
+  overflow: visible;
+  flex: 0 0 auto;
+}
+.mst-hccp-room-checkbox {
+  display: block;
+  min-width: 0;
+  margin: 0;
+  min-height: auto;
+  padding: var(--spacing-xs, 0.25rem);
+  background: var(--color-midnight-500, #2c2e45);
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm, 0.25rem);
+  transition: all 0.2s ease;
+  opacity: 0.95;
+  box-sizing: border-box;
+}
+.mst-hccp-room-checkbox:hover {
+  background: var(--color-midnight-300, #393a5b);
+  opacity: 1;
+}
+.mst-hccp-room-checkbox.mst-hccp-room-selected {
+  background: var(--color-space-800, #273366);
+  border-color: var(--color-space-300, #98a7e9);
+  opacity: 1;
+}
+.mst-hccp-room-row {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-xxs, 0.125rem);
+  height: auto;
+  justify-content: flex-start;
+}
+.mst-hccp-room-left {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs, 0.25rem);
+  cursor: pointer;
+  width: 100%;
+  padding: var(--spacing-xxs, 0.125rem) 0;
+  line-height: 1;
+}
+.mst-hccp-room-left input {
+  margin: 0;
+  transform: scale(1.05);
+  accent-color: var(--color-space-500, #546ddb);
+  flex: 0 0 auto;
+  vertical-align: middle;
+}
+.mst-hccp-room-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--font-size-sm, 0.8125rem);
+  color: var(--color-space-100, #dce2fa);
+  font-weight: var(--font-weight-medium, 500);
+  line-height: 1em;
+}
+.mst-hccp-room-icon {
+  width: 1em;
+  height: 1em;
+  line-height: 1;
+  flex: 0 0 1em;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  vertical-align: middle;
+}
+.mst-hccp-room-icon svg {
+  width: 1em;
+  height: 1em;
+  display: block;
+}
+.mst-hccp-room-levels {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0;
+  width: 100%;
+}
+.mst-hccp-level-arrow {
+  height: var(--input-height-small, 1.5rem);
+  min-width: 1.5rem;
+  padding: 0 var(--spacing-xs, 0.25rem);
+  border-top: 1px solid var(--color-midnight-100, #454771);
+  border-bottom: 1px solid var(--color-midnight-100, #454771);
+  background: var(--color-midnight-700, #20212f);
+  color: var(--color-space-300, #98a7e9);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  font-size: var(--font-size-xs, 0.6875rem);
+  line-height: 1;
+}
+.mst-hccp-level-input {
+  width: auto;
+  flex: 1 1 0;
+  min-width: 0;
+  height: var(--input-height-small, 1.5rem);
+  padding: 0;
+  border: 1px solid var(--color-midnight-100, #454771);
+  text-align: center;
+  text-align-last: center;
+  appearance: none;
+  -moz-appearance: none;
+  -webkit-appearance: none;
+  background: var(--color-midnight-900, #131419);
+  color: var(--color-text-dark-mode, #fff);
+  box-sizing: border-box;
+  font-size: var(--font-size-xs, 0.6875rem);
+  font-weight: var(--font-weight-medium, 500);
+  line-height: var(--input-height-small, 1.5rem);
+}
+.mst-hccp-level-input[data-type='from'] {
+  border-radius: var(--radius-sm, 0.25rem) 0 0 var(--radius-sm, 0.25rem);
+  border-right: 0;
+}
+.mst-hccp-level-input[data-type='to'] {
+  border-radius: 0 var(--radius-sm, 0.25rem) var(--radius-sm, 0.25rem) 0;
+  border-left: 0;
+}
+#mst-hccp-batch-to-level {
+  border-radius: 0 var(--radius-sm, 0.25rem) var(--radius-sm, 0.25rem) 0;
+  border-left: 0;
+  font-size: var(--font-size-sm, 0.8125rem);
+}
+#mst-hccp-batch-from-level {
+  border-radius: var(--radius-sm, 0.25rem) 0 0 var(--radius-sm, 0.25rem);
+  border-right: 0;
+  font-size: var(--font-size-sm, 0.8125rem);
+}
+.mst-hccp-output-actions {
+  margin-top: var(--spacing-xs, 0.25rem);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--spacing-xs, 0.25rem);
+  flex: 0 0 auto;
+}
+.mst-hccp-output-buttons {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs, 0.25rem);
+  flex: 0 0 auto;
+}
+.mst-hccp-display-option {
+  padding: var(--spacing-xs-plus, 0.375rem) var(--spacing-sm, 0.5rem);
+  background: var(--color-midnight-700, #20212f);
+  border: 1px solid var(--color-midnight-400, #323450);
+  border-radius: var(--radius-sm, 0.25rem);
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm, 0.5rem);
+  flex-wrap: wrap;
+  color: var(--color-space-200, #bbc5f1);
+  font-size: var(--font-size-sm, 0.8125rem);
+  line-height: var(--line-height-tight, 1.2);
+  flex: 0 1 auto;
+}
+.mst-hccp-display-option label {
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--spacing-xs, 0.25rem);
+}
+.mst-hccp-display-option input {
+  margin: 0;
+  accent-color: var(--color-space-500, #546ddb);
+  vertical-align: middle;
+}
+#mst-hccp-export-csv,
+#mst-hccp-add-to-cart {
+  flex: 0 0 auto;
+  padding: 0 var(--button-padding-x-normal, 0.625rem);
+  white-space: nowrap;
+}
+#mst-hccp-results-text {
+  width: 100%;
+  box-sizing: border-box;
+  flex: 1 0 7rem;
+  height: auto;
+  min-height: 7rem;
+  margin-top: var(--spacing-xs, 0.25rem);
+  padding: var(--spacing-sm, 0.5rem);
+  border: 1px solid var(--color-midnight-100, #454771);
+  border-radius: var(--radius-sm, 0.25rem);
+  background: var(--color-midnight-900, #131419);
+  color: var(--color-text-dark-mode, #fff);
+  resize: none;
+  overflow: auto;
+  font-family: Consolas, monospace;
+  font-size: var(--font-size-sm, 0.8125rem);
+  line-height: var(--line-height-normal, 1.375);
+}
+@media (max-width: 640px) {
+  /* 移动端优先保留等级输入可点面积，工具栏和操作区允许换行。 */
+  #mst-hccp-house-calculator {
+    --hccp-panel-height: min(37.5rem, calc(100svh - 6rem));
+    width: 100%;
+    height: var(--hccp-panel-height);
+    max-height: calc(100svh - 6rem);
+    resize: none;
+  }
+  .mst-hccp-calculator-toolbar {
+    flex-wrap: wrap;
+    align-items: center;
+  }
+  .mst-hccp-select-all-label {
+    justify-content: flex-start;
+  }
+  .mst-hccp-toolbar-actions {
+    flex: 0 1 auto;
+    flex-wrap: wrap;
+  }
+  .mst-hccp-output-actions {
+    flex-wrap: wrap;
+  }
+  .mst-hccp-level-input {
+    width: 2.375rem;
+  }
+}

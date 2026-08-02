@@ -1,0 +1,16 @@
+{
+  "short_name": "MilkyWayIdle",
+  "name": "Milky Way Idle",
+  "description": "A multiplayer idle game set in the Milky Way universe",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "theme_color": "#131C37",
+  "background_color": "#131C37",
+  "icons": [
+    { "src": "/icons/home-icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/icons/home-icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "/icons/home-icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "maskable" },
+    { "src": "/icons/home-icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

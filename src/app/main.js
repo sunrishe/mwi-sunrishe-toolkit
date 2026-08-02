@@ -1,0 +1,73 @@
+import {BUILD_FLAGS} from '../common/build-flags.js';
+import {
+  AUTO_CALC_DELAY,
+  HOUSE_MAX_FROM_LEVEL,
+  HOUSE_MAX_TO_LEVEL,
+  HOUSE_MIN_FROM_LEVEL,
+  MARKET_CACHE_TTL,
+  PROFILE_CACHE_LIMIT,
+  PROFILE_CACHE_TTL,
+  TOAST_DURATION,
+  TOAST_MAX_COUNT
+} from '../common/constants.js';
+import {installDataModule} from '../common/data.js';
+import {createI18nService, createLanguageEvents} from '../common/i18n.js';
+import {MarketDataService} from '../common/market.js';
+import {I18N_MESSAGE_GROUPS} from '../common/messages.js';
+import {installRuntimeHelpers} from '../common/runtime.js';
+import {installCommonUi, TemplateRenderer} from '../common/ui.js';
+import {installModules} from '../modules/index.js';
+import {installAppBootstrap, installRuntimeInstances} from './app-controller.js';
+
+export function runMst() {
+  const pageWindow = typeof unsafeWindow !== 'undefined' ? unsafeWindow : window;
+  const hostname = window.location.hostname;
+  // 通过二级域判断中英文游戏站，保证 www 与子域名都能复用同一套配置。
+  const domainname = hostname.substring(hostname.lastIndexOf('.', hostname.lastIndexOf('.') - 1) + 1);
+
+  // CONFIG 只保存运行期环境和阈值，具体业务常量集中放在 common/constants.js。
+  const CONFIG = {
+    SHOW_LANGUAGE_TOGGLE: BUILD_FLAGS.showLanguageToggle,
+    MARKET_CACHE_TTL,
+    PROFILE_CACHE_TTL,
+    PROFILE_CACHE_LIMIT,
+    MARKET_URL: `https://www.${domainname}/game_data/marketplace.json`,
+    characterId: new URLSearchParams(window.location.search).get('characterId'),
+    MIN_FROM_LEVEL: HOUSE_MIN_FROM_LEVEL,
+    MAX_FROM_LEVEL: HOUSE_MAX_FROM_LEVEL,
+    MAX_TO_LEVEL: HOUSE_MAX_TO_LEVEL,
+    AUTO_CALC_DELAY,
+    TOAST_MAX_COUNT,
+    TOAST_DURATION,
+    isGameSite: domainname === 'milkywayidle.com' || domainname === 'milkywayidlecn.com',
+    isMilkonomySite: hostname === 'milkonomy.pages.dev' || hostname === 'hyhfish.github.io'
+  };
+
+  if (CONFIG.isGameSite) TemplateRenderer.init();
+
+  // i18n 先建立索引再读偏好，后续模块只依赖统一的 ctx.i18n。
+  const i18n = createI18nService({CONFIG, messageGroups: I18N_MESSAGE_GROUPS});
+  i18n.buildMessageIndex();
+  i18n.loadLangPref();
+
+  const ctx = {
+    BUILD_FLAGS,
+    CONFIG,
+    I18N_MESSAGE_GROUPS,
+    LanguageEvents: createLanguageEvents(),
+    TemplateRenderer,
+    domainname,
+    hostname,
+    i18n,
+    pageWindow
+  };
+
+  installDataModule(ctx);
+  installRuntimeHelpers(ctx);
+  ctx.MarketDataService = MarketDataService;
+  // 安装顺序按依赖递进：公共能力 -> 模块注册 -> 运行时实例 -> 页面启动。
+  installCommonUi(ctx);
+  installModules(ctx);
+  installRuntimeInstances(ctx);
+  installAppBootstrap(ctx);
+}

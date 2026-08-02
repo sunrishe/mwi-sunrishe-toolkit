@@ -1,0 +1,38 @@
+#mst-language-toggle {
+  /* 开发语言切换按钮固定在安全区内，不占用游戏头部布局。 */
+  position: fixed;
+  top: max(var(--spacing-sm, 0.5rem), env(safe-area-inset-top));
+  left: max(var(--spacing-sm, 0.5rem), env(safe-area-inset-left));
+  z-index: 2147483647;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: auto;
+  min-width: 3rem;
+  max-width: calc(100vw - 1rem);
+  height: var(--button-height-normal, 1.875rem);
+  margin: 0;
+  padding: 0 0.6rem;
+  border: var(--border-width-thin, 1px) solid var(--color-space-300, #98a7e9);
+  border-radius: var(--radius-sm, 0.25rem);
+  background: var(--color-midnight-500, #2c2e45);
+  color: var(--color-text-dark-mode, #e7e7e7);
+  font-family: Roboto, Helvetica, Arial, sans-serif;
+  font-size: var(--font-size-base, 0.875rem);
+  font-weight: var(--font-weight-semibold, 600);
+  line-height: 1;
+  letter-spacing: 0;
+  white-space: nowrap;
+  cursor: pointer;
+  box-shadow: var(--shadow-sm, 2px 2px 4px rgb(0 0 0 / 20%));
+}
+
+#mst-language-toggle:hover {
+  background: var(--color-midnight-400, #323450);
+  color: #fff;
+}
+
+#mst-language-toggle:focus-visible {
+  outline: 1px solid var(--color-space-200, #bbc5f1);
+  outline-offset: 1px;
+}
