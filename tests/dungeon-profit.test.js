@@ -564,6 +564,7 @@ test('市场缺价时结果保持有限数值并报告缺价', () => {
 test('主脚本包含正式元信息、工具箱入口和完整国际化入口', () => {
   assert.match(headerSource, /@name\s+MWI Sunrishe Toolkit/);
   assert.match(headerSource, /@version\s+__MST_VERSION__/);
+  assert.match(headerSource, /@license\s+ISC/);
   assert.match(source, /key: 'dungeonProfitCalculator', icon: 'loot_tracker'/);
   assert.match(dungeonMessagesSource, /dungeonCalculatorHelp:/);
   assert.match(source, /class DungeonProfitCalculatorFeature/);
