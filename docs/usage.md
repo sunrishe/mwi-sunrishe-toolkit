@@ -665,6 +665,13 @@ Cheese: 10 x 72 - 40 = 680
 - 后续版本遵循 SemVer：不兼容变更使用 major，向后兼容的新功能使用 minor，修复和兼容性调整使用 patch；开发构建使用 `-dev.<timestamp>` 后缀。
   Later releases follow SemVer: incompatible changes use a major version, backward-compatible features use a minor version, fixes and compatibility changes use a patch version, and development builds use the `-dev.<timestamp>` suffix.
 
+## v2.7.22
+
+1. 优化技能和战斗升级输入体验，等级输入不会再显示多余的数字加减箭头。
+   Improves Ability and Combat Upgrade inputs by removing unnecessary number steppers from level fields.
+2. 优化弹窗在小屏和手机浏览器下的位置，技能选择和工具箱菜单会尽量保持在当前可见区域内。
+   Improves dialog placement on small screens and mobile browsers so ability picking and the Toolkit menu stay inside the visible area.
+
 ## v2.7.20
 
 1. 从原 EDS 配装同步升级为 **MWI Sunrishe Toolkit**：保留 Milkonomy、hyhfish 和战斗模拟器相关复制/同步能力，并统一收进游戏顶部的工具箱入口。

@@ -3,7 +3,7 @@
 // @name:zh-CN         MWI Sunrishe 工具箱
 // @name:en            MWI Sunrishe Toolkit
 // @namespace          http://tampermonkey.net/
-// @version            2.7.20
+// @version            2.7.22
 // @description        MWI Sunrishe 综合工具箱：提供角色/队伍名片、技能/房屋/战斗升级规划、装备提升计算器、地下城收益、配装同步和市场伴侣增强。
 // @description:zh-CN  MWI Sunrishe 综合工具箱：提供角色/队伍名片、技能/房屋/战斗升级规划、装备提升计算器、地下城收益、配装同步和市场伴侣增强。
 // @description:en     MST toolkit for character/party cards, ability/house/combat upgrade planning, equipment comparison, dungeon profit, loadout sync, and Market Mate enhancements.
@@ -2630,6 +2630,13 @@
         }
       };
       const onViewportChange = () => clampPosition(true);
+      const resizeObserver =
+        typeof ResizeObserver === 'undefined'
+          ? null
+          : new ResizeObserver(() => {
+              clampPosition(true);
+            });
+      resizeObserver?.observe(popup);
       document.body.addEventListener('mousemove', onDragMove);
       document.body.addEventListener('touchmove', onDragMove, {passive: true});
       document.body.addEventListener('mouseup', onDragEnd);
@@ -2653,13 +2660,16 @@
         window.removeEventListener('resize', onViewportChange);
         window.visualViewport?.removeEventListener('resize', onViewportChange);
         window.visualViewport?.removeEventListener('scroll', onViewportChange);
+        resizeObserver?.disconnect();
         delete popup._mstDragCleanup;
       };
+      popup._mstClampPosition = () => clampPosition(true);
       requestAnimationFrame(onViewportChange);
     },
 
     _disableBoundedDragging(popup) {
       popup?._mstDragCleanup?.();
+      delete popup?._mstClampPosition;
     }
   };
 
@@ -3242,6 +3252,7 @@
         : `<div class="mst-calculator-empty">${utils.escapeHtml(i18n.t('noAbilityMatch'))}</div>`;
       TemplateRenderer.renderHtml(optionsHtml, container);
       container.scrollTop = scrollTop;
+      feature.popup?._mstClampPosition?.();
     },
 
     setPickerOpen(feature, isOpen) {
@@ -3256,6 +3267,7 @@
       feature.renderOptions();
       feature.popup.querySelector('.mst-ability-options').scrollTop = 0;
       search.focus();
+      feature.popup._mstClampPosition?.();
     }
   };
 
@@ -19039,9 +19051,10 @@
       this.abilityCalculator = abilityCalculator;
       this.equipmentComparison = equipmentComparison;
       this.dungeonCalculator = dungeonCalculator;
+      this.dropdownCleanup = null;
       this.outsideClickHandler = (event) => {
         const dropdown = document.getElementById('mst-toolkit-character-dropdown');
-        if (dropdown && !dropdown.contains(event.target)) dropdown.remove();
+        if (dropdown && !dropdown.contains(event.target)) this.closeDropdown();
       };
       this.openHandler = (event) => this.toggleDropdown(event?.detail?.trigger || null);
     }
@@ -19085,18 +19098,70 @@
       const {GameUiAdapter} = this.ctx;
       const old = document.getElementById('mst-toolkit-character-dropdown');
       if (old) {
-        old.remove();
+        this.closeDropdown();
         return;
       }
       // 优先挂到点击来源附近；找不到来源时回退到游戏头部角色信息区域。
       const host = trigger?.closest?.('[class*="Header_characterInfo"]') || GameUiAdapter.query('headerCharacterInfo');
       if (!host) return;
-      host.style.position = 'relative';
       const dropdown = document.createElement('div');
       dropdown.id = 'mst-toolkit-character-dropdown';
       this.renderDropdown(dropdown);
-      host.appendChild(dropdown);
-      setTimeout(() => document.addEventListener('click', this.outsideClickHandler, {once: true}), 0);
+      document.body.appendChild(dropdown);
+      this.bindDropdownPosition(dropdown, trigger || host);
+      setTimeout(() => document.addEventListener('click', this.outsideClickHandler), 0);
+    }
+
+    closeDropdown() {
+      document.removeEventListener('click', this.outsideClickHandler);
+      this.dropdownCleanup?.();
+      this.dropdownCleanup = null;
+      document.getElementById('mst-toolkit-character-dropdown')?.remove();
+    }
+
+    bindDropdownPosition(dropdown, trigger) {
+      const positionDropdown = () => {
+        if (!dropdown.isConnected) return;
+        const viewport = window.visualViewport;
+        const viewportLeft = viewport?.offsetLeft || 0;
+        const viewportTop = viewport?.offsetTop || 0;
+        const viewportWidth = viewport?.width || document.documentElement.clientWidth || window.innerWidth;
+        const viewportHeight = viewport?.height || document.documentElement.clientHeight || window.innerHeight;
+        const viewportRight = viewportLeft + viewportWidth;
+        const viewportBottom = viewportTop + viewportHeight;
+        const margin = 8;
+        const gap = 6;
+        const triggerRect = trigger?.getBoundingClientRect?.() || {
+          right: viewportRight - margin,
+          top: viewportTop + margin,
+          bottom: viewportTop + margin
+        };
+        dropdown.style.maxHeight = Math.max(8 * 16, viewportHeight - margin * 2) + 'px';
+        const dropdownRect = dropdown.getBoundingClientRect();
+        const preferredLeft = triggerRect.right - dropdownRect.width;
+        const left = Math.max(
+          viewportLeft + margin,
+          Math.min(preferredLeft, viewportRight - dropdownRect.width - margin)
+        );
+        const belowTop = triggerRect.bottom + gap;
+        const aboveTop = triggerRect.top - dropdownRect.height - gap;
+        const top =
+          belowTop + dropdownRect.height <= viewportBottom - margin
+            ? belowTop
+            : Math.max(viewportTop + margin, Math.min(aboveTop, viewportBottom - dropdownRect.height - margin));
+        dropdown.style.left = `${left}px`;
+        dropdown.style.top = `${top}px`;
+        dropdown.style.right = 'auto';
+      };
+      window.addEventListener('resize', positionDropdown);
+      window.visualViewport?.addEventListener('resize', positionDropdown);
+      window.visualViewport?.addEventListener('scroll', positionDropdown);
+      this.dropdownCleanup = () => {
+        window.removeEventListener('resize', positionDropdown);
+        window.visualViewport?.removeEventListener('resize', positionDropdown);
+        window.visualViewport?.removeEventListener('scroll', positionDropdown);
+      };
+      requestAnimationFrame(positionDropdown);
     }
 
     renderDropdown(dropdown) {
@@ -19173,7 +19238,7 @@
 .mst-eds-loadout-actions button{width:auto!important;max-width:100%;margin:0;border-color:var(--color-space-400, #7686cc)!important;background:var(--color-midnight-400, #323450)!important;color:var(--color-text-dark-mode, #e7e7e7)!important}
 .mst-eds-loadout-actions button:hover{border-color:var(--color-space-200, #bbc5f1)!important;background:var(--color-midnight-300, #393b5c)!important}`;
 
-  var MST_INTEGRATED_CSS = String.raw`#mst-toolkit-character-dropdown{position:absolute;top:100%;right:0;z-index:2147483200;display:flex;min-width:14rem;max-width:calc(100vw - 1rem);max-height:min(26rem,calc(100svh - 5rem));overflow:auto;flex-direction:column;gap:.25rem;padding:.5rem;background:var(--color-midnight-600, #27283b);border:1px solid var(--color-midnight-100, #454771);border-radius:var(--radius-sm, .25rem);box-shadow:var(--shadow-md, 0 .35rem 1rem rgba(0, 0, 0, .4));font-family:Roboto,Helvetica,Arial,sans-serif}
+  var MST_INTEGRATED_CSS = String.raw`#mst-toolkit-character-dropdown{position:fixed;top:max(.5rem,env(safe-area-inset-top));right:max(.5rem,env(safe-area-inset-right));z-index:2147483200;display:flex;min-width:14rem;max-width:calc(100vw - 1rem);max-width:calc(100dvw - 1rem);max-height:min(26rem,calc(100svh - 5rem));max-height:min(26rem,calc(100dvh - 1rem));overflow:auto;overscroll-behavior:contain;flex-direction:column;gap:.25rem;padding:.5rem;background:var(--color-midnight-600, #27283b);border:1px solid var(--color-midnight-100, #454771);border-radius:var(--radius-sm, .25rem);box-shadow:var(--shadow-md, 0 .35rem 1rem rgba(0, 0, 0, .4));font-family:Roboto,Helvetica,Arial,sans-serif}
 .mst-toolkit-dropdown-title{padding:.35rem .5rem .55rem;border-bottom:1px solid var(--color-midnight-200, #3b3d60);color:var(--color-text-dark-mode, #e7e7e7);font-size:var(--font-size-large, 1rem);font-weight:var(--font-weight-semibold, 600);text-align:center}
 .mst-toolkit-action{display:flex;align-items:center;gap:.5rem;width:100%;min-height:var(--button-height-normal, 1.875rem);margin:0;padding:.25rem .6rem;border:1px solid var(--color-midnight-100, #454771);border-radius:var(--radius-sm, .25rem);background:var(--color-midnight-500, #2c2e45);color:var(--color-text-dark-mode, #e7e7e7);font:inherit;font-size:var(--font-size-base, .875rem);text-align:left;cursor:pointer}
 .mst-toolkit-action svg{width:1.25rem;height:1.25rem;flex:0 0 1.25rem}
@@ -19274,10 +19339,10 @@
 .mst-ability-calculator-button-container{display:flex;align-items:center;justify-content:center;flex-wrap:wrap;gap:.625rem;margin:.5rem 0 .25rem}
 .mst-ability-calculator-trigger{display:inline-flex;margin:0}
 .mst-ability-action-market,.mst-ability-action-calculator{margin-top:.25rem}
-.mst-ability-picker{position:absolute;inset:0;z-index:5;display:flex;align-items:flex-start;justify-content:center;padding:0;background:#0e0f18eb}
+.mst-ability-picker{position:fixed;inset:max(.5rem,env(safe-area-inset-top)) max(.5rem,env(safe-area-inset-right)) max(.5rem,env(safe-area-inset-bottom)) max(.5rem,env(safe-area-inset-left));z-index:2147483300;display:flex;align-items:center;justify-content:center;padding:0;background:#0e0f18eb}
 .mst-ability-picker[hidden]{display:none}
-.mst-ability-picker-panel{display:flex;width:100%;max-height:min(28rem,calc(100svh - 10rem));box-sizing:border-box;flex-direction:column;gap:.4rem;padding:.5rem;border:1px solid var(--color-midnight-100, #454771);border-radius:var(--radius-sm, .25rem);background:var(--color-midnight-600, #27283b);box-shadow:var(--shadow-md, 0 .35rem 1rem rgba(0, 0, 0, .4))}
-.mst-ability-upgrade-calculator.mst-ability-picker-open{min-height:min(28rem,calc(100svh - 10rem))}
+.mst-ability-picker-panel{display:flex;width:min(48.5rem,calc(100vw - 1rem));width:min(48.5rem,calc(100dvw - 1rem));max-height:calc(100vh - 1rem);max-height:calc(100dvh - 1rem);max-height:calc(100svh - 1rem);box-sizing:border-box;flex-direction:column;gap:.4rem;padding:.5rem;border:1px solid var(--color-midnight-100, #454771);border-radius:var(--radius-sm, .25rem);background:var(--color-midnight-600, #27283b);box-shadow:var(--shadow-md, 0 .35rem 1rem rgba(0, 0, 0, .4))}
+.mst-ability-upgrade-calculator.mst-ability-picker-open{min-height:0}
 .mst-ability-search{width:100%}
 .mst-ability-options{display:grid;grid-template-columns:repeat(auto-fill,5.25rem);grid-auto-rows:5.25rem;align-content:start;justify-content:center;gap:.3rem;overflow:auto}
 .mst-ability-option{position:relative;display:flex!important;min-width:0;min-height:0!important;flex-direction:column;align-items:center;justify-content:center;gap:.25rem;padding:.35rem!important;text-align:center}
@@ -19341,7 +19406,7 @@
 .mst-training-checkbox input{width:1rem!important;height:1rem}
 .mst-fixed-training{color:var(--color-neutral-300, #b9bbca)}
 .mst-row-dragging{opacity:.45;outline:1px dashed var(--color-space-300, #98a7e9)}
-.mst-combat-upgrade-calculator .mst-target-level-control input{width:100%;height:100%;padding:.2rem 2rem .2rem .4rem;border:0!important;border-radius:inherit;background:transparent}
+.mst-combat-upgrade-calculator .mst-target-level-control input{width:100%;height:100%;padding:.2rem 2rem .2rem .4rem;border:0!important;border-radius:inherit;background:transparent;-moz-appearance:textfield;appearance:textfield}
 .mst-combat-start-control{display:flex;min-width:0;align-items:center;justify-content:center;gap:.25rem}
 .mst-combat-start-control>input[data-row-field=customStart]{width:1rem!important;height:1rem;flex:0 0 1rem}
 .mst-combat-start-control .mst-target-level-control{min-width:0;flex:1}
@@ -19395,7 +19460,7 @@
 .mst-ability-start-control .mst-target-level-control{min-width:0;flex:1}
 .mst-target-level-control{position:relative;display:block;height:var(--button-height-normal, 1.875rem);box-sizing:border-box;border:1px solid var(--color-midnight-100, #454771);border-radius:var(--radius-sm, .25rem);background:var(--color-midnight-700, #20212f)}
 .mst-target-level-control:focus-within{border-color:var(--color-space-300, #98a7e9)}
-.mst-ability-table .mst-target-level-control input{width:100%;min-width:0;height:100%;padding:.2rem 2rem .2rem .4rem;border:0!important;border-radius:inherit;background:transparent;-moz-appearance:textfield}
+.mst-ability-table .mst-target-level-control input{width:100%;min-width:0;height:100%;padding:.2rem 2rem .2rem .4rem;border:0!important;border-radius:inherit;background:transparent;-moz-appearance:textfield;appearance:textfield}
 .mst-target-level-control select{position:absolute;top:0;right:0;width:1.75rem;min-width:0;height:100%;padding:0;border:0;border-left:1px solid var(--color-midnight-100, #454771);border-radius:0;background:transparent;color:transparent;text-align:center;text-align-last:center;cursor:pointer;appearance:none;-webkit-appearance:none}
 .mst-target-level-control select option{background:var(--color-midnight-700, #20212f);color:var(--color-text-dark-mode, #e7e7e7);text-align:center}
 .mst-target-level-control:after{position:absolute;top:50%;right:0;width:1.75rem;content:"\25be";transform:translateY(-52%);color:var(--color-neutral-200, #d2d3dc);font-size:1rem;line-height:1;text-align:center;pointer-events:none}
@@ -19450,7 +19515,7 @@
 .mst-ability-market-time{max-width:calc(100% - 8rem);margin-left:auto}
 .mst-ability-upgrade-calculator .mst-ability-table-wrap{max-height:calc(100svh - 16rem)}
 }
-@media(max-width:48rem){#mst-toolkit-character-dropdown{position:fixed;top:max(.5rem,env(safe-area-inset-top));right:max(.5rem,env(safe-area-inset-right));min-width:min(15rem,calc(100vw - 1rem))}
+@media(max-width:48rem){#mst-toolkit-character-dropdown{top:max(.5rem,env(safe-area-inset-top));right:max(.5rem,env(safe-area-inset-right));min-width:min(15rem,calc(100vw - 1rem));min-width:min(15rem,calc(100dvw - 1rem))}
 .mst-equipment-compare-table-wrap{max-height:calc(100svh - 24rem)}
 .mst-calculator-toolbar{grid-template-columns:repeat(2,minmax(0,1fr))}
 .mst-calculator-toolbar .mst-calculator-reset{grid-column:1/-1}

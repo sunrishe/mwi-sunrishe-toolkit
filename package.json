@@ -1,18 +1,20 @@
 {
   "name": "mwi-sunrishe-toolkit",
-  "version": "2.7.20",
+  "version": "2.7.22",
   "packageManager": "yarn@1.22.22",
   "description": "MWI Sunrishe Toolkit 油猴脚本",
   "scripts": {
-    "build": "cross-env MST_BUILD_ENV=production rollup -c rollup.config.mjs",
+    "build": "yarn build:prepare && yarn build:prod",
     "build:dev": "cross-env MST_BUILD_ENV=development rollup -c rollup.config.mjs",
+    "build:prepare": "yarn lint:fix && yarn format",
+    "build:prod": "cross-env MST_BUILD_ENV=production rollup -c rollup.config.mjs",
     "watch": "cross-env MST_BUILD_ENV=development rollup -c rollup.config.mjs -w",
     "test": "node --test tests/*.test.js",
     "lint": "eslint src tests rollup.config.mjs eslint.config.mjs",
     "lint:fix": "eslint src tests rollup.config.mjs eslint.config.mjs --fix",
     "format": "prettier --write . --ignore-unknown",
     "format:check": "prettier --check . --ignore-unknown",
-    "check": "yarn lint && yarn format:check && yarn test && yarn build:dev && yarn build",
+    "check": "yarn build:prepare && yarn test && yarn build:dev && yarn build:prod",
     "prepare": "husky"
   },
   "keywords": [
