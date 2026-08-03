@@ -3,16 +3,20 @@
 // @name:zh-CN         MWI Sunrishe 工具箱
 // @name:en            MWI Sunrishe Toolkit
 // @namespace          http://tampermonkey.net/
-// @version            2.7.22
+// @version            2.7.26
 // @description        MWI Sunrishe 综合工具箱：提供角色/队伍名片、技能/房屋/战斗升级规划、装备提升计算器、地下城收益、配装同步和市场伴侣增强。
 // @description:zh-CN  MWI Sunrishe 综合工具箱：提供角色/队伍名片、技能/房屋/战斗升级规划、装备提升计算器、地下城收益、配装同步和市场伴侣增强。
 // @description:en     MST toolkit for character/party cards, ability/house/combat upgrade planning, equipment comparison, dungeon profit, loadout sync, and Market Mate enhancements.
+// @icon               https://www.milkywayidle.com/favicon.svg
 // @author             sunrishe
+// @license            ISC
+// @homepage           https://github.com/sunrishe/mwi-sunrishe-toolkit
 // @website            https://greasyfork.org/zh-CN/scripts/574037
 // @website            https://gf.qytechs.cn/zh-CN/scripts/574037
 // @website            https://home.greasyfork.org.cn/zh-hans/info#/zh-CN/scripts/574037
-// @homepage           https://github.com/sunrishe/mwi-sunrishe-toolkit
-// @license            ISC
+// @require            https://cdn.jsdelivr.net/npm/html-to-image@1.11.13/dist/html-to-image.js
+// @require            https://cdn.jsdelivr.net/npm/sweetalert2@11
+// @require            https://cdn.jsdelivr.net/gh/sunrishe/mwi-sunrishe-toolkit@master/vendor/uhtml/uhtml.iife.min.js
 // @match              https://www.milkywayidle.com/*
 // @match              https://milkywayidle.com/*
 // @match              https://test.milkywayidle.com/*
@@ -21,17 +25,18 @@
 // @match              https://test.milkywayidlecn.com/*
 // @match              https://milkonomy.pages.dev/*
 // @match              https://hyhfish.github.io/milkonomy/*
-// @icon               https://www.milkywayidle.com/favicon.svg
-// @run-at             document-start
-// @require            https://cdn.jsdelivr.net/npm/html-to-image@1.11.13/dist/html-to-image.js
-// @require            https://cdn.jsdelivr.net/npm/sweetalert2@11
 // @grant              unsafeWindow
-// @grant              GM_setClipboard
-// @grant              GM_getValue
-// @grant              GM_setValue
 // @grant              GM_addValueChangeListener
+// @grant              GM.addValueChangeListener
+// @grant              GM_getValue
+// @grant              GM.getValue
+// @grant              GM_setClipboard
+// @grant              GM.setClipboard
+// @grant              GM_setValue
+// @grant              GM.setValue
 // @grant              GM_xmlhttpRequest
 // @grant              GM.xmlHttpRequest
+// @run-at             document-start
 // @connect            www.milkywayidle.com
 // @connect            www.milkywayidlecn.com
 // ==/UserScript==
@@ -267,14 +272,121 @@
 
   // data-hub-game-runtime
   const dataHubGameRuntimeMethods = {
+    installI18nBridge() {
+      if (this.i18nBridgeInstalled) return true;
+      const source = `
+      (() => {
+        if (window.__MST_I18N_BRIDGE_INSTALLED__) return;
+        const pickResourceGroups = (resources) => {
+          if (!resources || typeof resources !== 'object') return null;
+          const result = {};
+          ['en', 'zh'].forEach((lang) => {
+            const translation = resources?.[lang]?.translation;
+            if (!translation) return;
+            result[lang] = {translation: {}};
+            Object.entries(translation).forEach(([group, value]) => {
+              if (value && typeof value === 'object' && !Array.isArray(value)) {
+                result[lang].translation[group] = value;
+              }
+            });
+          });
+          const hasGroups = ['en', 'zh'].some((lang) => Object.keys(result[lang]?.translation || {}).length > 0);
+          return hasGroups ? result : null;
+        };
+        const getFiber = (element) => {
+          const key = Reflect.ownKeys(element || {}).find((item) => String(item).startsWith('__reactFiber$'));
+          return key ? element[key] : null;
+        };
+        const getFiberResources = () => {
+          const nodes = [...document.querySelectorAll('#root, [class]')];
+          for (const node of nodes) {
+            let current = getFiber(node);
+            while (current) {
+              const props = current.memoizedProps || current.pendingProps || current.stateNode?.props;
+              const resources = pickResourceGroups(props?.i18n?.options?.resources || props?.i18n?.store?.data);
+              if (resources) return resources;
+              current = current.return;
+            }
+          }
+          return null;
+        };
+        const getResources = () =>
+          pickResourceGroups(window.mwiHelper?.lang) ||
+          pickResourceGroups(window.mwi?.lang) ||
+          pickResourceGroups(window.i18next?.options?.resources) ||
+          pickResourceGroups(window.i18next?.store?.data) ||
+          getFiberResources();
+        window.__MST_I18N_BRIDGE__ = {getResources};
+        window.addEventListener('mst:i18n:request', (event) => {
+          const id = JSON.parse(String(event.detail || '{}')).id;
+          const resources = getResources();
+          window.dispatchEvent(new CustomEvent('mst:i18n:response', {
+            detail: JSON.stringify({id, ok: Boolean(resources), resources})
+          }));
+        });
+        window.__MST_I18N_BRIDGE_INSTALLED__ = true;
+      })();
+    `;
+      const {PageBridgeService} = this.ctx;
+      this.i18nBridgeInstalled = PageBridgeService.install({
+        key: 'i18n',
+        label: '游戏语言资源桥',
+        source
+      });
+      this.i18nBridgeInstallError = PageBridgeService.getError('i18n');
+      return this.i18nBridgeInstalled;
+    },
+
+    requestI18nResourcesFromPage() {
+      if (!this.installI18nBridge()) return null;
+      const result = this.ctx.PageBridgeService.request({
+        requestEvent: 'mst:i18n:request',
+        responseEvent: 'mst:i18n:response',
+        idPrefix: 'mst-i18n'
+      });
+      return result?.ok ? result.resources : null;
+    },
+
+    getReactFiber(element) {
+      const key = Reflect.ownKeys(element || {}).find((k) => String(k).startsWith('__reactFiber$'));
+      return key ? element[key] : null;
+    },
+
+    findGameHostFromFiber(fiber) {
+      let current = fiber;
+      while (current) {
+        const host = current.stateNode;
+        if (
+          host &&
+          typeof host === 'object' &&
+          (typeof host.handleSwitchCharacter === 'function' || typeof host.handleGoToMarketplace === 'function')
+        ) {
+          return host;
+        }
+        current = current.return;
+      }
+      return null;
+    },
+
+    findGameHostFromDom() {
+      const selectors = [
+        '[class*="GamePage_gamePage__"]', '[class*="GamePage_gamePanel__"]', '[class*="GamePage_contentPanel__"]', '[class^="GamePage"]', '#root'
+      ];
+      for (const selector of selectors) {
+        for (const el of document.querySelectorAll(selector)) {
+          const host = this.findGameHostFromFiber(this.getReactFiber(el));
+          if (host) return host;
+        }
+      }
+      return null;
+    },
+
     getGameObject() {
       const {pageWindow} = this.ctx;
       try {
         if (pageWindow.mwiHelper?.game) return pageWindow.mwiHelper.game;
         if (pageWindow.mwi?.game) return pageWindow.mwi.game;
-        const el = document.querySelector('[class^="GamePage"]');
-        const key = Reflect.ownKeys(el || {}).find((k) => String(k).startsWith('__reactFiber$'));
-        return key ? el[key]?.return?.stateNode : null;
+        return this.findGameHostFromDom();
       } catch {
         return null;
       }
@@ -285,14 +397,36 @@
       return game?.state && typeof game.state === 'object' ? game.state : game || {};
     },
 
+    hasGameI18nResources(resources) {
+      return [
+        'en', 'zh'
+      ].some((lang) => {
+        const translation = resources?.[lang]?.translation;
+        return (
+          translation &&
+          Object.values(translation).some(
+            (value) => value && typeof value === 'object' && !Array.isArray(value) && Object.keys(value).length > 0
+          )
+        );
+      });
+    },
+
     getGameI18nResources() {
       const {pageWindow} = this.ctx;
+      const read = (getter) => {
+        try {
+          return getter();
+        } catch {
+          return null;
+        }
+      };
       const resources =
-        pageWindow.mwiHelper?.lang ||
-        pageWindow.mwi?.lang ||
-        this.getGameObject()?.props?.i18n?.options?.resources ||
+        read(() => pageWindow.mwiHelper?.lang) ||
+        read(() => pageWindow.mwi?.lang) ||
+        read(() => this.getGameObject()?.props?.i18n?.options?.resources) ||
+        this.requestI18nResourcesFromPage() ||
         null;
-      if (resources?.en?.translation?.itemNames || resources?.zh?.translation?.itemNames) {
+      if (this.hasGameI18nResources(resources)) {
         this.clientData.i18nResources = resources;
         return resources;
       }
@@ -737,6 +871,8 @@
       },
       characterData: {raw: null, profiles: {}, battleUnits: new Map(), source: '', updatedAt: 0},
       i18nWatcherStarted: false,
+      i18nBridgeInstalled: false,
+      i18nBridgeInstallError: '',
       clientDataCacheSource: '',
 
       init() {
@@ -859,32 +995,56 @@
       ]),
 
       install() {
-        if (this.installed || pageWindow.__mwiIntegratedWsInstalled) return;
-        const OriginalWebSocket = pageWindow.WebSocket;
-        if (!OriginalWebSocket) return;
+        let alreadyInstalled = false;
+        try {
+          alreadyInstalled = pageWindow.__mwiIntegratedWsInstalled === true;
+        } catch {}
+        if (this.installed || alreadyInstalled) return;
         const self = this;
-        function IntegratedWebSocket(...args) {
-          const ws = new OriginalWebSocket(...args);
-          const url = String(args[0] || '');
-          const isGameWs =
-            url.includes('milkywayidle.com/ws') || url.includes('milkywayidlecn.com/ws') || url.includes('/ws');
-          if (!isGameWs) return ws;
-          const originalSend = ws.send;
-          ws.send = function (data) {
-            self.dispatch('mst:ws:send', self.safeParse(data) || data);
-            return originalSend.call(this, data);
-          };
-          ws.addEventListener('message', (event) => self.handleMessage(event.data));
-          return ws;
+        const onMessage = (event) => self.handleMessage(event.detail);
+        const onSend = (event) => self.dispatch('mst:ws:send', self.safeParse(event.detail) || event.detail);
+        window.addEventListener('mst:ws:message-raw', onMessage);
+        window.addEventListener('mst:ws:send-raw', onSend);
+        const installed = ctx.PageBridgeService.install({
+          key: 'websocket',
+          label: '游戏 WebSocket 数据桥',
+          source: `
+        (() => {
+          if (window.__mwiIntegratedWsInstalled) return;
+          const OriginalWebSocket = window.WebSocket;
+          if (!OriginalWebSocket) return;
+          const emit = (name, detail) => window.dispatchEvent(new CustomEvent(name, {detail}));
+          function IntegratedWebSocket(...args) {
+            const ws = new OriginalWebSocket(...args);
+            const url = String(args[0] || '');
+            const isGameWs = url.includes('milkywayidle.com/ws') || url.includes('milkywayidlecn.com/ws') || url.includes('/ws');
+            if (!isGameWs) return ws;
+            const originalSend = ws.send;
+            ws.send = function(data) {
+              if (typeof data === 'string') emit('mst:ws:send-raw', data);
+              return originalSend.call(this, data);
+            };
+            ws.addEventListener('message', (event) => {
+              if (typeof event.data === 'string') emit('mst:ws:message-raw', event.data);
+            });
+            return ws;
+          }
+          IntegratedWebSocket.prototype = OriginalWebSocket.prototype;
+          IntegratedWebSocket.CONNECTING = OriginalWebSocket.CONNECTING;
+          IntegratedWebSocket.OPEN = OriginalWebSocket.OPEN;
+          IntegratedWebSocket.CLOSING = OriginalWebSocket.CLOSING;
+          IntegratedWebSocket.CLOSED = OriginalWebSocket.CLOSED;
+          window.WebSocket = IntegratedWebSocket;
+          window.__mwiIntegratedWsInstalled = true;
+        })();
+      `
+        });
+        if (!installed) {
+          window.removeEventListener('mst:ws:message-raw', onMessage);
+          window.removeEventListener('mst:ws:send-raw', onSend);
+          return;
         }
-        IntegratedWebSocket.prototype = OriginalWebSocket.prototype;
-        IntegratedWebSocket.CONNECTING = OriginalWebSocket.CONNECTING;
-        IntegratedWebSocket.OPEN = OriginalWebSocket.OPEN;
-        IntegratedWebSocket.CLOSING = OriginalWebSocket.CLOSING;
-        IntegratedWebSocket.CLOSED = OriginalWebSocket.CLOSED;
-        pageWindow.WebSocket = IntegratedWebSocket;
         this.installed = true;
-        pageWindow.__mwiIntegratedWsInstalled = true;
       },
 
       safeParse(data) {
@@ -1153,14 +1313,8 @@
     }
 
     async _fetchMarketData() {
-      const {CONFIG} = this.ctx;
-      const request =
-        // 不同油猴环境暴露的跨域请求 API 名称不同，优先使用可用实现。
-        typeof GM_xmlhttpRequest === 'function'
-          ? GM_xmlhttpRequest
-          : typeof GM !== 'undefined' && typeof GM.xmlHttpRequest === 'function'
-            ? GM.xmlHttpRequest.bind(GM)
-            : null;
+      const {CONFIG, GmApi} = this.ctx;
+      const request = GmApi?.xmlHttpRequestApi();
 
       if (!request) {
         const response = await fetch(CONFIG.MARKET_URL, {cache: 'no-store'});
@@ -1169,7 +1323,7 @@
       }
 
       return new Promise((resolve, reject) => {
-        const result = request({
+        const result = GmApi.xmlHttpRequest({
           method: 'GET',
           url: CONFIG.MARKET_URL,
           headers: {'Content-Type': 'application/json'},
@@ -1851,13 +2005,14 @@
       schedule() {
         if (this.scheduled || !this.subscribers.size) return;
         this.scheduled = true;
-        const requestFrame = window.requestAnimationFrame || ((callback) => setTimeout(callback, 0));
-        requestFrame(() => {
+        const runCallbacks = () => {
           this.scheduled = false;
           this.runCallbacks([
             ...this.subscribers
           ]);
-        });
+        };
+        if (window.requestAnimationFrame) window.requestAnimationFrame(runCallbacks);
+        else setTimeout(runCallbacks, 0);
       },
 
       handleBodyReady() {
@@ -1895,9 +2050,129 @@
     return DomObserverService;
   }
 
+  // gm-api
+  function createGmApi() {
+    const getModernApi = (name) =>
+      typeof GM !== 'undefined' && typeof GM?.[name] === 'function' ? GM[name].bind(GM) : null;
+
+    const GmApi = {
+      getValueApi() {
+        if (typeof GM_getValue === 'function') return GM_getValue;
+        return getModernApi('getValue');
+      },
+
+      setValueApi() {
+        if (typeof GM_setValue === 'function') return GM_setValue;
+        return getModernApi('setValue');
+      },
+
+      addValueChangeListenerApi() {
+        if (typeof GM_addValueChangeListener === 'function') return GM_addValueChangeListener;
+        return getModernApi('addValueChangeListener');
+      },
+
+      xmlHttpRequestApi() {
+        if (typeof GM_xmlhttpRequest === 'function') return GM_xmlhttpRequest;
+        return getModernApi('xmlHttpRequest');
+      },
+
+      setClipboardApi() {
+        if (typeof GM_setClipboard === 'function') return GM_setClipboard;
+        return getModernApi('setClipboard');
+      },
+
+      async getValue(key, defaultValue = undefined) {
+        const getValue = this.getValueApi();
+        return getValue ? getValue(key, defaultValue) : defaultValue;
+      },
+
+      setValue(key, value) {
+        const setValue = this.setValueApi();
+        return setValue ? setValue(key, value) : undefined;
+      },
+
+      addValueChangeListener(key, callback) {
+        const addValueChangeListener = this.addValueChangeListenerApi();
+        return addValueChangeListener ? addValueChangeListener(key, callback) : null;
+      },
+
+      xmlHttpRequest(details) {
+        const request = this.xmlHttpRequestApi();
+        return request ? request(details) : null;
+      },
+
+      setClipboard(text, type = 'text') {
+        const setClipboard = this.setClipboardApi();
+        return setClipboard ? setClipboard(String(text), type) : undefined;
+      }
+    };
+
+    return GmApi;
+  }
+
+  // page-bridge-service
+  function createPageBridgeService(ctx) {
+    const {pageWindow} = ctx;
+
+    const PageBridgeService = {
+      installed: new Set(),
+      errors: new Map(),
+      sequence: 0,
+
+      install({key, source, label = key}) {
+        if (!key || !source) throw new TypeError('Page bridge key and source are required');
+        if (this.installed.has(key)) return true;
+        try {
+          if (typeof pageWindow?.Function !== 'function') throw new Error('pageWindow.Function is not available');
+          pageWindow.Function(String(source))();
+          this.installed.add(key);
+          this.errors.delete(key);
+          return true;
+        } catch (error) {
+          this.errors.set(key, error?.message || String(error));
+        }
+        try {
+          const script = document.createElement('script');
+          script.textContent = String(source);
+          (document.head || document.documentElement).appendChild(script);
+          script.remove();
+          this.installed.add(key);
+          this.errors.delete(key);
+          return true;
+        } catch (error) {
+          const message = error?.message || String(error);
+          this.errors.set(key, message);
+          console.warn('[MST] 安装页面桥失败:', {label, error: message});
+          return false;
+        }
+      },
+
+      getError(key) {
+        return this.errors.get(key) || '';
+      },
+
+      request({requestEvent, responseEvent, payload = {}, idPrefix = 'mst-bridge'}) {
+        const id = idPrefix + '-' + ++this.sequence;
+        let result = null;
+        const handleResponse = (event) => {
+          try {
+            const detail = JSON.parse(String(event.detail || '{}'));
+            if (detail.id === id) result = detail;
+          } catch {}
+        };
+        window.addEventListener(responseEvent, handleResponse);
+        window.dispatchEvent(new CustomEvent(requestEvent, {detail: JSON.stringify({id, ...payload})}));
+        window.removeEventListener(responseEvent, handleResponse);
+        return result;
+      }
+    };
+
+    return PageBridgeService;
+  }
+
   // runtime-utils
   function createRuntimeUtils(ctx, {SpriteService, DomObserverService}) {
-    const {DataHub, i18n} = ctx;
+    const {DataHub, GmApi, i18n} = ctx;
 
     const utils = {
       substrLastSlash(hrid) {
@@ -1985,8 +2260,8 @@
       },
 
       async writeClipboard(text) {
-        if (typeof GM_setClipboard === 'function') {
-          GM_setClipboard(String(text), 'text');
+        if (GmApi?.setClipboardApi()) {
+          await GmApi.setClipboard(String(text), 'text');
           return;
         }
         if (!navigator.clipboard?.writeText) throw new Error(i18n.t('clipboardUnavailable'));
@@ -2093,33 +2368,265 @@
 
   // game-navigation-service
   function createGameNavigationService(ctx) {
-    const {DataHub, pageWindow, utils} = ctx;
+    const {DataHub, pageWindow, PageBridgeService, utils} = ctx;
 
     const GameNavigationService = {
+      bridgeInstalled: false,
+      bridgeInstallError: '',
+
+      installPageBridge() {
+        if (this.bridgeInstalled) return true;
+        const source = `
+        (() => {
+          if (window.__MST_NAV_BRIDGE_INSTALLED__) return;
+          const getFiber = (element) => {
+            const key = Reflect.ownKeys(element || {}).find((item) => String(item).startsWith('__reactFiber$'));
+            return key ? element[key] : null;
+          };
+          const findHostFromFiber = (fiber) => {
+            let current = fiber;
+            while (current) {
+              const host = current.stateNode;
+              if (
+                host &&
+                typeof host === 'object' &&
+                (typeof host.handleSwitchCharacter === 'function' ||
+                  typeof host.handleGoToMarketplace === 'function')
+              ) {
+                return host;
+              }
+              current = current.return;
+            }
+            return null;
+          };
+          const getCandidates = () => {
+            const selectors = [
+              '[class*="GamePage_gamePage__"]', '[class*="GamePage_gamePanel__"]',
+              '[class*="GamePage_contentPanel__"]', '[class*="Header_header__"]', '[class^="GamePage"]', '#root'
+            ];
+            const nodes = [];
+            selectors.forEach((selector) => {
+              document.querySelectorAll(selector).forEach((node) => nodes.push(node));
+            });
+            if (!nodes.length) {
+              document.querySelectorAll('[class]').forEach((node) => nodes.push(node));
+            }
+            return [...new Set(nodes)];
+          };
+          const findHost = () => {
+            if (window.mwiHelper?.game) return window.mwiHelper.game;
+            if (window.mwi?.game) return window.mwi.game;
+            for (const node of getCandidates()) {
+              const host = findHostFromFiber(getFiber(node));
+              if (host) return host;
+            }
+            return null;
+          };
+          const getDiagnostics = () => {
+            const candidates = getCandidates();
+            const candidateSummary = candidates.slice(0, 30).map((node) => ({
+              tagName: node.tagName || '',
+              className: String(node.className || '').slice(0, 180),
+              hasFiber: Boolean(getFiber(node))
+            }));
+            const host = findHost();
+            const hostKeys = host ? Reflect.ownKeys(host).map(String).sort() : [];
+            return {
+              pageContext: true,
+              hasHost: Boolean(host),
+              hostConstructor: host?.constructor?.name || '',
+              hostKeys,
+              functionKeys: hostKeys.filter((key) => typeof host?.[key] === 'function'),
+              hasSwitchCharacter: typeof host?.handleSwitchCharacter === 'function',
+              hasGoToMarketplace: typeof host?.handleGoToMarketplace === 'function',
+              candidateCount: candidates.length,
+              candidateSummary
+            };
+          };
+          window.__MST_NAV_BRIDGE__ = {
+            getDiagnostics,
+            switchCharacter() {
+              const host = findHost();
+              if (typeof host?.handleSwitchCharacter !== 'function') return {ok: false, diagnostics: getDiagnostics()};
+              host.handleSwitchCharacter.call(host);
+              return {ok: true, diagnostics: getDiagnostics()};
+            },
+            openMarketplace(itemHrid, enhancementLevel) {
+              const host = findHost();
+              if (typeof host?.handleGoToMarketplace !== 'function') return {ok: false, diagnostics: getDiagnostics()};
+              host.handleGoToMarketplace.call(host, itemHrid, Number(enhancementLevel) || 0);
+              return {ok: true, diagnostics: getDiagnostics()};
+            }
+          };
+          const respond = (id, action, result) => {
+            window.dispatchEvent(new CustomEvent('mst:navigation:result', {
+              detail: JSON.stringify({id, action, ...result})
+            }));
+          };
+          window.addEventListener('mst:navigation:switch-character', (event) => {
+            const detail = JSON.parse(String(event.detail || '{}'));
+            respond(detail.id, 'switchCharacter', window.__MST_NAV_BRIDGE__.switchCharacter());
+          });
+          window.addEventListener('mst:navigation:open-marketplace', (event) => {
+            const detail = JSON.parse(String(event.detail || '{}'));
+            respond(
+              detail.id,
+              'openMarketplace',
+              window.__MST_NAV_BRIDGE__.openMarketplace(detail.itemHrid, detail.enhancementLevel)
+            );
+          });
+          window.__MST_NAV_BRIDGE_INSTALLED__ = true;
+        })();
+      `;
+        this.bridgeInstalled = PageBridgeService.install({
+          key: 'navigation',
+          label: '页面原生跳转桥',
+          source
+        });
+        this.bridgeInstallError = PageBridgeService.getError('navigation');
+        return this.bridgeInstalled;
+      },
+
+      dispatchBridgeAction(action, payload = {}) {
+        if (!this.installPageBridge()) return null;
+        const eventName =
+          action === 'switchCharacter' ? 'mst:navigation:switch-character' : 'mst:navigation:open-marketplace';
+        return PageBridgeService.request({
+          requestEvent: eventName,
+          responseEvent: 'mst:navigation:result',
+          idPrefix: 'mst-nav',
+          payload
+        });
+      },
+
       getHost() {
-        const host = DataHub.getGameObject();
+        let host = null;
+        try {
+          host = DataHub.getGameObject();
+        } catch (error) {
+          console.warn('[MST] 读取游戏原生入口对象失败:', {error: error?.message || String(error)});
+          return null;
+        }
         return host && typeof host === 'object' ? host : null;
       },
 
-      switchCharacter() {
+      getHostDiagnostics(action, extra = {}) {
         const host = this.getHost();
-        if (typeof host?.handleSwitchCharacter !== 'function') return false;
-        host.handleSwitchCharacter.call(host);
+        const read = (getter, fallback) => {
+          try {
+            return getter();
+          } catch (error) {
+            return fallback ?? '[read failed] ' + (error?.message || String(error));
+          }
+        };
+        let hostKeys = [];
+        let functionKeys = [];
+        let hostReadError = '';
+        try {
+          hostKeys = host ? Reflect.ownKeys(host).map(String).sort() : [];
+          functionKeys = hostKeys.filter((key) => {
+            try {
+              return typeof host?.[key] === 'function';
+            } catch {
+              return false;
+            }
+          });
+        } catch (error) {
+          hostReadError = error?.message || String(error);
+        }
+        const marketMate = read(() => pageWindow.MWIMM, null);
+        return {
+          action,
+          characterId: DataHub.characterData?.raw?.character?.id ?? null,
+          hasHost: Boolean(host),
+          bridgeInstalled: this.bridgeInstalled,
+          bridgeInstallError: this.bridgeInstallError,
+          hostConstructor: read(() => host?.constructor?.name || '', ''),
+          hostKeys,
+          functionKeys,
+          hostReadError,
+          hasSwitchCharacter: read(() => typeof host?.handleSwitchCharacter === 'function', false),
+          hasGoToMarketplace: read(() => typeof host?.handleGoToMarketplace === 'function', false),
+          marketMateReady: read(() => marketMate?.ready === true, false),
+          hasMarketMateOpenMarketplace: read(() => typeof marketMate?.openMarketplace === 'function', false),
+          location: window.location.href,
+          ...extra
+        };
+      },
+
+      warnUnavailable(action, extra = {}) {
+        console.warn('[MST] 未找到游戏原生跳转入口:', this.getHostDiagnostics(action, extra));
+      },
+
+      switchCharacter() {
+        const bridgeResult = this.dispatchBridgeAction('switchCharacter');
+        if (bridgeResult?.ok) return true;
+        if (bridgeResult && !bridgeResult.ok) {
+          this.warnUnavailable('switchCharacter', {bridgeDiagnostics: bridgeResult.diagnostics || null});
+          return false;
+        }
+        const host = this.getHost();
+        let switchCharacter = null;
+        try {
+          switchCharacter = typeof host?.handleSwitchCharacter === 'function' ? host.handleSwitchCharacter : null;
+        } catch (error) {
+          this.warnUnavailable('switchCharacter', {accessError: error?.message || String(error)});
+          return false;
+        }
+        if (!switchCharacter) {
+          this.warnUnavailable('switchCharacter', {bridgeNoResponse: this.bridgeInstalled});
+          return false;
+        }
+        switchCharacter.call(host);
         return true;
       },
 
       openMarketplace(itemHrid, enhancementLevel = 0) {
         const fullHrid = utils.normalizeItemHrid(itemHrid);
         if (!fullHrid) return false;
+        const bridgeResult = this.dispatchBridgeAction('openMarketplace', {
+          itemHrid: fullHrid,
+          enhancementLevel: Number(enhancementLevel) || 0
+        });
+        if (bridgeResult?.ok) return true;
+        if (bridgeResult && !bridgeResult.ok) {
+          this.warnUnavailable('openMarketplace', {
+            itemHrid,
+            fullHrid,
+            enhancementLevel: Number(enhancementLevel) || 0,
+            bridgeDiagnostics: bridgeResult.diagnostics || null
+          });
+          return false;
+        }
         const host = this.getHost();
-        if (typeof host?.handleGoToMarketplace === 'function') {
-          host.handleGoToMarketplace.call(host, fullHrid, Number(enhancementLevel) || 0);
+        let goToMarketplace = null;
+        try {
+          goToMarketplace = typeof host?.handleGoToMarketplace === 'function' ? host.handleGoToMarketplace : null;
+        } catch (error) {
+          this.warnUnavailable('openMarketplace', {itemHrid, fullHrid, accessError: error?.message || String(error)});
+          return false;
+        }
+        if (goToMarketplace) {
+          goToMarketplace.call(host, fullHrid, Number(enhancementLevel) || 0);
           return true;
         }
-        const marketMate = pageWindow.MWIMM;
-        return marketMate?.ready === true && typeof marketMate.openMarketplace === 'function'
-          ? marketMate.openMarketplace(fullHrid) === true
-          : false;
+        let marketMate = null;
+        try {
+          marketMate = pageWindow.MWIMM;
+          if (marketMate?.ready === true && typeof marketMate.openMarketplace === 'function') {
+            return marketMate.openMarketplace(fullHrid) === true;
+          }
+        } catch (error) {
+          this.warnUnavailable('openMarketplace', {itemHrid, fullHrid, accessError: error?.message || String(error)});
+          return false;
+        }
+        this.warnUnavailable('openMarketplace', {
+          itemHrid,
+          fullHrid,
+          enhancementLevel: Number(enhancementLevel) || 0,
+          bridgeNoResponse: this.bridgeInstalled
+        });
+        return false;
       }
     };
 
@@ -2184,9 +2691,13 @@
 
   // runtime-helpers
   function installRuntimeHelpers(ctx) {
+    const GmApi = createGmApi();
+    const PageBridgeService = ctx.PageBridgeService || createPageBridgeService(ctx);
     const GameUiAdapter = createGameUiAdapter();
     const SpriteService = createSpriteService();
     const DomObserverService = createDomObserverService(SpriteService);
+    ctx.GmApi = GmApi;
+    ctx.PageBridgeService = PageBridgeService;
     const utils = createRuntimeUtils(ctx, {SpriteService, DomObserverService});
     ctx.utils = utils;
     const GameNavigationService = createGameNavigationService(ctx);
@@ -2201,7 +2712,6 @@
 
   // template-renderer
   const TemplateRenderer = {
-    CDN_URL: 'https://cdn.jsdelivr.net/npm/uhtml@5.0.9/dist/prod/dom.min.js',
     _html: null,
     _render: null,
     _Hole: null,
@@ -2211,8 +2721,13 @@
 
     init() {
       if (this.ready) return this.ready;
-      // uhtml 5.x 仅提供 ESM 构建；并行加载时不影响下方同步安装 WebSocket 拦截。
-      this.ready = import(this.CDN_URL).then((module) => {
+      // uhtml 由 userscript @require 注入；不同脚本沙箱可能只能通过全局属性读取。
+      const module = globalThis.uhtml || (typeof uhtml !== 'undefined' ? uhtml : null);
+      if (!module) {
+        this.ready = Promise.reject(new Error('uhtml @require is not ready'));
+        return this.ready;
+      }
+      this.ready = Promise.resolve(module).then((module) => {
         this._html = module.html;
         this._render = module.render;
         this._Hole = module.Hole;
@@ -2664,7 +3179,8 @@
         delete popup._mstDragCleanup;
       };
       popup._mstClampPosition = () => clampPosition(true);
-      requestAnimationFrame(onViewportChange);
+      if (window.requestAnimationFrame) window.requestAnimationFrame(onViewportChange);
+      else setTimeout(onViewportChange, 0);
     },
 
     _disableBoundedDragging(popup) {
@@ -5637,7 +6153,11 @@
     }
 
     yieldForCardExport() {
-      return new Promise((resolve) => requestAnimationFrame(() => setTimeout(resolve, 0)));
+      return new Promise((resolve) => {
+        const settle = () => setTimeout(resolve, 0);
+        if (window.requestAnimationFrame) window.requestAnimationFrame(settle);
+        else settle();
+      });
     }
 
     async renderTeamCardCanvas(container, onProgress) {
@@ -7247,6 +7767,17 @@
       const loadout = event?.detail?.loadout;
       const characterData = CardDataAdapter.fromLoadout(loadout);
       if (!characterData) {
+        console.warn('[MST] 配装名片数据转换失败:', {
+          location: window.location.href,
+          eventDetailKeys: Object.keys(event?.detail || {}).sort(),
+          hasLoadout: Boolean(loadout),
+          loadoutKeys: Object.keys(loadout || {}).sort(),
+          loadoutName: loadout?.name || '',
+          actionTypeHrid: loadout?.actionTypeHrid || '',
+          wearableCount: Object.keys(loadout?.wearableMap || {}).length,
+          foodCount: loadout?.foodItemHrids?.length || 0,
+          drinkCount: loadout?.drinkItemHrids?.length || 0
+        });
         Notifier.toast(i18n.t('loadoutNotFound'), 'error');
         return;
       }
@@ -7620,10 +8151,12 @@
         memberService.saveTeamCardToStorage(state.teamCard.teamName, state.teamCard.members);
         const scrollLeft = container.scrollLeft;
         this.renderTeamCardDialog(modal);
-        requestAnimationFrame(() => {
+        const restoreScroll = () => {
           const refreshedContainer = modal.querySelector('#mst-team-character-card');
           if (refreshedContainer) refreshedContainer.scrollLeft = scrollLeft;
-        });
+        };
+        if (window.requestAnimationFrame) window.requestAnimationFrame(restoreScroll);
+        else setTimeout(restoreScroll, 0);
       };
     }
 
@@ -7716,6 +8249,30 @@
       this.utils = deps.ctx.utils;
     }
 
+    setTextIfChanged(element, value) {
+      if (element.textContent !== value) element.textContent = value;
+    }
+
+    setAttributeIfChanged(element, name, value) {
+      if (element.getAttribute(name) !== value) element.setAttribute(name, value);
+    }
+
+    bindToolkitButton(button) {
+      if (button.dataset.mstToolkitBound) return;
+      button.dataset.mstToolkitBound = '1';
+      button.addEventListener('click', (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        window.dispatchEvent(new CustomEvent('mst:toolkit:open', {detail: {trigger: event.currentTarget}}));
+      });
+    }
+
+    updateToolkitButton(button) {
+      this.setTextIfChanged(button, this.i18n.t('toolkitShort'));
+      this.setAttributeIfChanged(button, 'title', this.i18n.t('toolkitTitle'));
+      this.bindToolkitButton(button);
+    }
+
     addCharacterCardButton() {
       const selectedElement = document.querySelector('[class*="SharableProfile_overviewTab"]');
       if (!selectedElement) return false;
@@ -7785,7 +8342,7 @@
         nameElement.classList.add('mst-my-character-name-card-btn');
         nameElement.setAttribute('role', 'button');
         nameElement.tabIndex = 0;
-        nameElement.title = this.i18n.t('userCharacterCard');
+        this.setAttributeIfChanged(nameElement, 'title', this.i18n.t('userCharacterCard'));
         if (!nameElement.dataset.mstCharacterCardBound) {
           nameElement.dataset.mstCharacterCardBound = '1';
           nameElement.addEventListener('click', (event) => {
@@ -7804,31 +8361,19 @@
 
       const existingButton = headerInfoElement.querySelector('.mst-my-character-card-btn');
       if (existingButton) {
-        existingButton.textContent = this.i18n.t('toolkitShort');
-        existingButton.title = this.i18n.t('toolkitTitle');
-        existingButton.onclick = (event) => {
-          event.preventDefault();
-          event.stopPropagation();
-          window.dispatchEvent(new CustomEvent('mst:toolkit:open', {detail: {trigger: existingButton}}));
-          return false;
-        };
+        let changed = false;
+        this.updateToolkitButton(existingButton);
         if (existingButton.nextElementSibling !== totalLevelElement) {
           headerInfoElement.insertBefore(existingButton, totalLevelElement);
+          changed = true;
         }
-        return false;
+        return changed;
       }
 
       const myButton = document.createElement('button');
       myButton.className = 'mst-my-character-card-btn';
       myButton.type = 'button';
-      myButton.textContent = this.i18n.t('toolkitShort');
-      myButton.title = this.i18n.t('toolkitTitle');
-      myButton.onclick = (event) => {
-        event.preventDefault();
-        event.stopPropagation();
-        window.dispatchEvent(new CustomEvent('mst:toolkit:open', {detail: {trigger: myButton}}));
-        return false;
-      };
+      this.updateToolkitButton(myButton);
       headerInfoElement.insertBefore(myButton, totalLevelElement);
       return true;
     }
@@ -7868,11 +8413,10 @@
         button.textContent = this.i18n.t('viewCharacterCard');
       });
       document.querySelectorAll('.mst-my-character-card-btn').forEach((button) => {
-        button.textContent = this.i18n.t('toolkitShort');
-        button.title = this.i18n.t('toolkitTitle');
+        this.updateToolkitButton(button);
       });
       document.querySelectorAll('.mst-my-character-name-card-btn').forEach((element) => {
-        element.title = this.i18n.t('userCharacterCard');
+        this.setAttributeIfChanged(element, 'title', this.i18n.t('userCharacterCard'));
       });
       document.querySelectorAll('.mst-party-card-btn').forEach((button) => {
         button.textContent = this.i18n.t('partyCard');
@@ -10865,9 +11409,9 @@
     },
 
     async copyProfitPreset(feature, target) {
-      const {STORAGE_KEYS, i18n} = feature.ctx;
+      const {GmApi, STORAGE_KEYS, i18n} = feature.ctx;
       const preset = feature.convert();
-      GM_setValue(STORAGE_KEYS.MILKONOMY_PRESET, preset);
+      await GmApi.setValue(STORAGE_KEYS.MILKONOMY_PRESET, preset);
       await feature.copyJsonToClipboard(
         feature.filterPresetForTarget(preset, target),
         i18n.t(target === 'hyhfish' ? 'copiedHyhfish' : 'copiedMilkonomy')
@@ -10875,43 +11419,101 @@
     },
 
     syncPresetToStorage(feature) {
-      const {STORAGE_KEYS} = feature.ctx;
+      const {GmApi, STORAGE_KEYS} = feature.ctx;
       const preset = feature.convert();
       const presetJSON = JSON.stringify(preset);
       if (presetJSON === feature.lastSyncedPresetJSON) return preset;
       feature.lastSyncedPresetJSON = presetJSON;
-      GM_setValue(STORAGE_KEYS.MILKONOMY_PRESET, preset);
+      GmApi.setValue(STORAGE_KEYS.MILKONOMY_PRESET, preset);
       return preset;
     }
   };
 
   // eds-milkonomy-game-controller
   const edsMilkonomyGameController = {
+    getElementDiagnostics(element) {
+      if (!element) return null;
+      return {
+        tagName: element.tagName || '',
+        className: String(element.className || ''),
+        text: String(element.textContent || '')
+          .trim()
+          .slice(0, 200),
+        childCount: element.children?.length || 0
+      };
+    },
+
+    getLoadoutValues(feature, data) {
+      const {DataHub, utils} = feature.ctx;
+      const reactLoadouts = utils.getCollectionValues(data?.characterLoadoutDict);
+      const rawLoadouts = utils.getCollectionValues(DataHub.characterData.raw?.characterLoadoutMap);
+      return {reactLoadouts, rawLoadouts, loadouts: reactLoadouts.length ? reactLoadouts : rawLoadouts};
+    },
+
+    getLoadoutDiagnostics({feature, detailsEl, titleEl, svgEl, updateBtn, name, data, reactReadError = ''}) {
+      const {reactLoadouts, rawLoadouts, loadouts} = this.getLoadoutValues(feature, data);
+      return {
+        location: window.location.href,
+        hasDetails: Boolean(detailsEl),
+        hasMetadata: Boolean(titleEl),
+        hasMetadataSvg: Boolean(svgEl),
+        hasMetadataButton: Boolean(updateBtn),
+        parsedName: name,
+        reactReadError,
+        details: this.getElementDiagnostics(detailsEl),
+        metadata: this.getElementDiagnostics(titleEl),
+        reactDataKeys: Object.keys(data || {}).sort(),
+        reactLoadoutCount: reactLoadouts.length,
+        rawLoadoutCount: rawLoadouts.length,
+        loadoutCount: loadouts.length,
+        loadoutNames: loadouts
+          .map((item) => item?.name || '')
+          .filter(Boolean)
+          .slice(0, 20)
+      };
+    },
+
+    warnLoadoutNotFound(context) {
+      console.warn('[MST] 未找到当前配装:', this.getLoadoutDiagnostics(context));
+    },
+
     getCombatLoadout(feature, detailsEl) {
       const {GameUiAdapter, utils} = feature.ctx;
-      const data = utils.getReactComponentProps(detailsEl) || {};
+      let reactReadError = '';
+      let data = {};
+      try {
+        data = utils.getReactComponentProps(detailsEl) || {};
+      } catch (error) {
+        reactReadError = error?.message || String(error);
+      }
       const titleEl = GameUiAdapter.query('loadoutMetadata', detailsEl);
       const svgEl = titleEl?.querySelector('svg');
       const updateBtn = titleEl?.querySelector('button');
       const name = utils.getTextBetween(svgEl, updateBtn).trim();
-      // 与 EDS 保持一致：只从当前配装详情组件读取，避免全局回退选中其他配装。
-      const loadout = Object.values(data.characterLoadoutDict || {}).find((item) => item?.name === name);
+      const {loadouts} = this.getLoadoutValues(feature, data);
+      const loadout = loadouts.find((item) => item?.name === name);
+      if (!loadout) this.warnLoadoutNotFound({feature, detailsEl, titleEl, svgEl, updateBtn, name, data, reactReadError});
       return {loadout, data};
     },
 
     async copyCombatSimulatorData(feature, detailsEl) {
-      const {DataHub, Notifier, i18n} = feature.ctx;
+      const {DataHub, Notifier, i18n, utils} = feature.ctx;
       const {loadout, data} = feature.getCombatLoadout(detailsEl);
       if (!loadout) {
         Notifier.toast(i18n.t('loadoutNotFound'), 'error');
         return;
       }
       const raw = DataHub.characterData.raw || {};
-      const characterData = {characterSkills: data.characterSkillMap ? [
-              ...data.characterSkillMap.values()
-            ] : [], characterAbilities: data.characterAbilityMap ? [
-              ...data.characterAbilityMap.values()
-            ] : [], characterHouseRoomMap: raw.characterHouseRoomMap || {}, characterAchievements: raw.characterAchievements || []};
+      const characterData = {
+        characterSkills: data.characterSkillMap
+          ? utils.getCollectionValues(data.characterSkillMap)
+          : raw.characterSkills || [],
+        characterAbilities: data.characterAbilityMap
+          ? utils.getCollectionValues(data.characterAbilityMap)
+          : raw.characterAbilities || [],
+        characterHouseRoomMap: raw.characterHouseRoomMap || {},
+        characterAchievements: raw.characterAchievements || []
+      };
       await feature.copyJsonToClipboard(
         feature.constructor.CombatSimulatorConverter.convert(loadout, characterData),
         i18n.t('copiedCombatData')
@@ -11057,10 +11659,10 @@
     },
 
     async readMilkonomyPreset(feature) {
-      const {STORAGE_KEYS, utils} = feature.ctx;
+      const {GmApi, STORAGE_KEYS, utils} = feature.ctx;
       let preset = null;
       try {
-        preset = GM_getValue(STORAGE_KEYS.MILKONOMY_PRESET);
+        preset = await GmApi.getValue(STORAGE_KEYS.MILKONOMY_PRESET);
       } catch {}
       // 仅用于兼容曾经写入利润网站当前域的测试数据。
       if (!preset?.name) {
@@ -11071,7 +11673,7 @@
       if (preset?.name) return preset;
       const clipboardText = await utils.readClipboard();
       preset = JSON.parse(clipboardText);
-      if (preset?.name) GM_setValue(STORAGE_KEYS.MILKONOMY_PRESET, preset);
+      if (preset?.name) await GmApi.setValue(STORAGE_KEYS.MILKONOMY_PRESET, preset);
       return preset;
     },
 
@@ -11109,9 +11711,9 @@
     },
 
     initMilkonomySite(feature) {
-      const {CONFIG, STORAGE_KEYS, i18n, utils} = feature.ctx;
+      const {CONFIG, GmApi, STORAGE_KEYS, i18n, utils} = feature.ctx;
       if (!CONFIG.isMilkonomySite) return;
-      GM_addValueChangeListener(STORAGE_KEYS.MILKONOMY_PRESET, (_name, _oldValue, newValue, remote) => {
+      GmApi.addValueChangeListener(STORAGE_KEYS.MILKONOMY_PRESET, (_name, _oldValue, newValue, remote) => {
         if (!remote || !newValue) return;
         window.dispatchEvent(new CustomEvent('mst:eds:milkonomy-preset', {detail: newValue}));
       });
@@ -17119,6 +17721,15 @@
 
   // equipment-comparison-selection-controller
   const equipmentComparisonSelectionController = {
+    syncComparisonToBaseline(feature) {
+      const baselineItem = feature.getBaselineItem();
+      const sameItem = feature.getCompatibleEquipment(baselineItem).find((item) => item.hrid === baselineItem?.itemHrid);
+      feature.comparisonItemHrid = sameItem?.hrid || '';
+      feature.comparisonEnhancementLevel = sameItem
+        ? Math.min(feature.baselineEnhancementLevel, feature.getMaxEnhancementLevel(sameItem))
+        : feature.baselineEnhancementLevel;
+    },
+
     getBaselineItem(feature, options = feature.getBaselineEquipment()) {
       const option = options.find((item) => item.itemHrid === feature.baselineItemHrid);
       return option ? {...option, enhancementLevel: feature.baselineEnhancementLevel} : null;
@@ -17138,8 +17749,7 @@
       const baseline = feature.getDefaultBaselineItem();
       feature.baselineItemHrid = baseline?.itemHrid || '';
       feature.baselineEnhancementLevel = baseline?.enhancementLevel || 0;
-      feature.comparisonItemHrid = '';
-      feature.comparisonEnhancementLevel = feature.baselineEnhancementLevel;
+      this.syncComparisonToBaseline(feature);
       feature.pickerMode = '';
       feature.pickerQuery = '';
       feature.pickerEquipmentType = '';
@@ -17195,8 +17805,7 @@
       const option = feature.getBaselineEquipment().find((item) => item.itemHrid === value);
       feature.baselineItemHrid = value;
       feature.baselineEnhancementLevel = option?.enhancementLevel || 0;
-      feature.comparisonItemHrid = '';
-      feature.comparisonEnhancementLevel = feature.baselineEnhancementLevel;
+      this.syncComparisonToBaseline(feature);
       feature.pickerMode = '';
       feature.pickerQuery = '';
       feature.pickerEquipmentType = '';
@@ -17204,6 +17813,7 @@
       feature.simulationToken++;
       feature.simulationState = {key: '', status: 'idle', result: null};
       feature.render();
+      if (feature.comparisonItemHrid) feature.requestSimulation();
     },
 
     handleComparisonChange(feature, value) {
@@ -19089,8 +19699,10 @@
     refresh() {
       const {i18n} = this.ctx;
       document.querySelectorAll('.mst-my-character-card-btn').forEach((button) => {
-        button.textContent = i18n.t('toolkitShort');
-        button.title = i18n.t('toolkitTitle');
+        const text = i18n.t('toolkitShort');
+        const title = i18n.t('toolkitTitle');
+        if (button.textContent !== text) button.textContent = text;
+        if (button.getAttribute('title') !== title) button.setAttribute('title', title);
       });
     }
 
@@ -19161,7 +19773,8 @@
         window.visualViewport?.removeEventListener('resize', positionDropdown);
         window.visualViewport?.removeEventListener('scroll', positionDropdown);
       };
-      requestAnimationFrame(positionDropdown);
+      if (window.requestAnimationFrame) window.requestAnimationFrame(positionDropdown);
+      else setTimeout(positionDropdown, 0);
     }
 
     renderDropdown(dropdown) {
@@ -19785,7 +20398,7 @@ to{transform:translateY(0);opacity:1}
     if (CONFIG.isGameSite) {
       TemplateRenderer.ready
         .then(() => new AppController(ctx).init())
-        .catch((error) => console.error('[MST] uhtml CDN 加载失败:', error));
+        .catch((error) => console.error('[MST] uhtml @require 加载失败:', error));
     }
   }
 
@@ -19841,6 +20454,7 @@ to{transform:translateY(0);opacity:1}
       i18n,
       pageWindow
     };
+    ctx.PageBridgeService = createPageBridgeService(ctx);
 
     installDataModule(ctx);
     installRuntimeHelpers(ctx);

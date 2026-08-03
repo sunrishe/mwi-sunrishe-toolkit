@@ -1,6 +1,7 @@
 .idea/
 .vscode/
 dist/*.dev.user.js
+dist/*debug.user.js
 node_modules/
 
 .DS_Store

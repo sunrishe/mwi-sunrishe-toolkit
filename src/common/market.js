@@ -96,14 +96,8 @@ export class MarketDataService {
   }
 
   async _fetchMarketData() {
-    const {CONFIG} = this.ctx;
-    const request =
-      // 不同油猴环境暴露的跨域请求 API 名称不同，优先使用可用实现。
-      typeof GM_xmlhttpRequest === 'function'
-        ? GM_xmlhttpRequest
-        : typeof GM !== 'undefined' && typeof GM.xmlHttpRequest === 'function'
-          ? GM.xmlHttpRequest.bind(GM)
-          : null;
+    const {CONFIG, GmApi} = this.ctx;
+    const request = GmApi?.xmlHttpRequestApi();
 
     if (!request) {
       const response = await fetch(CONFIG.MARKET_URL, {cache: 'no-store'});
@@ -112,7 +106,7 @@ export class MarketDataService {
     }
 
     return new Promise((resolve, reject) => {
-      const result = request({
+      const result = GmApi.xmlHttpRequest({
         method: 'GET',
         url: CONFIG.MARKET_URL,
         headers: {'Content-Type': 'application/json'},

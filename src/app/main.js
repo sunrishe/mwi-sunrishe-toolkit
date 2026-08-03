@@ -14,7 +14,7 @@ import {installDataModule} from '../common/data.js';
 import {createI18nService, createLanguageEvents} from '../common/i18n.js';
 import {MarketDataService} from '../common/market.js';
 import {I18N_MESSAGE_GROUPS} from '../common/messages.js';
-import {installRuntimeHelpers} from '../common/runtime.js';
+import {createPageBridgeService, installRuntimeHelpers} from '../common/runtime.js';
 import {installCommonUi, TemplateRenderer} from '../common/ui.js';
 import {installModules} from '../modules/index.js';
 import {installAppBootstrap, installRuntimeInstances} from './app-controller.js';
@@ -61,6 +61,7 @@ export function runMst() {
     i18n,
     pageWindow
   };
+  ctx.PageBridgeService = createPageBridgeService(ctx);
 
   installDataModule(ctx);
   installRuntimeHelpers(ctx);

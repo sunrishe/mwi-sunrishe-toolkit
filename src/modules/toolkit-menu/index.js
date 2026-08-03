@@ -49,8 +49,10 @@ export class ToolkitMenuFeature {
   refresh() {
     const {i18n} = this.ctx;
     document.querySelectorAll('.mst-my-character-card-btn').forEach((button) => {
-      button.textContent = i18n.t('toolkitShort');
-      button.title = i18n.t('toolkitTitle');
+      const text = i18n.t('toolkitShort');
+      const title = i18n.t('toolkitTitle');
+      if (button.textContent !== text) button.textContent = text;
+      if (button.getAttribute('title') !== title) button.setAttribute('title', title);
     });
   }
 
@@ -122,7 +124,8 @@ export class ToolkitMenuFeature {
       window.visualViewport?.removeEventListener('resize', positionDropdown);
       window.visualViewport?.removeEventListener('scroll', positionDropdown);
     };
-    requestAnimationFrame(positionDropdown);
+    if (window.requestAnimationFrame) window.requestAnimationFrame(positionDropdown);
+    else setTimeout(positionDropdown, 0);
   }
 
   renderDropdown(dropdown) {

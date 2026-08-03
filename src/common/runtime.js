@@ -168,13 +168,14 @@ export function createDomObserverService(SpriteService) {
     schedule() {
       if (this.scheduled || !this.subscribers.size) return;
       this.scheduled = true;
-      const requestFrame = window.requestAnimationFrame || ((callback) => setTimeout(callback, 0));
-      requestFrame(() => {
+      const runCallbacks = () => {
         this.scheduled = false;
         this.runCallbacks([
           ...this.subscribers
         ]);
-      });
+      };
+      if (window.requestAnimationFrame) window.requestAnimationFrame(runCallbacks);
+      else setTimeout(runCallbacks, 0);
     },
 
     handleBodyReady() {
@@ -212,9 +213,129 @@ export function createDomObserverService(SpriteService) {
   return DomObserverService;
 }
 
+// gm-api
+export function createGmApi() {
+  const getModernApi = (name) =>
+    typeof GM !== 'undefined' && typeof GM?.[name] === 'function' ? GM[name].bind(GM) : null;
+
+  const GmApi = {
+    getValueApi() {
+      if (typeof GM_getValue === 'function') return GM_getValue;
+      return getModernApi('getValue');
+    },
+
+    setValueApi() {
+      if (typeof GM_setValue === 'function') return GM_setValue;
+      return getModernApi('setValue');
+    },
+
+    addValueChangeListenerApi() {
+      if (typeof GM_addValueChangeListener === 'function') return GM_addValueChangeListener;
+      return getModernApi('addValueChangeListener');
+    },
+
+    xmlHttpRequestApi() {
+      if (typeof GM_xmlhttpRequest === 'function') return GM_xmlhttpRequest;
+      return getModernApi('xmlHttpRequest');
+    },
+
+    setClipboardApi() {
+      if (typeof GM_setClipboard === 'function') return GM_setClipboard;
+      return getModernApi('setClipboard');
+    },
+
+    async getValue(key, defaultValue = undefined) {
+      const getValue = this.getValueApi();
+      return getValue ? getValue(key, defaultValue) : defaultValue;
+    },
+
+    setValue(key, value) {
+      const setValue = this.setValueApi();
+      return setValue ? setValue(key, value) : undefined;
+    },
+
+    addValueChangeListener(key, callback) {
+      const addValueChangeListener = this.addValueChangeListenerApi();
+      return addValueChangeListener ? addValueChangeListener(key, callback) : null;
+    },
+
+    xmlHttpRequest(details) {
+      const request = this.xmlHttpRequestApi();
+      return request ? request(details) : null;
+    },
+
+    setClipboard(text, type = 'text') {
+      const setClipboard = this.setClipboardApi();
+      return setClipboard ? setClipboard(String(text), type) : undefined;
+    }
+  };
+
+  return GmApi;
+}
+
+// page-bridge-service
+export function createPageBridgeService(ctx) {
+  const {pageWindow} = ctx;
+
+  const PageBridgeService = {
+    installed: new Set(),
+    errors: new Map(),
+    sequence: 0,
+
+    install({key, source, label = key}) {
+      if (!key || !source) throw new TypeError('Page bridge key and source are required');
+      if (this.installed.has(key)) return true;
+      try {
+        if (typeof pageWindow?.Function !== 'function') throw new Error('pageWindow.Function is not available');
+        pageWindow.Function(String(source))();
+        this.installed.add(key);
+        this.errors.delete(key);
+        return true;
+      } catch (error) {
+        this.errors.set(key, error?.message || String(error));
+      }
+      try {
+        const script = document.createElement('script');
+        script.textContent = String(source);
+        (document.head || document.documentElement).appendChild(script);
+        script.remove();
+        this.installed.add(key);
+        this.errors.delete(key);
+        return true;
+      } catch (error) {
+        const message = error?.message || String(error);
+        this.errors.set(key, message);
+        console.warn('[MST] 安装页面桥失败:', {label, error: message});
+        return false;
+      }
+    },
+
+    getError(key) {
+      return this.errors.get(key) || '';
+    },
+
+    request({requestEvent, responseEvent, payload = {}, idPrefix = 'mst-bridge'}) {
+      const id = idPrefix + '-' + ++this.sequence;
+      let result = null;
+      const handleResponse = (event) => {
+        try {
+          const detail = JSON.parse(String(event.detail || '{}'));
+          if (detail.id === id) result = detail;
+        } catch {}
+      };
+      window.addEventListener(responseEvent, handleResponse);
+      window.dispatchEvent(new CustomEvent(requestEvent, {detail: JSON.stringify({id, ...payload})}));
+      window.removeEventListener(responseEvent, handleResponse);
+      return result;
+    }
+  };
+
+  return PageBridgeService;
+}
+
 // runtime-utils
 export function createRuntimeUtils(ctx, {SpriteService, DomObserverService}) {
-  const {DataHub, i18n} = ctx;
+  const {DataHub, GmApi, i18n} = ctx;
 
   const utils = {
     substrLastSlash(hrid) {
@@ -302,8 +423,8 @@ export function createRuntimeUtils(ctx, {SpriteService, DomObserverService}) {
     },
 
     async writeClipboard(text) {
-      if (typeof GM_setClipboard === 'function') {
-        GM_setClipboard(String(text), 'text');
+      if (GmApi?.setClipboardApi()) {
+        await GmApi.setClipboard(String(text), 'text');
         return;
       }
       if (!navigator.clipboard?.writeText) throw new Error(i18n.t('clipboardUnavailable'));
@@ -410,33 +531,269 @@ export function createRuntimeUtils(ctx, {SpriteService, DomObserverService}) {
 
 // game-navigation-service
 export function createGameNavigationService(ctx) {
-  const {DataHub, pageWindow, utils} = ctx;
+  const {DataHub, pageWindow, PageBridgeService, utils} = ctx;
 
   const GameNavigationService = {
+    bridgeInstalled: false,
+    bridgeInstallError: '',
+
+    installPageBridge() {
+      if (this.bridgeInstalled) return true;
+      const source = `
+        (() => {
+          if (window.__MST_NAV_BRIDGE_INSTALLED__) return;
+          const getFiber = (element) => {
+            const key = Reflect.ownKeys(element || {}).find((item) => String(item).startsWith('__reactFiber$'));
+            return key ? element[key] : null;
+          };
+          const findHostFromFiber = (fiber) => {
+            let current = fiber;
+            while (current) {
+              const host = current.stateNode;
+              if (
+                host &&
+                typeof host === 'object' &&
+                (typeof host.handleSwitchCharacter === 'function' ||
+                  typeof host.handleGoToMarketplace === 'function')
+              ) {
+                return host;
+              }
+              current = current.return;
+            }
+            return null;
+          };
+          const getCandidates = () => {
+            const selectors = [
+              '[class*="GamePage_gamePage__"]',
+              '[class*="GamePage_gamePanel__"]',
+              '[class*="GamePage_contentPanel__"]',
+              '[class*="Header_header__"]',
+              '[class^="GamePage"]',
+              '#root'
+            ];
+            const nodes = [];
+            selectors.forEach((selector) => {
+              document.querySelectorAll(selector).forEach((node) => nodes.push(node));
+            });
+            if (!nodes.length) {
+              document.querySelectorAll('[class]').forEach((node) => nodes.push(node));
+            }
+            return [...new Set(nodes)];
+          };
+          const findHost = () => {
+            if (window.mwiHelper?.game) return window.mwiHelper.game;
+            if (window.mwi?.game) return window.mwi.game;
+            for (const node of getCandidates()) {
+              const host = findHostFromFiber(getFiber(node));
+              if (host) return host;
+            }
+            return null;
+          };
+          const getDiagnostics = () => {
+            const candidates = getCandidates();
+            const candidateSummary = candidates.slice(0, 30).map((node) => ({
+              tagName: node.tagName || '',
+              className: String(node.className || '').slice(0, 180),
+              hasFiber: Boolean(getFiber(node))
+            }));
+            const host = findHost();
+            const hostKeys = host ? Reflect.ownKeys(host).map(String).sort() : [];
+            return {
+              pageContext: true,
+              hasHost: Boolean(host),
+              hostConstructor: host?.constructor?.name || '',
+              hostKeys,
+              functionKeys: hostKeys.filter((key) => typeof host?.[key] === 'function'),
+              hasSwitchCharacter: typeof host?.handleSwitchCharacter === 'function',
+              hasGoToMarketplace: typeof host?.handleGoToMarketplace === 'function',
+              candidateCount: candidates.length,
+              candidateSummary
+            };
+          };
+          window.__MST_NAV_BRIDGE__ = {
+            getDiagnostics,
+            switchCharacter() {
+              const host = findHost();
+              if (typeof host?.handleSwitchCharacter !== 'function') return {ok: false, diagnostics: getDiagnostics()};
+              host.handleSwitchCharacter.call(host);
+              return {ok: true, diagnostics: getDiagnostics()};
+            },
+            openMarketplace(itemHrid, enhancementLevel) {
+              const host = findHost();
+              if (typeof host?.handleGoToMarketplace !== 'function') return {ok: false, diagnostics: getDiagnostics()};
+              host.handleGoToMarketplace.call(host, itemHrid, Number(enhancementLevel) || 0);
+              return {ok: true, diagnostics: getDiagnostics()};
+            }
+          };
+          const respond = (id, action, result) => {
+            window.dispatchEvent(new CustomEvent('mst:navigation:result', {
+              detail: JSON.stringify({id, action, ...result})
+            }));
+          };
+          window.addEventListener('mst:navigation:switch-character', (event) => {
+            const detail = JSON.parse(String(event.detail || '{}'));
+            respond(detail.id, 'switchCharacter', window.__MST_NAV_BRIDGE__.switchCharacter());
+          });
+          window.addEventListener('mst:navigation:open-marketplace', (event) => {
+            const detail = JSON.parse(String(event.detail || '{}'));
+            respond(
+              detail.id,
+              'openMarketplace',
+              window.__MST_NAV_BRIDGE__.openMarketplace(detail.itemHrid, detail.enhancementLevel)
+            );
+          });
+          window.__MST_NAV_BRIDGE_INSTALLED__ = true;
+        })();
+      `;
+      this.bridgeInstalled = PageBridgeService.install({
+        key: 'navigation',
+        label: '页面原生跳转桥',
+        source
+      });
+      this.bridgeInstallError = PageBridgeService.getError('navigation');
+      return this.bridgeInstalled;
+    },
+
+    dispatchBridgeAction(action, payload = {}) {
+      if (!this.installPageBridge()) return null;
+      const eventName =
+        action === 'switchCharacter' ? 'mst:navigation:switch-character' : 'mst:navigation:open-marketplace';
+      return PageBridgeService.request({
+        requestEvent: eventName,
+        responseEvent: 'mst:navigation:result',
+        idPrefix: 'mst-nav',
+        payload
+      });
+    },
+
     getHost() {
-      const host = DataHub.getGameObject();
+      let host = null;
+      try {
+        host = DataHub.getGameObject();
+      } catch (error) {
+        console.warn('[MST] 读取游戏原生入口对象失败:', {error: error?.message || String(error)});
+        return null;
+      }
       return host && typeof host === 'object' ? host : null;
     },
 
-    switchCharacter() {
+    getHostDiagnostics(action, extra = {}) {
       const host = this.getHost();
-      if (typeof host?.handleSwitchCharacter !== 'function') return false;
-      host.handleSwitchCharacter.call(host);
+      const read = (getter, fallback) => {
+        try {
+          return getter();
+        } catch (error) {
+          return fallback ?? '[read failed] ' + (error?.message || String(error));
+        }
+      };
+      let hostKeys = [];
+      let functionKeys = [];
+      let hostReadError = '';
+      try {
+        hostKeys = host ? Reflect.ownKeys(host).map(String).sort() : [];
+        functionKeys = hostKeys.filter((key) => {
+          try {
+            return typeof host?.[key] === 'function';
+          } catch {
+            return false;
+          }
+        });
+      } catch (error) {
+        hostReadError = error?.message || String(error);
+      }
+      const marketMate = read(() => pageWindow.MWIMM, null);
+      return {
+        action,
+        characterId: DataHub.characterData?.raw?.character?.id ?? null,
+        hasHost: Boolean(host),
+        bridgeInstalled: this.bridgeInstalled,
+        bridgeInstallError: this.bridgeInstallError,
+        hostConstructor: read(() => host?.constructor?.name || '', ''),
+        hostKeys,
+        functionKeys,
+        hostReadError,
+        hasSwitchCharacter: read(() => typeof host?.handleSwitchCharacter === 'function', false),
+        hasGoToMarketplace: read(() => typeof host?.handleGoToMarketplace === 'function', false),
+        marketMateReady: read(() => marketMate?.ready === true, false),
+        hasMarketMateOpenMarketplace: read(() => typeof marketMate?.openMarketplace === 'function', false),
+        location: window.location.href,
+        ...extra
+      };
+    },
+
+    warnUnavailable(action, extra = {}) {
+      console.warn('[MST] 未找到游戏原生跳转入口:', this.getHostDiagnostics(action, extra));
+    },
+
+    switchCharacter() {
+      const bridgeResult = this.dispatchBridgeAction('switchCharacter');
+      if (bridgeResult?.ok) return true;
+      if (bridgeResult && !bridgeResult.ok) {
+        this.warnUnavailable('switchCharacter', {bridgeDiagnostics: bridgeResult.diagnostics || null});
+        return false;
+      }
+      const host = this.getHost();
+      let switchCharacter = null;
+      try {
+        switchCharacter = typeof host?.handleSwitchCharacter === 'function' ? host.handleSwitchCharacter : null;
+      } catch (error) {
+        this.warnUnavailable('switchCharacter', {accessError: error?.message || String(error)});
+        return false;
+      }
+      if (!switchCharacter) {
+        this.warnUnavailable('switchCharacter', {bridgeNoResponse: this.bridgeInstalled});
+        return false;
+      }
+      switchCharacter.call(host);
       return true;
     },
 
     openMarketplace(itemHrid, enhancementLevel = 0) {
       const fullHrid = utils.normalizeItemHrid(itemHrid);
       if (!fullHrid) return false;
+      const bridgeResult = this.dispatchBridgeAction('openMarketplace', {
+        itemHrid: fullHrid,
+        enhancementLevel: Number(enhancementLevel) || 0
+      });
+      if (bridgeResult?.ok) return true;
+      if (bridgeResult && !bridgeResult.ok) {
+        this.warnUnavailable('openMarketplace', {
+          itemHrid,
+          fullHrid,
+          enhancementLevel: Number(enhancementLevel) || 0,
+          bridgeDiagnostics: bridgeResult.diagnostics || null
+        });
+        return false;
+      }
       const host = this.getHost();
-      if (typeof host?.handleGoToMarketplace === 'function') {
-        host.handleGoToMarketplace.call(host, fullHrid, Number(enhancementLevel) || 0);
+      let goToMarketplace = null;
+      try {
+        goToMarketplace = typeof host?.handleGoToMarketplace === 'function' ? host.handleGoToMarketplace : null;
+      } catch (error) {
+        this.warnUnavailable('openMarketplace', {itemHrid, fullHrid, accessError: error?.message || String(error)});
+        return false;
+      }
+      if (goToMarketplace) {
+        goToMarketplace.call(host, fullHrid, Number(enhancementLevel) || 0);
         return true;
       }
-      const marketMate = pageWindow.MWIMM;
-      return marketMate?.ready === true && typeof marketMate.openMarketplace === 'function'
-        ? marketMate.openMarketplace(fullHrid) === true
-        : false;
+      let marketMate = null;
+      try {
+        marketMate = pageWindow.MWIMM;
+        if (marketMate?.ready === true && typeof marketMate.openMarketplace === 'function') {
+          return marketMate.openMarketplace(fullHrid) === true;
+        }
+      } catch (error) {
+        this.warnUnavailable('openMarketplace', {itemHrid, fullHrid, accessError: error?.message || String(error)});
+        return false;
+      }
+      this.warnUnavailable('openMarketplace', {
+        itemHrid,
+        fullHrid,
+        enhancementLevel: Number(enhancementLevel) || 0,
+        bridgeNoResponse: this.bridgeInstalled
+      });
+      return false;
     }
   };
 
@@ -501,9 +858,13 @@ export function createMarketMateBridge(ctx) {
 
 // runtime-helpers
 export function installRuntimeHelpers(ctx) {
+  const GmApi = createGmApi();
+  const PageBridgeService = ctx.PageBridgeService || createPageBridgeService(ctx);
   const GameUiAdapter = createGameUiAdapter();
   const SpriteService = createSpriteService();
   const DomObserverService = createDomObserverService(SpriteService);
+  ctx.GmApi = GmApi;
+  ctx.PageBridgeService = PageBridgeService;
   const utils = createRuntimeUtils(ctx, {SpriteService, DomObserverService});
   ctx.utils = utils;
   const GameNavigationService = createGameNavigationService(ctx);

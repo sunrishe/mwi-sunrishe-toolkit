@@ -201,14 +201,121 @@ const dataHubLzStringMethods = {
 
 // data-hub-game-runtime
 const dataHubGameRuntimeMethods = {
+  installI18nBridge() {
+    if (this.i18nBridgeInstalled) return true;
+    const source = `
+      (() => {
+        if (window.__MST_I18N_BRIDGE_INSTALLED__) return;
+        const pickResourceGroups = (resources) => {
+          if (!resources || typeof resources !== 'object') return null;
+          const result = {};
+          ['en', 'zh'].forEach((lang) => {
+            const translation = resources?.[lang]?.translation;
+            if (!translation) return;
+            result[lang] = {translation: {}};
+            Object.entries(translation).forEach(([group, value]) => {
+              if (value && typeof value === 'object' && !Array.isArray(value)) {
+                result[lang].translation[group] = value;
+              }
+            });
+          });
+          const hasGroups = ['en', 'zh'].some((lang) => Object.keys(result[lang]?.translation || {}).length > 0);
+          return hasGroups ? result : null;
+        };
+        const getFiber = (element) => {
+          const key = Reflect.ownKeys(element || {}).find((item) => String(item).startsWith('__reactFiber$'));
+          return key ? element[key] : null;
+        };
+        const getFiberResources = () => {
+          const nodes = [...document.querySelectorAll('#root, [class]')];
+          for (const node of nodes) {
+            let current = getFiber(node);
+            while (current) {
+              const props = current.memoizedProps || current.pendingProps || current.stateNode?.props;
+              const resources = pickResourceGroups(props?.i18n?.options?.resources || props?.i18n?.store?.data);
+              if (resources) return resources;
+              current = current.return;
+            }
+          }
+          return null;
+        };
+        const getResources = () =>
+          pickResourceGroups(window.mwiHelper?.lang) ||
+          pickResourceGroups(window.mwi?.lang) ||
+          pickResourceGroups(window.i18next?.options?.resources) ||
+          pickResourceGroups(window.i18next?.store?.data) ||
+          getFiberResources();
+        window.__MST_I18N_BRIDGE__ = {getResources};
+        window.addEventListener('mst:i18n:request', (event) => {
+          const id = JSON.parse(String(event.detail || '{}')).id;
+          const resources = getResources();
+          window.dispatchEvent(new CustomEvent('mst:i18n:response', {
+            detail: JSON.stringify({id, ok: Boolean(resources), resources})
+          }));
+        });
+        window.__MST_I18N_BRIDGE_INSTALLED__ = true;
+      })();
+    `;
+    const {PageBridgeService} = this.ctx;
+    this.i18nBridgeInstalled = PageBridgeService.install({
+      key: 'i18n',
+      label: '游戏语言资源桥',
+      source
+    });
+    this.i18nBridgeInstallError = PageBridgeService.getError('i18n');
+    return this.i18nBridgeInstalled;
+  },
+
+  requestI18nResourcesFromPage() {
+    if (!this.installI18nBridge()) return null;
+    const result = this.ctx.PageBridgeService.request({
+      requestEvent: 'mst:i18n:request',
+      responseEvent: 'mst:i18n:response',
+      idPrefix: 'mst-i18n'
+    });
+    return result?.ok ? result.resources : null;
+  },
+
+  getReactFiber(element) {
+    const key = Reflect.ownKeys(element || {}).find((k) => String(k).startsWith('__reactFiber$'));
+    return key ? element[key] : null;
+  },
+
+  findGameHostFromFiber(fiber) {
+    let current = fiber;
+    while (current) {
+      const host = current.stateNode;
+      if (
+        host &&
+        typeof host === 'object' &&
+        (typeof host.handleSwitchCharacter === 'function' || typeof host.handleGoToMarketplace === 'function')
+      ) {
+        return host;
+      }
+      current = current.return;
+    }
+    return null;
+  },
+
+  findGameHostFromDom() {
+    const selectors = [
+      '[class*="GamePage_gamePage__"]', '[class*="GamePage_gamePanel__"]', '[class*="GamePage_contentPanel__"]', '[class^="GamePage"]', '#root'
+    ];
+    for (const selector of selectors) {
+      for (const el of document.querySelectorAll(selector)) {
+        const host = this.findGameHostFromFiber(this.getReactFiber(el));
+        if (host) return host;
+      }
+    }
+    return null;
+  },
+
   getGameObject() {
     const {pageWindow} = this.ctx;
     try {
       if (pageWindow.mwiHelper?.game) return pageWindow.mwiHelper.game;
       if (pageWindow.mwi?.game) return pageWindow.mwi.game;
-      const el = document.querySelector('[class^="GamePage"]');
-      const key = Reflect.ownKeys(el || {}).find((k) => String(k).startsWith('__reactFiber$'));
-      return key ? el[key]?.return?.stateNode : null;
+      return this.findGameHostFromDom();
     } catch {
       return null;
     }
@@ -219,14 +326,36 @@ const dataHubGameRuntimeMethods = {
     return game?.state && typeof game.state === 'object' ? game.state : game || {};
   },
 
+  hasGameI18nResources(resources) {
+    return [
+      'en', 'zh'
+    ].some((lang) => {
+      const translation = resources?.[lang]?.translation;
+      return (
+        translation &&
+        Object.values(translation).some(
+          (value) => value && typeof value === 'object' && !Array.isArray(value) && Object.keys(value).length > 0
+        )
+      );
+    });
+  },
+
   getGameI18nResources() {
     const {pageWindow} = this.ctx;
+    const read = (getter) => {
+      try {
+        return getter();
+      } catch {
+        return null;
+      }
+    };
     const resources =
-      pageWindow.mwiHelper?.lang ||
-      pageWindow.mwi?.lang ||
-      this.getGameObject()?.props?.i18n?.options?.resources ||
+      read(() => pageWindow.mwiHelper?.lang) ||
+      read(() => pageWindow.mwi?.lang) ||
+      read(() => this.getGameObject()?.props?.i18n?.options?.resources) ||
+      this.requestI18nResourcesFromPage() ||
       null;
-    if (resources?.en?.translation?.itemNames || resources?.zh?.translation?.itemNames) {
+    if (this.hasGameI18nResources(resources)) {
       this.clientData.i18nResources = resources;
       return resources;
     }
@@ -671,6 +800,8 @@ export function createDataHub(ctx, STORAGE_KEYS) {
     },
     characterData: {raw: null, profiles: {}, battleUnits: new Map(), source: '', updatedAt: 0},
     i18nWatcherStarted: false,
+    i18nBridgeInstalled: false,
+    i18nBridgeInstallError: '',
     clientDataCacheSource: '',
 
     init() {
@@ -793,32 +924,56 @@ export function createWebSocketService(ctx, DataHub) {
     ]),
 
     install() {
-      if (this.installed || pageWindow.__mwiIntegratedWsInstalled) return;
-      const OriginalWebSocket = pageWindow.WebSocket;
-      if (!OriginalWebSocket) return;
+      let alreadyInstalled = false;
+      try {
+        alreadyInstalled = pageWindow.__mwiIntegratedWsInstalled === true;
+      } catch {}
+      if (this.installed || alreadyInstalled) return;
       const self = this;
-      function IntegratedWebSocket(...args) {
-        const ws = new OriginalWebSocket(...args);
-        const url = String(args[0] || '');
-        const isGameWs =
-          url.includes('milkywayidle.com/ws') || url.includes('milkywayidlecn.com/ws') || url.includes('/ws');
-        if (!isGameWs) return ws;
-        const originalSend = ws.send;
-        ws.send = function (data) {
-          self.dispatch('mst:ws:send', self.safeParse(data) || data);
-          return originalSend.call(this, data);
-        };
-        ws.addEventListener('message', (event) => self.handleMessage(event.data));
-        return ws;
+      const onMessage = (event) => self.handleMessage(event.detail);
+      const onSend = (event) => self.dispatch('mst:ws:send', self.safeParse(event.detail) || event.detail);
+      window.addEventListener('mst:ws:message-raw', onMessage);
+      window.addEventListener('mst:ws:send-raw', onSend);
+      const installed = ctx.PageBridgeService.install({
+        key: 'websocket',
+        label: '游戏 WebSocket 数据桥',
+        source: `
+        (() => {
+          if (window.__mwiIntegratedWsInstalled) return;
+          const OriginalWebSocket = window.WebSocket;
+          if (!OriginalWebSocket) return;
+          const emit = (name, detail) => window.dispatchEvent(new CustomEvent(name, {detail}));
+          function IntegratedWebSocket(...args) {
+            const ws = new OriginalWebSocket(...args);
+            const url = String(args[0] || '');
+            const isGameWs = url.includes('milkywayidle.com/ws') || url.includes('milkywayidlecn.com/ws') || url.includes('/ws');
+            if (!isGameWs) return ws;
+            const originalSend = ws.send;
+            ws.send = function(data) {
+              if (typeof data === 'string') emit('mst:ws:send-raw', data);
+              return originalSend.call(this, data);
+            };
+            ws.addEventListener('message', (event) => {
+              if (typeof event.data === 'string') emit('mst:ws:message-raw', event.data);
+            });
+            return ws;
+          }
+          IntegratedWebSocket.prototype = OriginalWebSocket.prototype;
+          IntegratedWebSocket.CONNECTING = OriginalWebSocket.CONNECTING;
+          IntegratedWebSocket.OPEN = OriginalWebSocket.OPEN;
+          IntegratedWebSocket.CLOSING = OriginalWebSocket.CLOSING;
+          IntegratedWebSocket.CLOSED = OriginalWebSocket.CLOSED;
+          window.WebSocket = IntegratedWebSocket;
+          window.__mwiIntegratedWsInstalled = true;
+        })();
+      `
+      });
+      if (!installed) {
+        window.removeEventListener('mst:ws:message-raw', onMessage);
+        window.removeEventListener('mst:ws:send-raw', onSend);
+        return;
       }
-      IntegratedWebSocket.prototype = OriginalWebSocket.prototype;
-      IntegratedWebSocket.CONNECTING = OriginalWebSocket.CONNECTING;
-      IntegratedWebSocket.OPEN = OriginalWebSocket.OPEN;
-      IntegratedWebSocket.CLOSING = OriginalWebSocket.CLOSING;
-      IntegratedWebSocket.CLOSED = OriginalWebSocket.CLOSED;
-      pageWindow.WebSocket = IntegratedWebSocket;
       this.installed = true;
-      pageWindow.__mwiIntegratedWsInstalled = true;
     },
 
     safeParse(data) {

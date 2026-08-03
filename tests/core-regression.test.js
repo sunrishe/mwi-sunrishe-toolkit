@@ -189,10 +189,63 @@ function loadUtils() {
   )();
 }
 
-function loadDataHub() {
+function loadDataHub(runtime = {}) {
+  const listeners = new Map();
+  const bridgeWindow = runtime.window || {
+    i18next: {store: {data: null}},
+    addEventListener(type, listener) {
+      if (!listeners.has(type)) listeners.set(type, []);
+      listeners.get(type).push(listener);
+    },
+    removeEventListener(type, listener) {
+      listeners.set(
+        type,
+        (listeners.get(type) || []).filter((item) => item !== listener)
+      );
+    },
+    dispatchEvent(event) {
+      (listeners.get(event.type) || []).forEach((listener) => listener(event));
+    }
+  };
+  const bridgeDocument = runtime.document || {
+    createElement() {
+      return {textContent: '', remove() {}};
+    },
+    querySelectorAll() {
+      return [];
+    },
+    documentElement: {
+      appendChild(script) {
+        Function('window', 'document', 'CustomEvent', script.textContent)(bridgeWindow, bridgeDocument, CustomEvent);
+      }
+    }
+  };
+  const pageBridgeService = {
+    installed: new Set(),
+    install({key, source}) {
+      this.installed.add(key);
+      Function('window', 'document', 'CustomEvent', source)(bridgeWindow, bridgeDocument, CustomEvent);
+      return true;
+    },
+    getError() {
+      return '';
+    },
+    request({requestEvent, responseEvent, idPrefix = 'test', payload = {}}) {
+      const id = idPrefix + '-1';
+      let result = null;
+      const handleResponse = (event) => {
+        const detail = JSON.parse(String(event.detail || '{}'));
+        if (detail.id === id) result = detail;
+      };
+      bridgeWindow.addEventListener(responseEvent, handleResponse);
+      bridgeWindow.dispatchEvent(new CustomEvent(requestEvent, {detail: JSON.stringify({id, ...payload})}));
+      bridgeWindow.removeEventListener(responseEvent, handleResponse);
+      return result;
+    }
+  };
   return vm.runInNewContext(
     `${readVmSource('src/common/data.js')}
-        createDataHub({CONFIG, i18n, pageWindow: window}, STORAGE_KEYS);`,
+        createDataHub({CONFIG, i18n, PageBridgeService, pageWindow: window, utils}, STORAGE_KEYS);`,
     {
       console,
       CustomEvent: class {
@@ -210,7 +263,22 @@ function loadDataHub() {
       },
       window: {dispatchEvent() {}},
       CONFIG: {PROFILE_CACHE_TTL: 1000, PROFILE_CACHE_LIMIT: 50},
-      i18n: {languageKey: 'zh'}
+      i18n: {languageKey: 'zh'},
+      PageBridgeService: pageBridgeService,
+      utils: {
+        normalizeItemHrid(value) {
+          const itemId = String(value || '')
+            .replace(/^#/, '')
+            .replace(/^\/items\//, '');
+          return itemId ? '/items/' + itemId : '';
+        },
+        substrLastSlash(value) {
+          return String(value || '')
+            .split('/')
+            .pop();
+        }
+      },
+      ...runtime
     }
   );
 }
@@ -239,11 +307,24 @@ function loadMstEdsFeature({raw = {}, itemMap = {}, reactData = {}, runtime = {}
       },
       getReactComponentProps() {
         return reactData;
+      },
+      getCollectionValues(collection) {
+        if (Array.isArray(collection)) return collection;
+        if (collection instanceof Map) return [
+            ...collection.values()
+          ];
+        if (collection && typeof collection === 'object') return Object.values(collection);
+        return [];
+      },
+      getTextBetween() {
+        return '';
       }
     },
-    GM_setValue() {},
-    GM_getValue() {},
-    GM_addValueChangeListener() {},
+    GmApi: {
+      getValue() {},
+      setValue() {},
+      addValueChangeListener() {}
+    },
     Notifier: {},
     LanguageEvents: {subscribe() {}},
     TemplateRenderer: {},
@@ -275,6 +356,7 @@ function loadMstEdsFeature({raw = {}, itemMap = {}, reactData = {}, runtime = {}
             GameUiAdapter,
             LanguageEvents,
             STORAGE_KEYS,
+            GmApi,
             hostname,
             Notifier,
             i18n,
@@ -809,11 +891,74 @@ test('游戏站语言仍读取 i18nextLng，不受利润网缓存影响', () => 
   assert.equal(i18n.currentLang, 'en');
 });
 
+test('Firefox 下游戏名词可通过页面语言资源桥读取中文', () => {
+  const listeners = new Map();
+  const resources = {
+    en: {translation: {itemNames: {'/items/cheese': 'Cheese'}}},
+    zh: {
+      translation: {
+        itemNames: {'/items/cheese': '奶酪'},
+        skillNames: {'/skills/milking': '挤奶'},
+        houseRoomNames: {'/house_rooms/kitchen': '厨房'},
+        combatStats: {magicAccuracy: '魔法精准度', natureAmplify: '自然系增幅'},
+        damageTypeNames: {'/damage_types/nature': '自然系'},
+        equipmentTypeNames: {'/equipment_types/main_hand': '主手'}
+      }
+    }
+  };
+  const fakeWindow = {
+    i18next: {store: {data: resources}},
+    addEventListener(type, listener) {
+      if (!listeners.has(type)) listeners.set(type, []);
+      listeners.get(type).push(listener);
+    },
+    removeEventListener(type, listener) {
+      listeners.set(
+        type,
+        (listeners.get(type) || []).filter((item) => item !== listener)
+      );
+    },
+    dispatchEvent(event) {
+      (listeners.get(event.type) || []).forEach((listener) => listener(event));
+    }
+  };
+  const fakeDocument = {
+    createElement() {
+      return {textContent: '', remove() {}};
+    },
+    querySelectorAll() {
+      return [];
+    },
+    documentElement: {
+      appendChild(script) {
+        Function('window', 'document', 'CustomEvent', script.textContent)(fakeWindow, fakeDocument, CustomEvent);
+      }
+    }
+  };
+  const hub = loadDataHub({window: fakeWindow, document: fakeDocument});
+  hub.initClientData({itemDetailMap: {'/items/cheese': {hrid: '/items/cheese', name: 'Cheese'}}}, 'test');
+
+  assert.equal(hub.resolveItemName('/items/cheese'), '奶酪');
+  assert.equal(hub.getLocalizedGameName('skillNames', '/skills/milking', 'zh'), '挤奶');
+  assert.equal(hub.getLocalizedGameName('combatStats', 'magicAccuracy', 'zh'), '魔法精准度');
+  assert.equal(hub.getLocalizedGameName('combatStats', 'natureAmplify', 'zh'), '自然系增幅');
+  assert.equal(hub.getLocalizedGameName('damageTypeNames', '/damage_types/nature', 'zh'), '自然系');
+  assert.equal(hub.getLocalizedGameName('equipmentTypeNames', '/equipment_types/main_hand', 'zh'), '主手');
+});
+
 test('公开事件统一使用 mst 模块前缀并保留 WebSocket 收发事件', () => {
+  const runtimeSource = readSourceFile('src', 'common', 'runtime.js');
   const webSocketSource = extractBetween(/^\s*const WebSocketService = \{/m, /^\s*return WebSocketService;/m);
   assert.doesNotMatch(source, /mwi-integrated:|mwi:(?:ws:|init-|profile-)/);
   assert.match(webSocketSource, /this\.dispatch\('mst:ws:message', obj\)/);
   assert.match(webSocketSource, /self\.dispatch\('mst:ws:send'/);
+  assert.match(runtimeSource, /export function createPageBridgeService/);
+  assert.match(source, /ctx\.PageBridgeService = createPageBridgeService\(ctx\)/);
+  assert.match(webSocketSource, /PageBridgeService\.install/);
+  assert.doesNotMatch(webSocketSource, /pageWindow\.Function/);
+  assert.doesNotMatch(webSocketSource, /pageWindow\.WebSocket\s*=\s*IntegratedWebSocket/);
+  assert.match(webSocketSource, /mst:ws:message-raw/);
+  assert.match(webSocketSource, /mst:ws:send-raw/);
   assert.match(webSocketSource, /mst:ws:init-client-data/);
   assert.match(webSocketSource, /mst:ws:init-character-data/);
   assert.match(webSocketSource, /mst:ws:profile-shared/);
@@ -860,13 +1005,70 @@ test('利润网站 Toast 渲染不依赖未初始化的 uhtml', () => {
   assert.match(toastSource, /this\._toastRoot\.replaceChildren\(fragment\)/);
 });
 
+test('uhtml 通过 @require 全局属性暴露给脚本运行时', () => {
+  const uiSource = readSourceFile('src', 'common', 'ui.js');
+  assert.match(
+    headerSource,
+    /@require\s+https:\/\/cdn\.jsdelivr\.net\/gh\/sunrishe\/mwi-sunrishe-toolkit@master\/vendor\/uhtml\/uhtml\.iife\.min\.js/
+  );
+  assert.match(uiSource, /globalThis\.uhtml/);
+});
+
 test('EDS 保留 GM 跨域配装写入、监听和读取链路', () => {
   const edsSource = readSourceFile('src', 'modules', 'eds-milkonomy', 'index.js');
+  const marketSource = readSourceFile('src', 'common', 'market.js');
+  const runtimeSource = readSourceFile('src', 'common', 'runtime.js');
+  assert.match(headerSource, /@grant\s+GM_setClipboard/);
+  assert.match(headerSource, /@grant\s+GM\.setClipboard/);
   assert.match(headerSource, /@grant\s+GM_addValueChangeListener/);
-  assert.match(edsSource, /GM_setValue\(STORAGE_KEYS\.MILKONOMY_PRESET, preset\)/);
-  assert.match(edsSource, /GM_addValueChangeListener\(STORAGE_KEYS\.MILKONOMY_PRESET/);
-  assert.match(edsSource, /GM_getValue\(STORAGE_KEYS\.MILKONOMY_PRESET\)/);
+  assert.match(headerSource, /@grant\s+GM\.addValueChangeListener/);
+  assert.match(headerSource, /@grant\s+GM\.getValue/);
+  assert.match(headerSource, /@grant\s+GM\.setValue/);
+  assert.match(runtimeSource, /export function createGmApi\(\)/);
+  assert.match(runtimeSource, /setClipboardApi\(\)/);
+  assert.match(runtimeSource, /GM_setClipboard/);
+  assert.match(runtimeSource, /getModernApi\('setClipboard'\)/);
+  assert.match(runtimeSource, /GmApi\.setClipboard\(String\(text\), 'text'\)/);
+  assert.match(edsSource, /GmApi\.setValue\(STORAGE_KEYS\.MILKONOMY_PRESET, preset\)/);
+  assert.match(edsSource, /GmApi\.addValueChangeListener\(STORAGE_KEYS\.MILKONOMY_PRESET/);
+  assert.match(edsSource, /GmApi\.getValue\(STORAGE_KEYS\.MILKONOMY_PRESET\)/);
+  assert.match(marketSource, /GmApi\.xmlHttpRequest/);
+  assert.doesNotMatch(edsSource, /GM_setClipboard|GM\.setClipboard/);
+  assert.doesNotMatch(edsSource, /(?<!typeof )GM_setValue\(/);
+  assert.doesNotMatch(edsSource, /(?<!typeof )GM_getValue\(/);
+  assert.doesNotMatch(edsSource, /(?<!typeof )GM_addValueChangeListener\(/);
+  assert.doesNotMatch(marketSource, /GM_xmlhttpRequest|GM\.xmlHttpRequest/);
   assert.match(edsSource, /mst:eds:milkonomy-preset/);
+});
+
+test('游戏原生跳转和配装读取失败时保留 Firefox 诊断信息', () => {
+  const edsSource = readSourceFile('src', 'modules', 'eds-milkonomy', 'index.js');
+  const cardSource = readSourceFile('src', 'modules', 'character-card', 'index.js');
+  const dataSource = readSourceFile('src', 'common', 'data.js');
+  const runtimeSource = readSourceFile('src', 'common', 'runtime.js');
+  assert.match(dataSource, /findGameHostFromFiber/);
+  assert.match(dataSource, /handleSwitchCharacter/);
+  assert.match(dataSource, /handleGoToMarketplace/);
+  assert.match(dataSource, /\[class\*="GamePage_gamePage__/);
+  assert.match(runtimeSource, /installPageBridge/);
+  assert.match(runtimeSource, /mst:navigation:open-marketplace/);
+  assert.match(runtimeSource, /mst:navigation:switch-character/);
+  assert.match(runtimeSource, /bridgeDiagnostics/);
+  assert.match(runtimeSource, /\[MST\] 未找到游戏原生跳转入口:/);
+  assert.match(runtimeSource, /hostKeys/);
+  assert.match(runtimeSource, /hostReadError/);
+  assert.match(edsSource, /\[MST\] 未找到当前配装:/);
+  assert.match(edsSource, /reactReadError/);
+  assert.match(edsSource, /loadoutNames/);
+  assert.match(cardSource, /\[MST\] 配装名片数据转换失败:/);
+});
+
+test('本地调试脚本生成器把本地 @require 保持在 @require 分组中', () => {
+  const scriptSource = readSourceFile('scripts', 'generate-local-debug.mjs');
+  assert.match(scriptSource, /lastRequireMatch/);
+  assert.match(scriptSource, /header\.matchAll/);
+  assert.match(scriptSource, /@require/);
+  assert.match(scriptSource, /insertAt/);
 });
 
 test('老利润网可从 GM 同步配装并过滤新利润网扩展字段', async () => {
@@ -888,8 +1090,12 @@ test('老利润网可从 GM 同步配装并过滤新利润网扩展字段', asyn
       hostname: 'milkonomy.pages.dev',
       CONFIG: {characterId: null, isGameSite: false, isMilkonomySite: true},
       localStorage,
-      GM_getValue() {
-        return preset;
+      GmApi: {
+        getValue() {
+          return preset;
+        },
+        setValue() {},
+        addValueChangeListener() {}
       },
       Notifier: {
         toast(...args) {
@@ -935,8 +1141,12 @@ test('新利润网 hyhfish 同步时保留完整扩展字段', async () => {
       hostname: 'hyhfish.github.io',
       CONFIG: {characterId: null, isGameSite: false, isMilkonomySite: true},
       localStorage,
-      GM_getValue() {
-        return preset;
+      GmApi: {
+        getValue() {
+          return preset;
+        },
+        setValue() {},
+        addValueChangeListener() {}
       },
       Notifier: {toast() {}}
     }
@@ -1127,6 +1337,55 @@ test('EDS 战斗配装导出与原脚本保持一致', () => {
     JSON.parse(JSON.stringify(integrated.convert(loadout, characterData))),
     JSON.parse(JSON.stringify(original.convert(loadout, characterData)))
   );
+});
+
+test('EDS 当前配装在 Firefox 读不到 React props 时回退到官方角色原包', () => {
+  const rawLoadout = {
+    id: 344578,
+    name: '近战-枪',
+    actionTypeHrid: '/action_types/combat',
+    wearableMap: {'/item_locations/main_hand': '427012::/item_locations/main_hand::/items/azure_sword::12'}
+  };
+  const feature = loadMstEdsFeature({
+    raw: {characterLoadoutMap: {344578: rawLoadout}},
+    reactData: {},
+    runtime: {
+      GameUiAdapter: {
+        query(name) {
+          if (name !== 'loadoutMetadata') return null;
+          return {
+            querySelector(selector) {
+              return selector === 'svg' || selector === 'button' ? {} : null;
+            }
+          };
+        }
+      },
+      utils: {
+        substrLastSlash(value) {
+          return String(value || '')
+            .split('/')
+            .pop();
+        },
+        getReactComponentProps() {
+          return {};
+        },
+        getCollectionValues(collection) {
+          if (Array.isArray(collection)) return collection;
+          if (collection instanceof Map) return [
+              ...collection.values()
+            ];
+          if (collection && typeof collection === 'object') return Object.values(collection);
+          return [];
+        },
+        getTextBetween() {
+          return '近战-枪';
+        }
+      }
+    }
+  });
+
+  const {loadout} = feature.getCombatLoadout({});
+  assert.equal(loadout, rawLoadout);
 });
 
 test('统一角色数据跟进 EDS 依赖的官方 WS 增量字段', () => {

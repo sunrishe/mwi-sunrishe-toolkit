@@ -1,6 +1,5 @@
 // template-renderer
 export const TemplateRenderer = {
-  CDN_URL: 'https://cdn.jsdelivr.net/npm/uhtml@5.0.9/dist/prod/dom.min.js',
   _html: null,
   _render: null,
   _Hole: null,
@@ -10,8 +9,13 @@ export const TemplateRenderer = {
 
   init() {
     if (this.ready) return this.ready;
-    // uhtml 5.x 仅提供 ESM 构建；并行加载时不影响下方同步安装 WebSocket 拦截。
-    this.ready = import(this.CDN_URL).then((module) => {
+    // uhtml 由 userscript @require 注入；不同脚本沙箱可能只能通过全局属性读取。
+    const module = globalThis.uhtml || (typeof uhtml !== 'undefined' ? uhtml : null);
+    if (!module) {
+      this.ready = Promise.reject(new Error('uhtml @require is not ready'));
+      return this.ready;
+    }
+    this.ready = Promise.resolve(module).then((module) => {
       this._html = module.html;
       this._render = module.render;
       this._Hole = module.Hole;
@@ -463,7 +467,8 @@ const swalDraggingMethods = {
       delete popup._mstDragCleanup;
     };
     popup._mstClampPosition = () => clampPosition(true);
-    requestAnimationFrame(onViewportChange);
+    if (window.requestAnimationFrame) window.requestAnimationFrame(onViewportChange);
+    else setTimeout(onViewportChange, 0);
   },
 
   _disableBoundedDragging(popup) {

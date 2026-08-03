@@ -6,7 +6,7 @@ export default [
       'node_modules/**', 'dist/**', 'references/**', 'vendor/**'
     ]}, {
     files: [
-      'src/**/*.js', 'tests/**/*.js', '*.config.mjs'
+      'src/**/*.js', 'tests/**/*.js', 'scripts/**/*.mjs', '*.config.mjs'
     ],
     languageOptions: {
       ecmaVersion: 2022,
@@ -24,6 +24,7 @@ export default [
         LZString: 'readonly',
         Swal: 'readonly',
         TemplateRenderer: 'readonly',
+        uhtml: 'readonly',
         unsafeWindow: 'readonly',
         __MST_BUILD_ENV__: 'readonly',
         __MST_IS_DEV__: 'readonly'

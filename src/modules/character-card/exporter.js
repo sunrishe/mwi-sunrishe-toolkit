@@ -149,7 +149,11 @@ export class CharacterCardExportRenderer {
   }
 
   yieldForCardExport() {
-    return new Promise((resolve) => requestAnimationFrame(() => setTimeout(resolve, 0)));
+    return new Promise((resolve) => {
+      const settle = () => setTimeout(resolve, 0);
+      if (window.requestAnimationFrame) window.requestAnimationFrame(settle);
+      else settle();
+    });
   }
 
   async renderTeamCardCanvas(container, onProgress) {

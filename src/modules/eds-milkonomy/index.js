@@ -23,9 +23,9 @@ const edsMilkonomyPresetService = {
   },
 
   async copyProfitPreset(feature, target) {
-    const {STORAGE_KEYS, i18n} = feature.ctx;
+    const {GmApi, STORAGE_KEYS, i18n} = feature.ctx;
     const preset = feature.convert();
-    GM_setValue(STORAGE_KEYS.MILKONOMY_PRESET, preset);
+    await GmApi.setValue(STORAGE_KEYS.MILKONOMY_PRESET, preset);
     await feature.copyJsonToClipboard(
       feature.filterPresetForTarget(preset, target),
       i18n.t(target === 'hyhfish' ? 'copiedHyhfish' : 'copiedMilkonomy')
@@ -33,43 +33,101 @@ const edsMilkonomyPresetService = {
   },
 
   syncPresetToStorage(feature) {
-    const {STORAGE_KEYS} = feature.ctx;
+    const {GmApi, STORAGE_KEYS} = feature.ctx;
     const preset = feature.convert();
     const presetJSON = JSON.stringify(preset);
     if (presetJSON === feature.lastSyncedPresetJSON) return preset;
     feature.lastSyncedPresetJSON = presetJSON;
-    GM_setValue(STORAGE_KEYS.MILKONOMY_PRESET, preset);
+    GmApi.setValue(STORAGE_KEYS.MILKONOMY_PRESET, preset);
     return preset;
   }
 };
 
 // eds-milkonomy-game-controller
 const edsMilkonomyGameController = {
+  getElementDiagnostics(element) {
+    if (!element) return null;
+    return {
+      tagName: element.tagName || '',
+      className: String(element.className || ''),
+      text: String(element.textContent || '')
+        .trim()
+        .slice(0, 200),
+      childCount: element.children?.length || 0
+    };
+  },
+
+  getLoadoutValues(feature, data) {
+    const {DataHub, utils} = feature.ctx;
+    const reactLoadouts = utils.getCollectionValues(data?.characterLoadoutDict);
+    const rawLoadouts = utils.getCollectionValues(DataHub.characterData.raw?.characterLoadoutMap);
+    return {reactLoadouts, rawLoadouts, loadouts: reactLoadouts.length ? reactLoadouts : rawLoadouts};
+  },
+
+  getLoadoutDiagnostics({feature, detailsEl, titleEl, svgEl, updateBtn, name, data, reactReadError = ''}) {
+    const {reactLoadouts, rawLoadouts, loadouts} = this.getLoadoutValues(feature, data);
+    return {
+      location: window.location.href,
+      hasDetails: Boolean(detailsEl),
+      hasMetadata: Boolean(titleEl),
+      hasMetadataSvg: Boolean(svgEl),
+      hasMetadataButton: Boolean(updateBtn),
+      parsedName: name,
+      reactReadError,
+      details: this.getElementDiagnostics(detailsEl),
+      metadata: this.getElementDiagnostics(titleEl),
+      reactDataKeys: Object.keys(data || {}).sort(),
+      reactLoadoutCount: reactLoadouts.length,
+      rawLoadoutCount: rawLoadouts.length,
+      loadoutCount: loadouts.length,
+      loadoutNames: loadouts
+        .map((item) => item?.name || '')
+        .filter(Boolean)
+        .slice(0, 20)
+    };
+  },
+
+  warnLoadoutNotFound(context) {
+    console.warn('[MST] 未找到当前配装:', this.getLoadoutDiagnostics(context));
+  },
+
   getCombatLoadout(feature, detailsEl) {
     const {GameUiAdapter, utils} = feature.ctx;
-    const data = utils.getReactComponentProps(detailsEl) || {};
+    let reactReadError = '';
+    let data = {};
+    try {
+      data = utils.getReactComponentProps(detailsEl) || {};
+    } catch (error) {
+      reactReadError = error?.message || String(error);
+    }
     const titleEl = GameUiAdapter.query('loadoutMetadata', detailsEl);
     const svgEl = titleEl?.querySelector('svg');
     const updateBtn = titleEl?.querySelector('button');
     const name = utils.getTextBetween(svgEl, updateBtn).trim();
-    // 与 EDS 保持一致：只从当前配装详情组件读取，避免全局回退选中其他配装。
-    const loadout = Object.values(data.characterLoadoutDict || {}).find((item) => item?.name === name);
+    const {loadouts} = this.getLoadoutValues(feature, data);
+    const loadout = loadouts.find((item) => item?.name === name);
+    if (!loadout) this.warnLoadoutNotFound({feature, detailsEl, titleEl, svgEl, updateBtn, name, data, reactReadError});
     return {loadout, data};
   },
 
   async copyCombatSimulatorData(feature, detailsEl) {
-    const {DataHub, Notifier, i18n} = feature.ctx;
+    const {DataHub, Notifier, i18n, utils} = feature.ctx;
     const {loadout, data} = feature.getCombatLoadout(detailsEl);
     if (!loadout) {
       Notifier.toast(i18n.t('loadoutNotFound'), 'error');
       return;
     }
     const raw = DataHub.characterData.raw || {};
-    const characterData = {characterSkills: data.characterSkillMap ? [
-            ...data.characterSkillMap.values()
-          ] : [], characterAbilities: data.characterAbilityMap ? [
-            ...data.characterAbilityMap.values()
-          ] : [], characterHouseRoomMap: raw.characterHouseRoomMap || {}, characterAchievements: raw.characterAchievements || []};
+    const characterData = {
+      characterSkills: data.characterSkillMap
+        ? utils.getCollectionValues(data.characterSkillMap)
+        : raw.characterSkills || [],
+      characterAbilities: data.characterAbilityMap
+        ? utils.getCollectionValues(data.characterAbilityMap)
+        : raw.characterAbilities || [],
+      characterHouseRoomMap: raw.characterHouseRoomMap || {},
+      characterAchievements: raw.characterAchievements || []
+    };
     await feature.copyJsonToClipboard(
       feature.constructor.CombatSimulatorConverter.convert(loadout, characterData),
       i18n.t('copiedCombatData')
@@ -215,10 +273,10 @@ const edsMilkonomySiteController = {
   },
 
   async readMilkonomyPreset(feature) {
-    const {STORAGE_KEYS, utils} = feature.ctx;
+    const {GmApi, STORAGE_KEYS, utils} = feature.ctx;
     let preset = null;
     try {
-      preset = GM_getValue(STORAGE_KEYS.MILKONOMY_PRESET);
+      preset = await GmApi.getValue(STORAGE_KEYS.MILKONOMY_PRESET);
     } catch {}
     // 仅用于兼容曾经写入利润网站当前域的测试数据。
     if (!preset?.name) {
@@ -229,7 +287,7 @@ const edsMilkonomySiteController = {
     if (preset?.name) return preset;
     const clipboardText = await utils.readClipboard();
     preset = JSON.parse(clipboardText);
-    if (preset?.name) GM_setValue(STORAGE_KEYS.MILKONOMY_PRESET, preset);
+    if (preset?.name) await GmApi.setValue(STORAGE_KEYS.MILKONOMY_PRESET, preset);
     return preset;
   },
 
@@ -267,9 +325,9 @@ const edsMilkonomySiteController = {
   },
 
   initMilkonomySite(feature) {
-    const {CONFIG, STORAGE_KEYS, i18n, utils} = feature.ctx;
+    const {CONFIG, GmApi, STORAGE_KEYS, i18n, utils} = feature.ctx;
     if (!CONFIG.isMilkonomySite) return;
-    GM_addValueChangeListener(STORAGE_KEYS.MILKONOMY_PRESET, (_name, _oldValue, newValue, remote) => {
+    GmApi.addValueChangeListener(STORAGE_KEYS.MILKONOMY_PRESET, (_name, _oldValue, newValue, remote) => {
       if (!remote || !newValue) return;
       window.dispatchEvent(new CustomEvent('mst:eds:milkonomy-preset', {detail: newValue}));
     });

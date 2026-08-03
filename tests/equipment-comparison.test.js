@@ -370,6 +370,40 @@ test('市场位置物品不视为已穿戴，同名装备可比较不同强化�
   assert.ok(compatible.some((item) => item.hrid === baseline.itemHrid));
 });
 
+test('选择基准装备后右侧自动选择相同装备和强化等级', () => {
+  const feature = new EquipmentComparisonFeature();
+  feature.presetKey = 'meleeHammer';
+  let simulationRequested = 0;
+  feature.render = () => {};
+  feature.requestSimulation = () => {
+    simulationRequested++;
+  };
+
+  feature.handleOwnedChange('/items/chaotic_flail');
+  assert.equal(feature.baselineItemHrid, '/items/chaotic_flail');
+  assert.equal(feature.comparisonItemHrid, '/items/chaotic_flail');
+  assert.equal(feature.comparisonEnhancementLevel, feature.baselineEnhancementLevel);
+  assert.equal(simulationRequested, 1);
+
+  const nextBaseline = feature.getBaselineEquipment().find((item) => item.itemHrid !== '/items/chaotic_flail');
+  assert.ok(nextBaseline);
+  feature.handleOwnedChange(nextBaseline.itemHrid);
+  assert.equal(feature.baselineItemHrid, nextBaseline.itemHrid);
+  assert.equal(feature.comparisonItemHrid, nextBaseline.itemHrid);
+  assert.equal(feature.comparisonEnhancementLevel, feature.baselineEnhancementLevel);
+  assert.equal(simulationRequested, 2);
+});
+
+test('重置职业方案时右侧默认跟随基准装备', () => {
+  const feature = new EquipmentComparisonFeature();
+  feature.presetKey = 'magicNature';
+
+  feature.resetSelectionForPreset();
+  assert.ok(feature.baselineItemHrid);
+  assert.equal(feature.comparisonItemHrid, feature.baselineItemHrid);
+  assert.equal(feature.comparisonEnhancementLevel, feature.baselineEnhancementLevel);
+});
+
 test('双手武器替换会清除副手，主手和副手方案可同时保留', () => {
   const service = new EquipmentComparisonService();
   const meleeBuild = service.buildPresetEquipment(EquipmentComparisonFeature.PRESETS.meleeHammer);
