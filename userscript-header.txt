@@ -16,7 +16,7 @@
 // @website            https://home.greasyfork.org.cn/zh-hans/info#/zh-CN/scripts/574037
 // @require            https://cdn.jsdelivr.net/npm/html-to-image@1.11.13/dist/html-to-image.js
 // @require            https://cdn.jsdelivr.net/npm/sweetalert2@11
-// @require            https://cdn.jsdelivr.net/gh/sunrishe/mwi-sunrishe-toolkit@master/vendor/uhtml/uhtml.iife.min.js
+// @require            https://cdn.jsdelivr.net/gh/sunrishe/mwi-sunrishe-toolkit@d2d2cf9f83bac1372495e586b751cc1eddf00697/vendor/uhtml/uhtml.iife.min.js
 // @match              https://www.milkywayidle.com/*
 // @match              https://milkywayidle.com/*
 // @match              https://test.milkywayidle.com/*
