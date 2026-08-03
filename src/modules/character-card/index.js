@@ -1118,6 +1118,17 @@ export class CharacterCardStandaloneDialogs {
     const loadout = event?.detail?.loadout;
     const characterData = CardDataAdapter.fromLoadout(loadout);
     if (!characterData) {
+      console.warn('[MST] 配装名片数据转换失败:', {
+        location: window.location.href,
+        eventDetailKeys: Object.keys(event?.detail || {}).sort(),
+        hasLoadout: Boolean(loadout),
+        loadoutKeys: Object.keys(loadout || {}).sort(),
+        loadoutName: loadout?.name || '',
+        actionTypeHrid: loadout?.actionTypeHrid || '',
+        wearableCount: Object.keys(loadout?.wearableMap || {}).length,
+        foodCount: loadout?.foodItemHrids?.length || 0,
+        drinkCount: loadout?.drinkItemHrids?.length || 0
+      });
       Notifier.toast(i18n.t('loadoutNotFound'), 'error');
       return;
     }
@@ -1491,10 +1502,12 @@ export class CharacterCardTeamController {
       memberService.saveTeamCardToStorage(state.teamCard.teamName, state.teamCard.members);
       const scrollLeft = container.scrollLeft;
       this.renderTeamCardDialog(modal);
-      requestAnimationFrame(() => {
+      const restoreScroll = () => {
         const refreshedContainer = modal.querySelector('#mst-team-character-card');
         if (refreshedContainer) refreshedContainer.scrollLeft = scrollLeft;
-      });
+      };
+      if (window.requestAnimationFrame) window.requestAnimationFrame(restoreScroll);
+      else setTimeout(restoreScroll, 0);
     };
   }
 
@@ -1587,6 +1600,30 @@ export class CharacterCardEntryController {
     this.utils = deps.ctx.utils;
   }
 
+  setTextIfChanged(element, value) {
+    if (element.textContent !== value) element.textContent = value;
+  }
+
+  setAttributeIfChanged(element, name, value) {
+    if (element.getAttribute(name) !== value) element.setAttribute(name, value);
+  }
+
+  bindToolkitButton(button) {
+    if (button.dataset.mstToolkitBound) return;
+    button.dataset.mstToolkitBound = '1';
+    button.addEventListener('click', (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      window.dispatchEvent(new CustomEvent('mst:toolkit:open', {detail: {trigger: event.currentTarget}}));
+    });
+  }
+
+  updateToolkitButton(button) {
+    this.setTextIfChanged(button, this.i18n.t('toolkitShort'));
+    this.setAttributeIfChanged(button, 'title', this.i18n.t('toolkitTitle'));
+    this.bindToolkitButton(button);
+  }
+
   addCharacterCardButton() {
     const selectedElement = document.querySelector('[class*="SharableProfile_overviewTab"]');
     if (!selectedElement) return false;
@@ -1656,7 +1693,7 @@ export class CharacterCardEntryController {
       nameElement.classList.add('mst-my-character-name-card-btn');
       nameElement.setAttribute('role', 'button');
       nameElement.tabIndex = 0;
-      nameElement.title = this.i18n.t('userCharacterCard');
+      this.setAttributeIfChanged(nameElement, 'title', this.i18n.t('userCharacterCard'));
       if (!nameElement.dataset.mstCharacterCardBound) {
         nameElement.dataset.mstCharacterCardBound = '1';
         nameElement.addEventListener('click', (event) => {
@@ -1675,31 +1712,19 @@ export class CharacterCardEntryController {
 
     const existingButton = headerInfoElement.querySelector('.mst-my-character-card-btn');
     if (existingButton) {
-      existingButton.textContent = this.i18n.t('toolkitShort');
-      existingButton.title = this.i18n.t('toolkitTitle');
-      existingButton.onclick = (event) => {
-        event.preventDefault();
-        event.stopPropagation();
-        window.dispatchEvent(new CustomEvent('mst:toolkit:open', {detail: {trigger: existingButton}}));
-        return false;
-      };
+      let changed = false;
+      this.updateToolkitButton(existingButton);
       if (existingButton.nextElementSibling !== totalLevelElement) {
         headerInfoElement.insertBefore(existingButton, totalLevelElement);
+        changed = true;
       }
-      return false;
+      return changed;
     }
 
     const myButton = document.createElement('button');
     myButton.className = 'mst-my-character-card-btn';
     myButton.type = 'button';
-    myButton.textContent = this.i18n.t('toolkitShort');
-    myButton.title = this.i18n.t('toolkitTitle');
-    myButton.onclick = (event) => {
-      event.preventDefault();
-      event.stopPropagation();
-      window.dispatchEvent(new CustomEvent('mst:toolkit:open', {detail: {trigger: myButton}}));
-      return false;
-    };
+    this.updateToolkitButton(myButton);
     headerInfoElement.insertBefore(myButton, totalLevelElement);
     return true;
   }
@@ -1739,11 +1764,10 @@ export class CharacterCardEntryController {
       button.textContent = this.i18n.t('viewCharacterCard');
     });
     document.querySelectorAll('.mst-my-character-card-btn').forEach((button) => {
-      button.textContent = this.i18n.t('toolkitShort');
-      button.title = this.i18n.t('toolkitTitle');
+      this.updateToolkitButton(button);
     });
     document.querySelectorAll('.mst-my-character-name-card-btn').forEach((element) => {
-      element.title = this.i18n.t('userCharacterCard');
+      this.setAttributeIfChanged(element, 'title', this.i18n.t('userCharacterCard'));
     });
     document.querySelectorAll('.mst-party-card-btn').forEach((button) => {
       button.textContent = this.i18n.t('partyCard');

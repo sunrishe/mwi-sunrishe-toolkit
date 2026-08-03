@@ -63,6 +63,15 @@ const equipmentComparisonFormatters = {
 
 // equipment-comparison-selection-controller
 const equipmentComparisonSelectionController = {
+  syncComparisonToBaseline(feature) {
+    const baselineItem = feature.getBaselineItem();
+    const sameItem = feature.getCompatibleEquipment(baselineItem).find((item) => item.hrid === baselineItem?.itemHrid);
+    feature.comparisonItemHrid = sameItem?.hrid || '';
+    feature.comparisonEnhancementLevel = sameItem
+      ? Math.min(feature.baselineEnhancementLevel, feature.getMaxEnhancementLevel(sameItem))
+      : feature.baselineEnhancementLevel;
+  },
+
   getBaselineItem(feature, options = feature.getBaselineEquipment()) {
     const option = options.find((item) => item.itemHrid === feature.baselineItemHrid);
     return option ? {...option, enhancementLevel: feature.baselineEnhancementLevel} : null;
@@ -82,8 +91,7 @@ const equipmentComparisonSelectionController = {
     const baseline = feature.getDefaultBaselineItem();
     feature.baselineItemHrid = baseline?.itemHrid || '';
     feature.baselineEnhancementLevel = baseline?.enhancementLevel || 0;
-    feature.comparisonItemHrid = '';
-    feature.comparisonEnhancementLevel = feature.baselineEnhancementLevel;
+    this.syncComparisonToBaseline(feature);
     feature.pickerMode = '';
     feature.pickerQuery = '';
     feature.pickerEquipmentType = '';
@@ -139,8 +147,7 @@ const equipmentComparisonSelectionController = {
     const option = feature.getBaselineEquipment().find((item) => item.itemHrid === value);
     feature.baselineItemHrid = value;
     feature.baselineEnhancementLevel = option?.enhancementLevel || 0;
-    feature.comparisonItemHrid = '';
-    feature.comparisonEnhancementLevel = feature.baselineEnhancementLevel;
+    this.syncComparisonToBaseline(feature);
     feature.pickerMode = '';
     feature.pickerQuery = '';
     feature.pickerEquipmentType = '';
@@ -148,6 +155,7 @@ const equipmentComparisonSelectionController = {
     feature.simulationToken++;
     feature.simulationState = {key: '', status: 'idle', result: null};
     feature.render();
+    if (feature.comparisonItemHrid) feature.requestSimulation();
   },
 
   handleComparisonChange(feature, value) {

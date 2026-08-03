@@ -216,7 +216,7 @@ export function installAppBootstrap(ctx) {
   if (CONFIG.isGameSite) {
     TemplateRenderer.ready
       .then(() => new AppController(ctx).init())
-      .catch((error) => console.error('[MST] uhtml CDN 加载失败:', error));
+      .catch((error) => console.error('[MST] uhtml @require 加载失败:', error));
   }
 }
 

@@ -8,8 +8,20 @@ const buildEnv = process.env.MST_BUILD_ENV === 'production' ? 'production' : 'de
 const isDev = buildEnv !== 'production';
 
 const headerTemplate = fs.readFileSync('userscript-header.txt', 'utf8');
+
+function formatDevVersionTimestamp(date = new Date()) {
+  const pad = (value, length = 2) => String(value).padStart(length, '0');
+  const year = date.getFullYear();
+  const month = pad(date.getMonth() + 1);
+  const day = pad(date.getDate());
+  const hour = pad(date.getHours());
+  const minute = pad(date.getMinutes());
+  const second = pad(date.getSeconds());
+  return `${year}${month}${day}${hour}${minute}${second}`;
+}
+
 // 开发版脚本使用时间戳后缀，避免油猴缓存同版本构建。
-const version = isDev ? `${packageJson.version}-dev.${Date.now()}` : packageJson.version;
+const version = isDev ? `${packageJson.version}-dev.${formatDevVersionTimestamp()}` : packageJson.version;
 const banner = headerTemplate
   .replace('MWI Sunrishe Toolkit', isDev ? 'MWI Sunrishe Toolkit - Dev' : 'MWI Sunrishe Toolkit')
   .replace('MWI Sunrishe 工具箱', isDev ? 'MWI Sunrishe 工具箱 - 开发版' : 'MWI Sunrishe 工具箱')
