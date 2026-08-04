@@ -227,3 +227,20 @@ test('窄屏只横向滚动名片内容，不带动顶部操作区', () => {
     /\.swal2-popup\.mst-character-card-modal \.swal2-html-container\s*\{[^}]*overflow-x:\s*auto;/
   );
 });
+
+test('顶部用户名片入口不接管游戏原生名称容器布局', () => {
+  const cardSource = readSourceFile('src', 'modules', 'character-card', 'index.js');
+
+  assert.doesNotMatch(cardSource, /headerInfoElement\.classList\.add\('mst-header-card-level-layout'\)/);
+  assert.match(cardSource, /levelLayout\.insertBefore\(existingButton,\s*totalLevelElement\.nextSibling\)/);
+  assert.doesNotMatch(characterCardStylesSource, /\.mst-header-card-level-layout\s*>\s*\[class\*=['"]Header_name/);
+  assert.match(characterCardStylesSource, /\.mst-header-card-level-layout\s*\{[^}]*display:\s*flex\s*!important;/);
+  assert.match(
+    characterCardStylesSource,
+    /\.mst-header-card-level-layout\s*>\s*\.mst-my-character-card-btn\s*\{[^}]*white-space:\s*nowrap;/
+  );
+  assert.match(
+    characterCardStylesSource,
+    /\.mst-header-card-level-layout\s*>\s*:not\(\[class\*='Header_totalLevel'\]\):not\(\.mst-my-character-card-btn\)/
+  );
+});

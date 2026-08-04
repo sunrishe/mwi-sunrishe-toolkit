@@ -19,6 +19,7 @@ const dungeonProfitFormView = {
       useArtisanTea: feature.state.useArtisanTea,
       useGuzzlingPouch: feature.state.useGuzzlingPouch,
       guzzlingLevel: feature.state.guzzlingLevel,
+      excludeBackEquipmentValue: feature.state.excludeBackEquipmentValue,
       customMode: feature.state.customMode,
       customKeySource: feature.state.customKeySource,
       customBuySide: feature.state.customBuySide,
@@ -129,6 +130,19 @@ const dungeonProfitFormView = {
           </select>
         </span>
       </label>
+      <div class="mst-dungeon-field mst-dungeon-toggle-field">
+        <label class="mst-dungeon-auto-buff">
+          <input
+            type="checkbox"
+            .checked=${feature.state.excludeBackEquipmentValue}
+            @change=${(event) => {
+              feature.state.excludeBackEquipmentValue = event.target.checked;
+              feature.render();
+            }}
+          >
+          <span>${i18n.t('excludeBackEquipmentValue')}</span>
+        </label>
+      </div>
       <div class="mst-dungeon-field mst-dungeon-toggle-field">
         <label class="mst-dungeon-auto-buff">
           <input
@@ -488,6 +502,7 @@ const dungeonProfitState = {
       useArtisanTea: true,
       useGuzzlingPouch: Boolean(guzzlingPouch),
       guzzlingLevel: String(guzzlingPouch?.enhancementLevel || 0),
+      excludeBackEquipmentValue: false,
       customMode: false,
       customKeySource: 'materials',
       customBuySide: 'ask',

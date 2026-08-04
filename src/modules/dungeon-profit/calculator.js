@@ -5,10 +5,6 @@ const DUNGEON_REFINEMENT_RATE_BY_TIER = Object.freeze([
   0, 0.33, 1
 ]);
 
-function roundDungeonValue(value) {
-  return Math.round((Number(value) + Number.EPSILON) * 100) / 100;
-}
-
 // dungeon-profit-calculation-methods
 const dungeonProfitCalculationMethods = {
   calculate({
@@ -19,6 +15,7 @@ const dungeonProfitCalculationMethods = {
     useArtisanTea = false,
     useGuzzlingPouch = true,
     guzzlingLevel = 0,
+    excludeBackEquipmentValue = false,
     customMode = false,
     customKeySource = 'materials',
     customBuySide = 'ask',
@@ -32,13 +29,13 @@ const dungeonProfitCalculationMethods = {
 
     const tier = Math.max(0, Math.min(2, Math.trunc(Number(difficultyTier) || 0)));
     const refinementRate = DUNGEON_REFINEMENT_RATE_BY_TIER[tier];
-    const clears = roundDungeonValue((24 * 60) / minutes);
-    const normalPerRun = roundDungeonValue(DUNGEON_NORMAL_CHEST_EXPECTATION);
-    const refinementPerRun = roundDungeonValue(DUNGEON_NORMAL_CHEST_EXPECTATION * refinementRate);
-    const totalChestPerRun = roundDungeonValue(normalPerRun + refinementPerRun);
-    const normalQuantity = roundDungeonValue(clears * DUNGEON_NORMAL_CHEST_EXPECTATION);
-    const refinementQuantity = roundDungeonValue(clears * DUNGEON_NORMAL_CHEST_EXPECTATION * refinementRate);
-    const totalChestQuantity = roundDungeonValue(normalQuantity + refinementQuantity);
+    const clears = (24 * 60) / minutes;
+    const normalPerRun = DUNGEON_NORMAL_CHEST_EXPECTATION;
+    const refinementPerRun = DUNGEON_NORMAL_CHEST_EXPECTATION * refinementRate;
+    const totalChestPerRun = normalPerRun + refinementPerRun;
+    const normalQuantity = clears * DUNGEON_NORMAL_CHEST_EXPECTATION;
+    const refinementQuantity = clears * DUNGEON_NORMAL_CHEST_EXPECTATION * refinementRate;
+    const totalChestQuantity = normalQuantity + refinementQuantity;
     // 地下城结束奖励使用固定长期预期，不应用队伍人数或战斗掉落 Buff。
     const createRewards = (normalChestQuantity, refinementChestQuantity) =>
       (dungeonInfo.rewardDropTable || []).map((drop) => ({
@@ -56,13 +53,26 @@ const dungeonProfitCalculationMethods = {
     const materialSettings = this.getMaterialSettings(useArtisanTea, useGuzzlingPouch, guzzlingLevel);
     const missingPrices = new Set();
     const tokenValues = this.getTokenValues(true);
-    const normalOutput = this.valueExpectedDrops(expectation.normalDrops, tokenValues, true, missingPrices);
-    const refinementOutput = this.valueExpectedDrops(expectation.refinementDrops, tokenValues, true, missingPrices);
+    const outputOptions = {excludeBackEquipmentValue};
+    const normalOutput = this.valueExpectedDrops(
+      expectation.normalDrops,
+      tokenValues,
+      true,
+      missingPrices,
+      outputOptions
+    );
+    const refinementOutput = this.valueExpectedDrops(
+      expectation.refinementDrops,
+      tokenValues,
+      true,
+      missingPrices,
+      outputOptions
+    );
     const allDrops = new Map(expectation.normalDrops);
     expectation.refinementDrops.forEach((quantity, itemHrid) => {
       allDrops.set(itemHrid, Number(allDrops.get(itemHrid) || 0) + quantity);
     });
-    const totalOutput = this.valueExpectedDrops(allDrops, tokenValues, true, missingPrices);
+    const totalOutput = this.valueExpectedDrops(allDrops, tokenValues, true, missingPrices, outputOptions);
     const createOpeningKeyQuantities = (dailyKeys, perRunKeys) =>
       [
         ...new Set([
@@ -70,8 +80,8 @@ const dungeonProfitCalculationMethods = {
         ])
       ].map((itemHrid) => ({
         itemHrid,
-        quantity: roundDungeonValue(dailyKeys.get(itemHrid) || 0),
-        quantityPerRun: roundDungeonValue(perRunKeys.get(itemHrid) || 0)
+        quantity: dailyKeys.get(itemHrid) || 0,
+        quantityPerRun: perRunKeys.get(itemHrid) || 0
       }));
     const openingKeyQuantities = createOpeningKeyQuantities(expectation.openingKeys, expectationPerRun.openingKeys);
     const normalOpeningKeyQuantities = createOpeningKeyQuantities(
@@ -85,10 +95,8 @@ const dungeonProfitCalculationMethods = {
 
     const ticketQuantity = normalQuantity;
     const ticketQuantityPerRun = normalPerRun;
-    const openingKeyQuantity = roundDungeonValue(openingKeyQuantities.reduce((sum, key) => sum + key.quantity, 0));
-    const openingKeyQuantityPerRun = roundDungeonValue(
-      openingKeyQuantities.reduce((sum, key) => sum + key.quantityPerRun, 0)
-    );
+    const openingKeyQuantity = openingKeyQuantities.reduce((sum, key) => sum + key.quantity, 0);
+    const openingKeyQuantityPerRun = openingKeyQuantities.reduce((sum, key) => sum + key.quantityPerRun, 0);
     const dailyConsumablesCostCoins = Math.max(0, Number(dailyConsumablesCost) || 0) * 1_000_000;
     const totalRevenueConservative = totalOutput.bidTotal;
     const totalRevenueOptimistic = totalOutput.askTotal;
@@ -342,6 +350,12 @@ const dungeonProfitPricingMethods = {
         missing.add(input.itemHrid);
       }
     });
+  },
+
+  isBackEquipment(itemHrid) {
+    const {DataHub} = this.ctx;
+    const item = DataHub.getClientDataMap('itemDetailMap')?.[itemHrid];
+    return item?.equipmentDetail?.type === '/equipment_types/back';
   }
 };
 
@@ -428,7 +442,7 @@ const dungeonProfitExpectationMethods = {
     return tokenValues;
   },
 
-  valueExpectedDrops(drops, tokenValues, applyMarketTax, missing) {
+  valueExpectedDrops(drops, tokenValues, applyMarketTax, missing, options = {}) {
     let askTotal = 0;
     let bidTotal = 0;
     const items = [
@@ -437,9 +451,14 @@ const dungeonProfitExpectationMethods = {
       ([
         itemHrid, quantity
       ]) => {
-        const ask = Number(tokenValues.ask.get(itemHrid) || this.getDirectPrice(itemHrid, 'ask', applyMarketTax));
-        const bid = Number(tokenValues.bid.get(itemHrid) || this.getDirectPrice(itemHrid, 'bid', applyMarketTax));
-        if (itemHrid !== '/items/coin' && ask <= 0 && bid <= 0) missing.add(itemHrid);
+        const isExcludedBackEquipment = options.excludeBackEquipmentValue && this.isBackEquipment(itemHrid);
+        const ask = isExcludedBackEquipment
+          ? 0
+          : Number(tokenValues.ask.get(itemHrid) || this.getDirectPrice(itemHrid, 'ask', applyMarketTax));
+        const bid = isExcludedBackEquipment
+          ? 0
+          : Number(tokenValues.bid.get(itemHrid) || this.getDirectPrice(itemHrid, 'bid', applyMarketTax));
+        if (!isExcludedBackEquipment && itemHrid !== '/items/coin' && ask <= 0 && bid <= 0) missing.add(itemHrid);
         const askValue = quantity * ask;
         const bidValue = quantity * bid;
         askTotal += askValue;

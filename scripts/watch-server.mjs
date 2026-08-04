@@ -2,12 +2,14 @@ import fs from 'node:fs';
 import http from 'node:http';
 import path from 'node:path';
 import {spawn} from 'node:child_process';
+import {pathToFileURL} from 'node:url';
 
 const rootDir = process.cwd();
 const distDir = path.join(rootDir, 'dist');
 const headerPath = path.join(rootDir, 'userscript-header.txt');
 const devScriptPath = path.join(distDir, 'mst.script.dev.user.js');
 const localDebugPath = path.join(distDir, 'MST-local-debug.user.js');
+const httpDebugPath = path.join(distDir, 'MST-http-debug.user.js');
 const host = process.env.MST_DEV_SERVER_HOST || '127.0.0.1';
 const startPort = Number.parseInt(process.env.MST_DEV_SERVER_PORT || '5173', 10);
 
@@ -28,15 +30,15 @@ function getDevScriptVersion() {
   }
 }
 
-function createDebugHeader(origin) {
+function createDebugHeader({name, requireUrl}) {
   const version = getDevScriptVersion();
   let header = fs.readFileSync(headerPath, 'utf8');
   header = header
-    .replace('MWI Sunrishe Toolkit', 'MST 本地调试')
-    .replace('MWI Sunrishe 工具箱', 'MST 本地调试')
+    .replaceAll('MWI Sunrishe Toolkit', name)
+    .replaceAll('MWI Sunrishe 工具箱', name)
     .replace('__MST_VERSION__', `0.0.0-local.${version}`);
 
-  const requireLine = `// @require            ${origin}/mst.script.dev.user.js?v=${version}`;
+  const requireLine = `// @require            ${requireUrl}`;
   const lastRequireMatch = [
     ...header.matchAll(/^\/\/ @require\s+.+$/gm)
   ].pop();
@@ -53,7 +55,23 @@ function createDebugHeader(origin) {
 
 function writeLocalDebugFile(origin) {
   if (!fs.existsSync(devScriptPath)) return;
-  fs.writeFileSync(localDebugPath, createDebugHeader(origin), 'utf8');
+  const version = getDevScriptVersion();
+  fs.writeFileSync(
+    localDebugPath,
+    createDebugHeader({
+      name: 'MST 本地调试（文件）',
+      requireUrl: pathToFileURL(devScriptPath).href
+    }),
+    'utf8'
+  );
+  fs.writeFileSync(
+    httpDebugPath,
+    createDebugHeader({
+      name: 'MST 本地调试（HTTP）',
+      requireUrl: `${origin}/mst.script.dev.user.js?v=${version}`
+    }),
+    'utf8'
+  );
 }
 
 function sendText(response, statusCode, body, contentType = 'text/plain; charset=utf-8') {
@@ -91,7 +109,7 @@ function createServer(port) {
     const pathname = decodeURIComponent(requestUrl.pathname);
 
     if (pathname === '/') {
-      sendText(response, 200, 'MST dev server is running. Use dist/MST-local-debug.user.js in Tampermonkey.');
+      sendText(response, 200, 'MST dev server is running. Use dist/MST-http-debug.user.js in Tampermonkey.');
       return;
     }
 
@@ -150,7 +168,9 @@ function watchDevScript(origin) {
     lastVersion = version;
     writeLocalDebugFile(origin);
     console.log(`[MST] 已刷新文件入口: ${path.relative(rootDir, localDebugPath)}`);
-    console.log(`[MST] 当前 @require: ${origin}/mst.script.dev.user.js?v=${version}`);
+    console.log(`[MST] 已刷新 HTTP 入口: ${path.relative(rootDir, httpDebugPath)}`);
+    console.log(`[MST] 文件版 @require: ${pathToFileURL(devScriptPath).href}`);
+    console.log(`[MST] HTTP 版 @require: ${origin}/mst.script.dev.user.js?v=${version}`);
   };
 
   fs.mkdirSync(distDir, {recursive: true});
@@ -167,8 +187,11 @@ const {server, port} = await listen(Number.isFinite(startPort) ? startPort : 517
 const origin = `http://${host}:${port}`;
 
 console.log(`[MST] HTTP 服务已启动: ${origin}/`);
-console.log(`[MST] 油猴请安装本地文件: ${path.relative(rootDir, localDebugPath)}`);
-console.log('[MST] 文件会自动刷新 @version 和 @require；油猴未自动更新时，请重新导入该文件或在脚本详情页检查更新。');
+console.log(`[MST] 文件版油猴入口: ${path.relative(rootDir, localDebugPath)}`);
+console.log(`[MST] HTTP 版油猴入口: ${path.relative(rootDir, httpDebugPath)}`);
+console.log(
+  '[MST] 两个入口都会自动刷新 @version 和 @require；油猴未自动更新时，请重新导入对应文件或在脚本详情页检查更新。'
+);
 
 const rollupWatch = startRollupWatch();
 watchDevScript(origin);

@@ -211,6 +211,56 @@ test('小时经验按主修、选修及同修状态计算', () => {
   );
 });
 
+test('当前战斗单职业小时经验按三七拆分为主修和选修', () => {
+  const feature = new CombatUpgradeCalculatorFeature();
+  const now = Date.parse('2026-08-04T13:00:00Z');
+  const fill = feature.getBattleExperienceFill(
+    {
+      character: {id: 1},
+      combatStartTime: '2026-08-04T12:00:00Z',
+      battlePlayers: [
+        {
+          character: {id: 1},
+          totalSkillExperienceMap: {'/skills/magic': 100000}
+        }
+      ]
+    },
+    now
+  );
+
+  assert.equal(fill.primaryRate, 30000);
+  assert.equal(fill.secondaryRate, 70000);
+});
+
+test('当前战斗双职业小时经验按当前列表类型分别填入', () => {
+  const feature = new CombatUpgradeCalculatorFeature();
+  feature.rows = [
+    {skillHrid: '/skills/stamina', trainingType: 'secondary'}, {skillHrid: '/skills/melee', trainingType: 'primary'}
+  ];
+  const fill = feature.getExperienceFillFromRates([
+    {skillHrid: '/skills/stamina', rate: 70000}, {skillHrid: '/skills/melee', rate: 30000}
+  ]);
+
+  assert.equal(fill.primaryRate, 30000);
+  assert.equal(fill.secondaryRate, 70000);
+});
+
+test('当前战斗五职业小时经验按总和三七拆分', () => {
+  const feature = new CombatUpgradeCalculatorFeature();
+  const fill = feature.getExperienceFillFromRates([
+    {
+      skillHrid: '/skills/stamina',
+      rate: 10000
+    }, {skillHrid: '/skills/intelligence', rate: 20000}, {skillHrid: '/skills/attack', rate: 30000}, {
+      skillHrid: '/skills/defense',
+      rate: 40000
+    }, {skillHrid: '/skills/ranged', rate: 100000}
+  ]);
+
+  assert.equal(fill.primaryRate, 60000);
+  assert.equal(fill.secondaryRate, 140000);
+});
+
 test('重复职业继承前一段的结束等级', () => {
   const feature = new CombatUpgradeCalculatorFeature();
   skillLevels.clear();

@@ -74,6 +74,8 @@ const equipmentComparisonSlotCatalog = {
     const type = itemDetail.equipmentDetail.type;
     const isWeapon = type === '/equipment_types/main_hand' || type === '/equipment_types/two_hand';
     if (isWeapon && preset.weaponTypeHrid && type !== preset.weaponTypeHrid) return false;
+    // 双手武器方案没有副手槽，避免模拟出游戏中无法同时穿戴的配装。
+    if (type === '/equipment_types/off_hand' && preset.weaponTypeHrid === '/equipment_types/two_hand') return false;
     if (isWeapon && preset.damageTypeHrid && combatStats.damageType !== preset.damageTypeHrid) return false;
     return true;
   }
