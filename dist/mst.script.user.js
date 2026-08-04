@@ -3,7 +3,7 @@
 // @name:zh-CN         MWI Sunrishe 工具箱
 // @name:en            MWI Sunrishe Toolkit
 // @namespace          http://tampermonkey.net/
-// @version            2.7.26
+// @version            2.8.3
 // @description        MWI Sunrishe 综合工具箱：提供角色/队伍名片、技能/房屋/战斗升级规划、装备提升计算器、地下城收益、配装同步和市场伴侣增强。
 // @description:zh-CN  MWI Sunrishe 综合工具箱：提供角色/队伍名片、技能/房屋/战斗升级规划、装备提升计算器、地下城收益、配装同步和市场伴侣增强。
 // @description:en     MST toolkit for character/party cards, ability/house/combat upgrade planning, equipment comparison, dungeon profit, loadout sync, and Market Mate enhancements.
@@ -1625,8 +1625,8 @@
   const DUNGEON_CALCULATOR_MESSAGES = {
     dungeonCalculatorHelpTitle: {zh: '查看地下城收益说明', en: 'View dungeon profit instructions'},
     dungeonCalculatorHelp: {
-      zh: '使用：选择地下城、难度和单次耗时；每日固定按 24 小时计算。每日药品/饮料成本可留空，填写时单位为 M。工匠茶和暴饮之囊只影响制作钥匙成本，暴饮之囊需要勾选后才会按所选强化等级生效。\n\n期望：每日轮次 = 1440 ÷ 单次耗时，并保留两位小数。普通宝箱固定按每车 1.295 个计算；T0 不掉精炼宝箱，T1 精炼宝箱为每车 1.295 × 0.33，T2 为每车 1.295 个。门票数量等于普通宝箱期望数量，数量显示会去掉末尾 0。\n\n成本：默认同时展示制作钥匙和购买钥匙。制作钥匙读取官方配方并受工匠茶、暴饮之囊影响；购买钥匙读取门票和开箱钥匙的成品市场价。材料成本区只显示买入方向，预期产出区只显示卖出方向。自定义模式可选择钥匙来源、买入档位和卖出档位；左侧保留所选来源的区间，右侧显示自定义组合。\n\n收益：宝箱内容按官方掉落率和平均数量递归展开，重复物品会合并，嵌套宝箱会继续展开。卖出收入固定扣除 2% 市场税。单个普通宝箱税后收益会扣除单箱分摊的门票和普通开箱钥匙成本；单个精炼宝箱税后收益只扣除精炼开箱钥匙成本。每日期望收益按单箱收益乘每日宝箱数量汇总后，再扣除每日药品/饮料成本；每车期望收益等于每日期望收益除以每日轮次。\n\n限制：通关耗时需要手动填写，当前不会自动读取战斗耗时。结果是当前参数和市场价格下的确定性期望，不预测价格变化。完全缺价的物品按 0 估值并提示。',
-      en: 'Usage: Select a dungeon, tier, and clear time. Every day uses a fixed 24-hour calculation. Daily food/drink cost is optional and entered in millions. Artisan Tea and Guzzling Pouch affect crafted-key costs only; Guzzling Pouch applies only when its checkbox is enabled and uses the selected enhancement level.\n\nExpectation: Daily runs = 1440 ÷ clear time, rounded to two decimals. Normal Chests use a fixed expectation of 1.295 per run. T0 has no Refinement Chest; T1 uses 1.295 × 0.33 per run; T2 uses 1.295 per run. Entry Ticket quantity equals expected Normal Chest quantity, and displayed quantities hide trailing zeros.\n\nCosts: Crafted Keys and Purchased Keys are shown by default. Crafted-key costs use official recipes and are affected by Artisan Tea and Guzzling Pouch; purchased-key costs use finished Entry Ticket and Chest Key market prices. The Material Costs section shows purchase sides only, and Expected Output shows sale sides only. Custom Mode selects the key source, buy side, and sell side; the left columns keep the selected source range, while the right column shows the custom combination.\n\nProfit: Chest contents recursively use official drop rates and average quantities; duplicate items are combined and nested chests are expanded. Sale revenue always deducts a fixed 2% market tax. Each Normal Chest After-Tax Profit deducts allocated Entry Ticket and Normal Chest Key costs; each Refinement Chest After-Tax Profit deducts its Refinement Chest Key cost. Daily Expected Profit multiplies per-chest profit by daily chest quantities, then deducts daily food/drink cost; Expected Profit per Run divides it by Daily Runs.\n\nLimits: Clear time is entered manually and is not read from combat automatically. Results are deterministic expectations at current parameters and market prices and do not predict price changes. Items with no valid price are valued at 0 and reported.'
+      zh: '使用：选择地下城、难度和单次耗时；每日固定按 24 小时计算。每日药品/饮料成本可留空，填写时单位为 M。工匠茶和暴饮之囊只影响制作钥匙成本，暴饮之囊需要勾选后才会按所选强化等级生效。\n\n期望：每日轮次 = 1440 ÷ 单次耗时，计算保留完整精度。普通宝箱固定按每车 1.295 个计算；T0 不掉精炼宝箱，T1 精炼宝箱为每车 1.295 × 0.33，T2 为每车 1.295 个。门票数量等于普通宝箱期望数量，数量显示最多保留两位小数并去掉末尾 0。\n\n成本：默认同时展示制作钥匙和购买钥匙。制作钥匙读取官方配方并受工匠茶、暴饮之囊影响；购买钥匙读取门票和开箱钥匙的成品市场价。材料成本区只显示买入方向，预期产出区只显示卖出方向。自定义模式可选择钥匙来源、买入档位和卖出档位；左侧保留所选来源的区间，右侧显示自定义组合。\n\n收益：宝箱内容按官方掉落率和平均数量递归展开，重复物品会合并，嵌套宝箱会继续展开。卖出收入固定扣除 2% 市场税。勾选“披风不计算收益”后，所有背部装备产物按 0 估值。单个普通宝箱税后收益会扣除单箱分摊的门票和普通开箱钥匙成本；单个精炼宝箱税后收益只扣除精炼开箱钥匙成本。每日期望收益按单箱收益乘每日宝箱数量汇总后，再扣除每日药品/饮料成本；每车期望收益等于每日期望收益除以每日轮次。\n\n限制：通关耗时需要手动填写，当前不会自动读取战斗耗时。结果是当前参数和市场价格下的确定性期望，不预测价格变化。完全缺价的物品按 0 估值并提示。',
+      en: 'Usage: Select a dungeon, tier, and clear time. Every day uses a fixed 24-hour calculation. Daily food/drink cost is optional and entered in millions. Artisan Tea and Guzzling Pouch affect crafted-key costs only; Guzzling Pouch applies only when its checkbox is enabled and uses the selected enhancement level.\n\nExpectation: Daily runs = 1440 ÷ clear time, kept at full precision for calculation. Normal Chests use a fixed expectation of 1.295 per run. T0 has no Refinement Chest; T1 uses 1.295 × 0.33 per run; T2 uses 1.295 per run. Entry Ticket quantity equals expected Normal Chest quantity, and displayed quantities use at most two decimals and hide trailing zeros.\n\nCosts: Crafted Keys and Purchased Keys are shown by default. Crafted-key costs use official recipes and are affected by Artisan Tea and Guzzling Pouch; purchased-key costs use finished Entry Ticket and Chest Key market prices. The Material Costs section shows purchase sides only, and Expected Output shows sale sides only. Custom Mode selects the key source, buy side, and sell side; the left columns keep the selected source range, while the right column shows the custom combination.\n\nProfit: Chest contents recursively use official drop rates and average quantities; duplicate items are combined and nested chests are expanded. Sale revenue always deducts a fixed 2% market tax. When Exclude Back Equipment Profit is enabled, all back-equipment output is valued at 0. Each Normal Chest After-Tax Profit deducts allocated Entry Ticket and Normal Chest Key costs; each Refinement Chest After-Tax Profit deducts its Refinement Chest Key cost. Daily Expected Profit multiplies per-chest profit by daily chest quantities, then deducts daily food/drink cost; Expected Profit per Run divides it by Daily Runs.\n\nLimits: Clear time is entered manually and is not read from combat automatically. Results are deterministic expectations at current parameters and market prices and do not predict price changes. Items with no valid price are valued at 0 and reported.'
     },
     dungeon: {zh: '地下城', en: 'Dungeon'},
     dungeonNameChimericalDen: {zh: '奇幻洞穴', en: 'Chimerical Den'},
@@ -1639,6 +1639,7 @@
     artisanTea: {zh: '使用工匠茶', en: 'Use Artisan Tea'},
     useGuzzlingPouch: {zh: '使用暴饮之囊', en: 'Use Guzzling Pouch'},
     guzzlingLevel: {zh: '暴饮之囊强化等级', en: 'Guzzling Pouch Enhancement Level'},
+    excludeBackEquipmentValue: {zh: '披风不计算收益', en: 'Exclude Back Equipment Profit'},
     customMode: {zh: '自定义模式', en: 'Custom Mode'},
     keySource: {zh: '钥匙来源', en: 'Key Source'},
     keyMaterialPurchaseMethod: {zh: '钥匙材料购买方式', en: 'Key Material Purchase Method'},
@@ -1742,6 +1743,9 @@
   const COMBAT_CALCULATOR_MESSAGES = {
     primaryXpRate: {zh: '主修经验 (K/h)', en: 'Primary XP (K/h)'},
     secondaryXpRate: {zh: '选修经验 (K/h)', en: 'Secondary XP (K/h)'},
+    useCurrentCombatXp: {zh: '使用当前战斗经验', en: 'Use Current Combat XP'},
+    currentCombatXpApplied: {zh: '已填入当前战斗小时经验', en: 'Current combat XP rates filled'},
+    currentCombatXpUnavailable: {zh: '当前战斗小时经验不可用', en: 'Current combat XP rates are unavailable'},
     optionalEph: {zh: 'EPH（选填）', en: 'EPH (optional)'},
     resetList: {zh: '重置列表', en: 'Reset List'},
     order: {zh: '序号', en: 'Sequence'},
@@ -1753,8 +1757,8 @@
     concurrentTraining: {zh: '同修', en: 'Train Together'},
     combatCalculatorHelpTitle: {zh: '查看战斗升级说明', en: 'View combat calculator instructions'},
     combatCalculatorHelp: {
-      zh: '使用：填写顶部主修经验和选修经验；双击上方专业添加行，只能从“序号”列拖动排序。每行可以设置起始等级、目标等级、类型、同修和单独经验；单独经验会覆盖顶部对应类型经验。EPH 只用于估算总次数，不影响升级时间。重置列表会恢复耐力、智力、攻击、防御和当前等级最高的战斗主修。\n\n限制：耐力、智力固定为选修；远程、魔法固定为主修；攻击、防御、近战可切换主修或选修。列表至少需要一项主修，同一序号内不能出现重复专业。\n\n计算：选修使用选修经验；未同修的主修使用主修经验加选修经验；同修主修只使用主修经验。主修勾选同修后，其目标等级不能手动修改，会按同组选修训练时长反推出结束等级和经验百分比。相邻同修行共用同一序号；同一序号同时开始，下一序号等待上一序号全部完成。\n\n数据：未自定义起始等级时使用角色实际等级和经验；自定义后按输入等级的 0% 经验开始。重复专业会继承前一次训练结束后的精确进度。',
-      en: 'Usage: Enter shared primary and secondary XP rates; double-click a skill above to add a row, and drag only from the Sequence column to reorder. Each row can set start level, target level, type, Train Together, and a row-specific XP rate; a row rate overrides the shared rate for that type. EPH only estimates total runs and does not affect upgrade time. Reset List restores Stamina, Intelligence, Attack, Defense, and the highest-level primary combat skill.\n\nLimits: Stamina and Intelligence are always secondary; Ranged and Magic are always primary; Attack, Defense, and Melee can switch between primary and secondary. At least one primary row is required, and the same skill cannot appear twice in one sequence.\n\nCalculation: Secondary rows use secondary XP. A primary row trained alone uses primary plus secondary XP. A primary row trained together uses primary XP only. When a primary row is trained together, its target cannot be edited and is derived from the same-sequence secondary training duration, including ending XP percentage. Adjacent together rows share one sequence; rows in one sequence start together, and the next sequence waits for all rows in the previous sequence to finish.\n\nData: Without a custom start level, actual character level and XP are used; a custom start begins at 0% XP of that level. A repeated skill inherits the exact progress from its previous segment.'
+      zh: '使用：填写顶部主修经验和选修经验；战斗中也可点击“使用当前战斗经验”自动填入。双击上方专业添加行，只能从“序号”列拖动排序。每行可以设置起始等级、目标等级、类型、同修和单独经验；单独经验会覆盖顶部对应类型经验。EPH 只用于估算总次数，不影响升级时间。重置列表会恢复耐力、智力、攻击、防御和当前等级最高的战斗主修。\n\n限制：耐力、智力固定为选修；远程、魔法固定为主修；攻击、防御、近战可切换主修或选修。列表至少需要一项主修，同一序号内不能出现重复专业。\n\n计算：选修使用选修经验；未同修的主修使用主修经验加选修经验；同修主修只使用主修经验。主修勾选同修后，其目标等级不能手动修改，会按同组选修训练时长反推出结束等级和经验百分比。相邻同修行共用同一序号；同一序号同时开始，下一序号等待上一序号全部完成。当前战斗只读到 1 个或 5 个职业经验时按总经验 3:7 拆分主修/选修；读到 2 个职业时按当前列表类型分别填入。\n\n数据：未自定义起始等级时使用角色实际等级和经验；自定义后按输入等级的 0% 经验开始。重复专业会继承前一次训练结束后的精确进度。当前战斗经验只读取游戏战斗状态，不更新名片或通用角色数据。',
+      en: 'Usage: Enter shared primary and secondary XP rates; during combat, you can also click Use Current Combat XP to fill them automatically. Double-click a skill above to add a row, and drag only from the Sequence column to reorder. Each row can set start level, target level, type, Train Together, and a row-specific XP rate; a row rate overrides the shared rate for that type. EPH only estimates total runs and does not affect upgrade time. Reset List restores Stamina, Intelligence, Attack, Defense, and the highest-level primary combat skill.\n\nLimits: Stamina and Intelligence are always secondary; Ranged and Magic are always primary; Attack, Defense, and Melee can switch between primary and secondary. At least one primary row is required, and the same skill cannot appear twice in one sequence.\n\nCalculation: Secondary rows use secondary XP. A primary row trained alone uses primary plus secondary XP. A primary row trained together uses primary XP only. When a primary row is trained together, its target cannot be edited and is derived from the same-sequence secondary training duration, including ending XP percentage. Adjacent together rows share one sequence; rows in one sequence start together, and the next sequence waits for all rows in the previous sequence to finish. Current combat XP is split 3:7 when one or five skill rates are available; when two rates are available, they are filled by the current row types.\n\nData: Without a custom start level, actual character level and XP are used; a custom start begins at 0% XP of that level. A repeated skill inherits the exact progress from its previous segment. Current combat XP only reads game battle state and does not update cards or shared character data.'
     },
     combatPrimaryRequired: {
       zh: '训练方案至少需要一条主修；耐力等选修不能脱离主修单独训练。',
@@ -6578,10 +6582,10 @@
 .mst-my-character-name-card-btn{display:inline-flex!important;box-sizing:border-box;max-width:100%;align-items:center;justify-content:flex-end;padding:0 var(--spacing-xs, .25rem);border:var(--border-width-thin, 1px) solid var(--color-space-400, #7184d8);border-radius:var(--radius-xs, .125rem);background:#2c2e45b8;cursor:pointer}
 .mst-my-character-name-card-btn:hover{border-color:var(--color-space-300, #98a7e9);background:var(--color-midnight-400, #323450)}
 .mst-my-character-name-card-btn:focus-visible{outline:1px solid var(--color-space-200, #bbc5f1);outline-offset:1px}
-.mst-header-card-level-layout{display:grid!important;grid-template-columns:auto auto;align-items:center!important;justify-content:end!important;column-gap:var(--spacing-xs, .25rem);row-gap:var(--spacing-xs, .25rem)}
-.mst-header-card-level-layout>[class*=Header_name]{grid-column:1/-1;justify-self:end}
-.mst-header-card-level-layout>.mst-my-character-card-btn{grid-column:2;grid-row:2;justify-self:end}
-.mst-header-card-level-layout>[class*=Header_totalLevel]{grid-column:1;grid-row:2;justify-self:end;white-space:nowrap}
+.mst-header-card-level-layout{display:flex!important;flex-wrap:wrap;max-width:100%;align-items:center!important;justify-content:flex-end!important;column-gap:var(--spacing-xs, .25rem);row-gap:var(--spacing-xxs, .125rem);white-space:nowrap}
+.mst-header-card-level-layout>[class*=Header_totalLevel]{flex:0 1 auto;white-space:nowrap}
+.mst-header-card-level-layout>.mst-my-character-card-btn{flex:0 0 auto;white-space:nowrap}
+.mst-header-card-level-layout>:not([class*=Header_totalLevel]):not(.mst-my-character-card-btn){flex:0 0 100%;text-align:right;white-space:nowrap}
 .mst-download-section{text-align:center;margin-bottom:var(--spacing-sm-plus, .75rem)}
 .mst-download-card-btn,.mst-download-team-card-btn,.mst-copy-card-btn,.mst-copy-team-card-btn,.mst-reset-team-card-btn,.mst-reset-character-card-btn{display:inline-flex;align-items:center;justify-content:center;box-sizing:border-box;min-width:var(--button-min-width-normal, 5.25rem);height:var(--button-height-normal, 1.875rem);background:var(--color-primary, #4357af);color:var(--color-text-dark-mode, #e7e7e7);border:none;padding:0 var(--button-padding-x-normal, .625rem);border-radius:var(--radius-sm, .25rem);font-family:Roboto,Helvetica,Arial,sans-serif;font-size:var(--font-size-base, .875rem);font-weight:var(--font-weight-semibold, 600);line-height:1;cursor:pointer;transition:background-color .15s ease}
 .mst-download-card-btn:hover:not(:disabled),.mst-download-team-card-btn:hover:not(:disabled),.mst-copy-card-btn:hover:not(:disabled),.mst-copy-team-card-btn:hover:not(:disabled),.mst-reset-team-card-btn:hover:not(:disabled),.mst-reset-character-card-btn:hover:not(:disabled){background:var(--color-primary-hover, #344386)}
@@ -8323,18 +8327,23 @@
       const characterInfoElements = this.GameUiAdapter.queryAll('headerCharacterInfo');
       const headerInfoElement = Array.from(characterInfoElements)
         .map((characterInfo) =>
-          Array.from(characterInfo.children).find((child) =>
-            Array.from(child.children || []).some((element) =>
-              Array.from(element.classList).some((className) => className.startsWith('Header_totalLevel'))
-            )
-          )
+          Array.from(characterInfo.children).find((child) => child.querySelector?.('[class*="Header_totalLevel"]'))
         )
         .find(Boolean);
-      const totalLevelElement = Array.from(headerInfoElement?.children || []).find((element) =>
-        Array.from(element.classList).some((className) => className.startsWith('Header_totalLevel'))
-      );
+      const totalLevelElement = headerInfoElement?.querySelector('[class*="Header_totalLevel"]');
       if (!headerInfoElement || !totalLevelElement) return false;
-      headerInfoElement.classList.add('mst-header-card-level-layout');
+      let changed = false;
+      let levelLayout = totalLevelElement.closest('.mst-header-card-level-layout');
+      if (!levelLayout || levelLayout.parentElement !== headerInfoElement) {
+        levelLayout = document.createElement('div');
+        levelLayout.className = 'mst-header-card-level-layout';
+        headerInfoElement.insertBefore(levelLayout, totalLevelElement);
+        changed = true;
+      }
+      if (totalLevelElement.parentElement !== levelLayout) {
+        levelLayout.appendChild(totalLevelElement);
+        changed = true;
+      }
       const nameElement = Array.from(headerInfoElement.children || []).find((element) =>
         Array.from(element.classList).some((className) => className.startsWith('Header_name'))
       );
@@ -8361,10 +8370,9 @@
 
       const existingButton = headerInfoElement.querySelector('.mst-my-character-card-btn');
       if (existingButton) {
-        let changed = false;
         this.updateToolkitButton(existingButton);
-        if (existingButton.nextElementSibling !== totalLevelElement) {
-          headerInfoElement.insertBefore(existingButton, totalLevelElement);
+        if (totalLevelElement.nextElementSibling !== existingButton) {
+          levelLayout.insertBefore(existingButton, totalLevelElement.nextSibling);
           changed = true;
         }
         return changed;
@@ -8374,7 +8382,7 @@
       myButton.className = 'mst-my-character-card-btn';
       myButton.type = 'button';
       this.updateToolkitButton(myButton);
-      headerInfoElement.insertBefore(myButton, totalLevelElement);
+      levelLayout.insertBefore(myButton, totalLevelElement.nextSibling);
       return true;
     }
 
@@ -9069,6 +9077,11 @@
 
   // combat-upgrade-dialog-view
   const combatUpgradeDialogView = {
+    COMBAT_SKILL_HRIDS: new Set([
+      '/skills/stamina', '/skills/intelligence', '/skills/attack', '/skills/defense', '/skills/melee',
+      '/skills/ranged', '/skills/magic'
+    ]),
+
     getProfessionGridHtml(feature) {
       const {CharacterDataService, i18n, utils} = feature.ctx;
       return CharacterDataService.getCombatSkills()
@@ -9092,6 +9105,7 @@
       <label>${utils.escapeHtml(i18n.t('primaryXpRate'))}        <input data-field="primary-rate" type="number" min="0" step="0.1" inputmode="decimal"></label>
       <label>${utils.escapeHtml(i18n.t('secondaryXpRate'))}        <input data-field="secondary-rate" type="number" min="0" step="0.1" inputmode="decimal"></label>
       <label>${utils.escapeHtml(i18n.t('optionalEph'))}        <input data-field="eph" type="number" min="0" step="0.1" inputmode="decimal"></label>
+      <button type="button" class="mst-combat-current-xp">${utils.escapeHtml(i18n.t('useCurrentCombatXp'))}</button>
       <button type="button" class="mst-calculator-reset">${utils.escapeHtml(i18n.t('resetList'))}</button>
     </div>
     <div class="mst-combat-profession-picker">
@@ -9217,6 +9231,9 @@
         },
         listenerOptions
       );
+      popup
+        .querySelector('.mst-combat-current-xp')
+        .addEventListener('click', () => feature.applyCurrentBattleExperience(), listenerOptions);
       popup.querySelector('.mst-combat-profession-picker').addEventListener(
         'dblclick',
         (event) => {
@@ -9674,6 +9691,102 @@
 
   // combat-upgrade-state
   const combatUpgradeState = {
+    getGameState(feature) {
+      const doc = feature.ctx.pageWindow?.document || document;
+      const gamePageElement = doc.querySelector('[class^="GamePage"]');
+      if (!gamePageElement) return null;
+      for (const fiberKey of Reflect.ownKeys(gamePageElement).filter((key) => String(key).startsWith('__reactFiber$'))) {
+        const state = gamePageElement[fiberKey]?.return?.stateNode?.state;
+        if (state) return state;
+      }
+      return null;
+    },
+
+    getCurrentBattleExperienceFill(feature, nowMs = Date.now()) {
+      return this.getBattleExperienceFill(feature, this.getGameState(feature), nowMs);
+    },
+
+    getBattleExperienceFill(feature, gameState, nowMs = Date.now()) {
+      const characterId = gameState?.character?.id;
+      const battlePlayers = Array.isArray(gameState?.battlePlayers) ? gameState.battlePlayers : [];
+      const combatStartMs = new Date(gameState?.combatStartTime || 0).getTime();
+      if (!characterId || !battlePlayers.length || !Number.isFinite(combatStartMs) || combatStartMs <= 0) return null;
+      const player = battlePlayers.find((unit) => unit?.character?.id === characterId);
+      const elapsedHours = Math.max(1 / 3600, (Number(nowMs) - combatStartMs) / 3600000);
+      const rates = Object.entries(player?.totalSkillExperienceMap || {})
+        .filter(
+          ([
+            skillHrid
+          ]) => combatUpgradeDialogView.COMBAT_SKILL_HRIDS.has(skillHrid)
+        )
+        .map(
+          ([
+            skillHrid, experience
+          ]) => ({
+            skillHrid,
+            rate: Math.max(0, Number(experience) || 0) / elapsedHours
+          })
+        )
+        .filter((entry) => entry.rate > 0);
+      return this.getExperienceFillFromRates(feature, rates);
+    },
+
+    getExperienceFillFromRates(feature, rates) {
+      if (!rates.length) return null;
+      if (rates.length === 2) return this.getTwoSkillExperienceFill(feature, rates);
+      const totalRate = rates.reduce((sum, entry) => sum + entry.rate, 0);
+      return {
+        primaryRate: totalRate * 0.3,
+        secondaryRate: totalRate * 0.7
+      };
+    },
+
+    getTwoSkillExperienceFill(feature, rates) {
+      const buckets = rates.map((entry) => ({
+        ...entry,
+        bucket: this.getSkillRateBucket(feature, entry.skillHrid)
+      }));
+      const primary = buckets.find((entry) => entry.bucket === 'primary');
+      const secondary = buckets.find((entry) => entry.bucket === 'secondary');
+      if (primary && secondary) return {primaryRate: primary.rate, secondaryRate: secondary.rate};
+      if (primary) return {primaryRate: primary.rate, secondaryRate: buckets.find((entry) => entry !== primary).rate};
+      if (secondary)
+        return {primaryRate: buckets.find((entry) => entry !== secondary).rate, secondaryRate: secondary.rate};
+      const [
+        lower, higher
+      ] = [
+        ...buckets
+      ].sort((a, b) => a.rate - b.rate);
+      return {primaryRate: lower.rate, secondaryRate: higher.rate};
+    },
+
+    getSkillRateBucket(feature, skillHrid) {
+      const row = feature.rows.find((item) => item.skillHrid === skillHrid);
+      if (row?.trainingType === 'primary' || row?.trainingType === 'secondary') return row.trainingType;
+      const mode = feature.getTrainingTypeMode(skillHrid);
+      return mode === 'primary' || mode === 'secondary' ? mode : '';
+    },
+
+    formatRateInputValue(rate) {
+      return String(Number((Math.max(0, Number(rate) || 0) / 1000).toFixed(1)));
+    },
+
+    applyCurrentBattleExperience(feature) {
+      const {Notifier, i18n} = feature.ctx;
+      const fill = this.getCurrentBattleExperienceFill(feature);
+      if (!fill) {
+        Notifier.toast(i18n.t('currentCombatXpUnavailable'), 'warning');
+        return;
+      }
+      const primaryInput = feature.popup?.querySelector('[data-field="primary-rate"]');
+      const secondaryInput = feature.popup?.querySelector('[data-field="secondary-rate"]');
+      if (!primaryInput || !secondaryInput) return;
+      primaryInput.value = this.formatRateInputValue(fill.primaryRate);
+      secondaryInput.value = this.formatRateInputValue(fill.secondaryRate);
+      feature.recalculate();
+      Notifier.toast(i18n.t('currentCombatXpApplied'), 'success');
+    },
+
     getSkillName(feature, skillHrid) {
       const {DataHub} = feature.ctx;
       return DataHub.getLocalizedGameName('skillNames', skillHrid);
@@ -9805,6 +9918,18 @@
       return this.state.resetState(this, preserveExperienceOverrides);
     }
 
+    getBattleExperienceFill(gameState, nowMs = Date.now()) {
+      return this.state.getBattleExperienceFill(this, gameState, nowMs);
+    }
+
+    getExperienceFillFromRates(rates) {
+      return this.state.getExperienceFillFromRates(this, rates);
+    }
+
+    applyCurrentBattleExperience() {
+      return this.state.applyCurrentBattleExperience(this);
+    }
+
     getSequenceState() {
       return this.planner.getSequenceState(this.rows);
     }
@@ -9890,10 +10015,6 @@
     0, 0.33, 1
   ]);
 
-  function roundDungeonValue(value) {
-    return Math.round((Number(value) + Number.EPSILON) * 100) / 100;
-  }
-
   // dungeon-profit-calculation-methods
   const dungeonProfitCalculationMethods = {
     calculate({
@@ -9904,6 +10025,7 @@
       useArtisanTea = false,
       useGuzzlingPouch = true,
       guzzlingLevel = 0,
+      excludeBackEquipmentValue = false,
       customMode = false,
       customKeySource = 'materials',
       customBuySide = 'ask',
@@ -9917,13 +10039,13 @@
 
       const tier = Math.max(0, Math.min(2, Math.trunc(Number(difficultyTier) || 0)));
       const refinementRate = DUNGEON_REFINEMENT_RATE_BY_TIER[tier];
-      const clears = roundDungeonValue((24 * 60) / minutes);
-      const normalPerRun = roundDungeonValue(DUNGEON_NORMAL_CHEST_EXPECTATION);
-      const refinementPerRun = roundDungeonValue(DUNGEON_NORMAL_CHEST_EXPECTATION * refinementRate);
-      const totalChestPerRun = roundDungeonValue(normalPerRun + refinementPerRun);
-      const normalQuantity = roundDungeonValue(clears * DUNGEON_NORMAL_CHEST_EXPECTATION);
-      const refinementQuantity = roundDungeonValue(clears * DUNGEON_NORMAL_CHEST_EXPECTATION * refinementRate);
-      const totalChestQuantity = roundDungeonValue(normalQuantity + refinementQuantity);
+      const clears = (24 * 60) / minutes;
+      const normalPerRun = DUNGEON_NORMAL_CHEST_EXPECTATION;
+      const refinementPerRun = DUNGEON_NORMAL_CHEST_EXPECTATION * refinementRate;
+      const totalChestPerRun = normalPerRun + refinementPerRun;
+      const normalQuantity = clears * DUNGEON_NORMAL_CHEST_EXPECTATION;
+      const refinementQuantity = clears * DUNGEON_NORMAL_CHEST_EXPECTATION * refinementRate;
+      const totalChestQuantity = normalQuantity + refinementQuantity;
       // 地下城结束奖励使用固定长期预期，不应用队伍人数或战斗掉落 Buff。
       const createRewards = (normalChestQuantity, refinementChestQuantity) =>
         (dungeonInfo.rewardDropTable || []).map((drop) => ({
@@ -9941,13 +10063,26 @@
       const materialSettings = this.getMaterialSettings(useArtisanTea, useGuzzlingPouch, guzzlingLevel);
       const missingPrices = new Set();
       const tokenValues = this.getTokenValues(true);
-      const normalOutput = this.valueExpectedDrops(expectation.normalDrops, tokenValues, true, missingPrices);
-      const refinementOutput = this.valueExpectedDrops(expectation.refinementDrops, tokenValues, true, missingPrices);
+      const outputOptions = {excludeBackEquipmentValue};
+      const normalOutput = this.valueExpectedDrops(
+        expectation.normalDrops,
+        tokenValues,
+        true,
+        missingPrices,
+        outputOptions
+      );
+      const refinementOutput = this.valueExpectedDrops(
+        expectation.refinementDrops,
+        tokenValues,
+        true,
+        missingPrices,
+        outputOptions
+      );
       const allDrops = new Map(expectation.normalDrops);
       expectation.refinementDrops.forEach((quantity, itemHrid) => {
         allDrops.set(itemHrid, Number(allDrops.get(itemHrid) || 0) + quantity);
       });
-      const totalOutput = this.valueExpectedDrops(allDrops, tokenValues, true, missingPrices);
+      const totalOutput = this.valueExpectedDrops(allDrops, tokenValues, true, missingPrices, outputOptions);
       const createOpeningKeyQuantities = (dailyKeys, perRunKeys) =>
         [
           ...new Set([
@@ -9955,8 +10090,8 @@
           ])
         ].map((itemHrid) => ({
           itemHrid,
-          quantity: roundDungeonValue(dailyKeys.get(itemHrid) || 0),
-          quantityPerRun: roundDungeonValue(perRunKeys.get(itemHrid) || 0)
+          quantity: dailyKeys.get(itemHrid) || 0,
+          quantityPerRun: perRunKeys.get(itemHrid) || 0
         }));
       const openingKeyQuantities = createOpeningKeyQuantities(expectation.openingKeys, expectationPerRun.openingKeys);
       const normalOpeningKeyQuantities = createOpeningKeyQuantities(
@@ -9970,10 +10105,8 @@
 
       const ticketQuantity = normalQuantity;
       const ticketQuantityPerRun = normalPerRun;
-      const openingKeyQuantity = roundDungeonValue(openingKeyQuantities.reduce((sum, key) => sum + key.quantity, 0));
-      const openingKeyQuantityPerRun = roundDungeonValue(
-        openingKeyQuantities.reduce((sum, key) => sum + key.quantityPerRun, 0)
-      );
+      const openingKeyQuantity = openingKeyQuantities.reduce((sum, key) => sum + key.quantity, 0);
+      const openingKeyQuantityPerRun = openingKeyQuantities.reduce((sum, key) => sum + key.quantityPerRun, 0);
       const dailyConsumablesCostCoins = Math.max(0, Number(dailyConsumablesCost) || 0) * 1_000_000;
       const totalRevenueConservative = totalOutput.bidTotal;
       const totalRevenueOptimistic = totalOutput.askTotal;
@@ -10227,6 +10360,12 @@
           missing.add(input.itemHrid);
         }
       });
+    },
+
+    isBackEquipment(itemHrid) {
+      const {DataHub} = this.ctx;
+      const item = DataHub.getClientDataMap('itemDetailMap')?.[itemHrid];
+      return item?.equipmentDetail?.type === '/equipment_types/back';
     }
   };
 
@@ -10313,7 +10452,7 @@
       return tokenValues;
     },
 
-    valueExpectedDrops(drops, tokenValues, applyMarketTax, missing) {
+    valueExpectedDrops(drops, tokenValues, applyMarketTax, missing, options = {}) {
       let askTotal = 0;
       let bidTotal = 0;
       const items = [
@@ -10322,9 +10461,14 @@
         ([
           itemHrid, quantity
         ]) => {
-          const ask = Number(tokenValues.ask.get(itemHrid) || this.getDirectPrice(itemHrid, 'ask', applyMarketTax));
-          const bid = Number(tokenValues.bid.get(itemHrid) || this.getDirectPrice(itemHrid, 'bid', applyMarketTax));
-          if (itemHrid !== '/items/coin' && ask <= 0 && bid <= 0) missing.add(itemHrid);
+          const isExcludedBackEquipment = options.excludeBackEquipmentValue && this.isBackEquipment(itemHrid);
+          const ask = isExcludedBackEquipment
+            ? 0
+            : Number(tokenValues.ask.get(itemHrid) || this.getDirectPrice(itemHrid, 'ask', applyMarketTax));
+          const bid = isExcludedBackEquipment
+            ? 0
+            : Number(tokenValues.bid.get(itemHrid) || this.getDirectPrice(itemHrid, 'bid', applyMarketTax));
+          if (!isExcludedBackEquipment && itemHrid !== '/items/coin' && ask <= 0 && bid <= 0) missing.add(itemHrid);
           const askValue = quantity * ask;
           const bidValue = quantity * bid;
           askTotal += askValue;
@@ -10385,6 +10529,7 @@
         useArtisanTea: feature.state.useArtisanTea,
         useGuzzlingPouch: feature.state.useGuzzlingPouch,
         guzzlingLevel: feature.state.guzzlingLevel,
+        excludeBackEquipmentValue: feature.state.excludeBackEquipmentValue,
         customMode: feature.state.customMode,
         customKeySource: feature.state.customKeySource,
         customBuySide: feature.state.customBuySide,
@@ -10495,6 +10640,19 @@
           </select>
         </span>
       </label>
+      <div class="mst-dungeon-field mst-dungeon-toggle-field">
+        <label class="mst-dungeon-auto-buff">
+          <input
+            type="checkbox"
+            .checked=${feature.state.excludeBackEquipmentValue}
+            @change=${(event) => {
+              feature.state.excludeBackEquipmentValue = event.target.checked;
+              feature.render();
+            }}
+          >
+          <span>${i18n.t('excludeBackEquipmentValue')}</span>
+        </label>
+      </div>
       <div class="mst-dungeon-field mst-dungeon-toggle-field">
         <label class="mst-dungeon-auto-buff">
           <input
@@ -10854,6 +11012,7 @@
         useArtisanTea: true,
         useGuzzlingPouch: Boolean(guzzlingPouch),
         guzzlingLevel: String(guzzlingPouch?.enhancementLevel || 0),
+        excludeBackEquipmentValue: false,
         customMode: false,
         customKeySource: 'materials',
         customBuySide: 'ask',
@@ -16905,6 +17064,8 @@
       const type = itemDetail.equipmentDetail.type;
       const isWeapon = type === '/equipment_types/main_hand' || type === '/equipment_types/two_hand';
       if (isWeapon && preset.weaponTypeHrid && type !== preset.weaponTypeHrid) return false;
+      // 双手武器方案没有副手槽，避免模拟出游戏中无法同时穿戴的配装。
+      if (type === '/equipment_types/off_hand' && preset.weaponTypeHrid === '/equipment_types/two_hand') return false;
       if (isWeapon && preset.damageTypeHrid && combatStats.damageType !== preset.damageTypeHrid) return false;
       return true;
     }
@@ -19964,7 +20125,7 @@
 .mst-ability-level-badge{position:absolute;top:.25rem;left:.3rem;z-index:1;color:var(--color-cowbell, #f6c95c);font-size:var(--font-size-small, .75rem);font-weight:600;line-height:1;text-shadow:0 1px 2px #000}
 .mst-ability-picker-close{align-self:center}
 .mst-upgrade-calculator{white-space:normal}
-.mst-combat-upgrade-calculator .mst-calculator-toolbar{grid-template-columns:repeat(3,minmax(7rem,1fr)) auto;gap:.4rem;margin-bottom:.4rem}
+.mst-combat-upgrade-calculator .mst-calculator-toolbar{grid-template-columns:repeat(3,minmax(7rem,1fr)) auto auto;gap:.4rem;margin-bottom:.4rem}
 .mst-combat-profession-picker{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:.35rem;margin:0 0 .35rem}
 .mst-combat-profession{display:grid!important;min-width:0;min-height:3.2rem!important;box-sizing:border-box;grid-template-columns:1.75rem auto;grid-template-rows:auto auto;align-items:center;justify-content:center;justify-items:start;column-gap:.2rem;row-gap:0;padding:.25rem .35rem!important;text-align:left}
 .mst-combat-profession svg{grid-row:1/3;width:1.75rem;height:1.75rem}

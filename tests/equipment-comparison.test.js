@@ -417,6 +417,37 @@ test('双手武器替换会清除副手，主手和副手方案可同时保留',
   assert.equal(restored['/equipment_types/two_hand'], undefined);
 });
 
+test('双手武器方案不展示副手装备，避免生成不可穿戴的 DPS 模拟输入', () => {
+  for (const key of [
+    'meleeBulwark', 'rangedBow'
+  ]) {
+    const feature = new EquipmentComparisonFeature();
+    feature.presetKey = key;
+    const options = feature.getBaselineEquipment();
+    assert.equal(
+      options.some((item) => item.detail.equipmentDetail.type === '/equipment_types/off_hand'),
+      false,
+      `${key} 不应允许副手装备参与比较`
+    );
+
+    const baseline = feature.getDefaultBaselineItem();
+    const comparison =
+      feature.getCompatibleEquipment(baseline).find((item) => item.hrid !== baseline.itemHrid) || baseline.detail;
+    const context = feature.comparisonService.buildComparisonContext(
+      feature.getPreset(),
+      baseline,
+      comparison,
+      feature.comparisonEnhancementLevel
+    );
+    for (const equipment of [
+      context.baselineEquipment, context.comparisonEquipment
+    ]) {
+      assert.ok(equipment['/equipment_types/two_hand']);
+      assert.equal(equipment['/equipment_types/off_hand'], undefined);
+    }
+  }
+});
+
 test('完整模拟套装包含贤者三件套、暴饮之囊、固定技能等级及角色官方数据', () => {
   const service = new EquipmentComparisonService();
   const preset = EquipmentComparisonFeature.PRESETS.magicNature;

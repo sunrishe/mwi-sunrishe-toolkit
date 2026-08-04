@@ -142,21 +142,21 @@ test('四个地下城使用相同的 T0-T2 固定宝箱期望', () => {
   const Service = loadService();
   const service = new Service(createMarketService(createCompleteMarketData()));
   const expectedRefinement = [
-    0, 0.43, 1.3
+    0, 1.295 * 0.33, 1.295
   ];
 
   service.getDungeons().forEach((dungeon) => {
     expectedRefinement.forEach((refinementQuantity, difficultyTier) => {
       const result = service.calculate({actionHrid: dungeon.hrid, difficultyTier, clearMinutes: 1440});
       assert.equal(result.clears, 1);
-      assert.equal(result.normalQuantity, 1.3);
-      assert.equal(result.refinementQuantity, refinementQuantity);
-      assert.equal(result.ticketQuantity, 1.3);
+      assert.equal(result.normalQuantity, 1.295);
+      assert.ok(Math.abs(result.refinementQuantity - refinementQuantity) < 1e-12);
+      assert.equal(result.ticketQuantity, 1.295);
     });
   });
 });
 
-test('每日轮次和 T0-T2 每日宝箱期望均保留两位小数', () => {
+test('每日轮次和 T0-T2 宝箱期望计算保留完整精度', () => {
   const Service = loadService();
   const service = new Service(createMarketService(createCompleteMarketData()));
   const input = {actionHrid: '/actions/combat/pirate_cove', clearMinutes: 14};
@@ -164,10 +164,10 @@ test('每日轮次和 T0-T2 每日宝箱期望均保留两位小数', () => {
   const t1 = service.calculate({...input, difficultyTier: 1});
   const t2 = service.calculate({...input, difficultyTier: 2});
 
-  assert.equal(t0.clears, 102.86);
+  assert.equal(t0.clears, 1440 / 14);
   assert.equal(t0.normalQuantity, 133.2);
   assert.equal(t0.refinementQuantity, 0);
-  assert.equal(t1.refinementQuantity, 43.96);
+  assert.ok(Math.abs(t1.refinementQuantity - 43.956) < 1e-12);
   assert.equal(t2.refinementQuantity, 133.2);
   assert.equal(t2.ticketQuantity, t2.normalQuantity);
 });
@@ -261,6 +261,28 @@ test('两种卖出总价对所有可交易物品统一扣除 2% 市场税', () =
   assert.equal(taxed.askTotal, 215);
 });
 
+test('可选择让所有背部装备产物按 0 计算收益', () => {
+  const Service = loadService();
+  const service = new Service(createMarketService({'/items/mirror_of_protection': {0: {a: 1000, b: 800}}}));
+  const drops = new Map([
+    [
+      '/items/chimerical_quiver', 2
+    ]
+  ]);
+  const missing = new Set();
+  const normal = service.valueExpectedDrops(drops, service.getTokenValues(true), true, new Set());
+  const excluded = service.valueExpectedDrops(drops, service.getTokenValues(true), true, missing, {
+    excludeBackEquipmentValue: true
+  });
+
+  assert.equal(service.isBackEquipment('/items/chimerical_quiver'), true);
+  assert.equal(normal.askTotal, 1960);
+  assert.equal(normal.bidTotal, 1568);
+  assert.equal(excluded.askTotal, 0);
+  assert.equal(excluded.bidTotal, 0);
+  assert.equal(missing.has('/items/chimerical_quiver'), false);
+});
+
 test('交易税倍率只通过公共常量使用', () => {
   const constantsSource = readSourceFile('src', 'common', 'constants.js');
   const calculatorSource = readSourceFile('src', 'modules', 'dungeon-profit', 'calculator.js');
@@ -335,15 +357,15 @@ test('队伍人数、战斗掉落 Buff 和旧统计周期参数不影响固定�
   assert.equal(legacyInput.ticketQuantity, result.ticketQuantity);
 });
 
-test('门票数量始终等于保留两位小数后的普通宝箱期望', () => {
+test('门票数量始终等于完整精度的普通宝箱期望', () => {
   const Service = loadService();
   const service = new Service(createMarketService(createCompleteMarketData()));
   const result = service.calculate({actionHrid: '/actions/combat/pirate_cove', difficultyTier: 2, clearMinutes: 14});
 
-  assert.equal(result.ticketQuantityPerRun, 1.3);
+  assert.equal(result.ticketQuantityPerRun, 1.295);
   assert.equal(result.ticketQuantity, 133.2);
   assert.equal(result.ticketQuantity, result.normalQuantity);
-  assert.equal(result.openingKeyQuantityPerRun, 2.6);
+  assert.equal(result.openingKeyQuantityPerRun, 2.59);
   assert.equal(result.openingKeyQuantity, 266.4);
 });
 
@@ -375,14 +397,14 @@ test('制作和购买钥匙分别扣除门票与开箱钥匙成本后得到收�
   const market = result.costScenarios.market;
   const materials = result.costScenarios.materials;
 
-  assert.equal(result.totalChestQuantity, 1.3);
-  assert.equal(result.expectedDrops[0].quantity, 2.6);
-  assert.ok(Math.abs(result.totalRevenueConservative - 202.8) < 1e-12);
-  assert.ok(Math.abs(result.totalRevenueOptimistic - 254.8) < 1e-12);
-  assert.ok(Math.abs(market.totalCostConservative - 18.2) < 1e-12);
-  assert.ok(Math.abs(market.totalCostOptimistic - 14.3) < 1e-12);
-  assert.ok(Math.abs(market.profitConservative - 184.6) < 1e-12);
-  assert.ok(Math.abs(market.profitOptimistic - 240.5) < 1e-12);
+  assert.equal(result.totalChestQuantity, 1.295);
+  assert.equal(result.expectedDrops[0].quantity, 2.59);
+  assert.ok(Math.abs(result.totalRevenueConservative - 202.02) < 1e-12);
+  assert.ok(Math.abs(result.totalRevenueOptimistic - 253.82) < 1e-12);
+  assert.ok(Math.abs(market.totalCostConservative - 18.13) < 1e-12);
+  assert.ok(Math.abs(market.totalCostOptimistic - 14.245) < 1e-12);
+  assert.ok(Math.abs(market.profitConservative - 183.89) < 1e-12);
+  assert.ok(Math.abs(market.profitOptimistic - 239.575) < 1e-12);
   assert.ok(Math.abs(market.normalChestUnitProfitConservative - 142) < 1e-12);
   assert.ok(Math.abs(market.normalChestUnitProfitOptimistic - 185) < 1e-12);
   assert.equal(market.profitPerRunConservative, market.profitConservative);
@@ -398,15 +420,15 @@ test('制作和购买钥匙分别扣除门票与开箱钥匙成本后得到收�
       ticketPrice: 10,
       openingKeyPrice: 4,
       unitProfit: 182,
-      profit: 236.6
-    }, {buySide: 'ask', sellSide: 'bid', ticketPrice: 10, openingKeyPrice: 4, unitProfit: 142, profit: 184.6}, {
+      profit: 235.69
+    }, {buySide: 'ask', sellSide: 'bid', ticketPrice: 10, openingKeyPrice: 4, unitProfit: 142, profit: 183.89}, {
       buySide: 'bid',
       sellSide: 'ask',
       ticketPrice: 8,
       openingKeyPrice: 3,
       unitProfit: 185,
-      profit: 240.5
-    }, {buySide: 'bid', sellSide: 'bid', ticketPrice: 8, openingKeyPrice: 3, unitProfit: 145, profit: 188.5}
+      profit: 239.575
+    }, {buySide: 'bid', sellSide: 'bid', ticketPrice: 8, openingKeyPrice: 3, unitProfit: 145, profit: 187.775}
   ];
   for (const customCase of customCases) {
     const customResult = service.calculate({
@@ -455,8 +477,8 @@ test('普通与精炼宝箱分别扣除对应来源成本且每日收益不重�
   const result = service.calculate({actionHrid: '/actions/combat/test_dungeon', difficultyTier: 2, clearMinutes: 1440});
   const market = result.costScenarios.market;
 
-  assert.equal(market.normalOpeningCostConservative, 5.2);
-  assert.equal(market.refinementOpeningCostConservative, 5.2);
+  assert.equal(market.normalOpeningCostConservative, 5.18);
+  assert.equal(market.refinementOpeningCostConservative, 5.18);
   assert.ok(Math.abs(market.normalChestUnitProfitConservative - 86) < 1e-12);
   assert.ok(Math.abs(market.normalChestUnitProfitOptimistic - 89) < 1e-12);
   assert.ok(Math.abs(market.refinementChestUnitProfitConservative - 196) < 1e-12);
@@ -468,7 +490,7 @@ test('普通与精炼宝箱分别扣除对应来源成本且每日收益不重�
           market.refinementChestUnitProfitConservative * result.refinementQuantity)
     ) < 1e-12
   );
-  assert.ok(Math.abs(market.profitConservative - 366.6) < 1e-12);
+  assert.ok(Math.abs(market.profitConservative - 365.19) < 1e-12);
 });
 
 test('每日药品饮料成本按 M 换算并从每日及每车收益中分摊扣除', () => {
@@ -581,7 +603,8 @@ test('主脚本包含正式元信息、工具箱入口和完整国际化入口',
 test('地下城操作区保留基础参数并按需展示自定义价格参数', () => {
   const keys = [
     'dungeon', 'difficultyTier', 'clearTimeMinutes', 'dailyConsumablesCost', 'artisanTea',
-    'guzzlingLevel', 'customMode', 'keySource', 'keyMaterialPurchaseMethod', 'goodsSaleMethod'
+    'guzzlingLevel', 'excludeBackEquipmentValue', 'customMode', 'keySource', 'keyMaterialPurchaseMethod',
+    'goodsSaleMethod'
   ];
   const positions = keys.map((key) => dungeonFeatureSource.indexOf(`i18n.t('${key}')`));
 
@@ -594,6 +617,7 @@ test('地下城操作区保留基础参数并按需展示自定义价格参数',
   );
   assert.equal(dungeonFeatureSource.match(/\.checked=\$\{feature\.state\.useArtisanTea\}/g)?.length, 1);
   assert.equal(dungeonFeatureSource.match(/\.checked=\$\{feature\.state\.useGuzzlingPouch\}/g)?.length, 1);
+  assert.equal(dungeonFeatureSource.match(/\.checked=\$\{feature\.state\.excludeBackEquipmentValue\}/g)?.length, 1);
   assert.equal(dungeonFeatureSource.match(/\.checked=\$\{feature\.state\.customMode\}/g)?.length, 1);
   assert.equal(dungeonFeatureSource.match(/\.hidden=\$\{!feature\.state\.customMode\}/g)?.length, 3);
   assert.match(dungeonFeatureSource, /\.disabled=\$\{!feature\.state\.useGuzzlingPouch\}/);
@@ -722,6 +746,8 @@ test('地下城数量和金额最多显示两位小数且不补尾随零', () =>
   Feature.configure({i18n: {locale: 'zh-CN'}});
 
   assert.equal(Feature.stateController.formatCount({}, 102.86), '102.86');
+  assert.equal(Feature.stateController.formatCount({}, 1440 / 14), '102.86');
+  assert.equal(Feature.stateController.formatCount({}, 43.956), '43.96');
   assert.equal(Feature.stateController.formatCount({}, 133.2), '133.2');
   assert.equal(Feature.stateController.formatCount({}, 1.3), '1.3');
   assert.equal(Feature.stateController.formatCount({}, 2), '2');
@@ -816,6 +842,7 @@ test('地下城只计算 1 日期望并展示每日净利润', () => {
   assert.equal(calculatedInputs[0].useArtisanTea, true);
   assert.equal(calculatedInputs[0].useGuzzlingPouch, true);
   assert.equal(calculatedInputs[0].guzzlingLevel, '5');
+  assert.equal(calculatedInputs[0].excludeBackEquipmentValue, false);
   assert.equal(calculatedInputs[0].customMode, false);
   assert.equal(calculatedInputs[0].customKeySource, 'materials');
   assert.equal(calculatedInputs[0].customBuySide, 'ask');

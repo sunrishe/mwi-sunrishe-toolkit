@@ -1,11 +1,12 @@
+.codex
 .idea/
+.playwright-cli/
+.playwright-mcp/
 .vscode/
 dist/*.dev.user.js
 dist/*debug.user.js
 node_modules/
+openspec/
 
 .DS_Store
 npm-debug.log*
-
-.playwright-cli/
-.playwright-mcp/

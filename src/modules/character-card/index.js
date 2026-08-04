@@ -1674,18 +1674,23 @@ export class CharacterCardEntryController {
     const characterInfoElements = this.GameUiAdapter.queryAll('headerCharacterInfo');
     const headerInfoElement = Array.from(characterInfoElements)
       .map((characterInfo) =>
-        Array.from(characterInfo.children).find((child) =>
-          Array.from(child.children || []).some((element) =>
-            Array.from(element.classList).some((className) => className.startsWith('Header_totalLevel'))
-          )
-        )
+        Array.from(characterInfo.children).find((child) => child.querySelector?.('[class*="Header_totalLevel"]'))
       )
       .find(Boolean);
-    const totalLevelElement = Array.from(headerInfoElement?.children || []).find((element) =>
-      Array.from(element.classList).some((className) => className.startsWith('Header_totalLevel'))
-    );
+    const totalLevelElement = headerInfoElement?.querySelector('[class*="Header_totalLevel"]');
     if (!headerInfoElement || !totalLevelElement) return false;
-    headerInfoElement.classList.add('mst-header-card-level-layout');
+    let changed = false;
+    let levelLayout = totalLevelElement.closest('.mst-header-card-level-layout');
+    if (!levelLayout || levelLayout.parentElement !== headerInfoElement) {
+      levelLayout = document.createElement('div');
+      levelLayout.className = 'mst-header-card-level-layout';
+      headerInfoElement.insertBefore(levelLayout, totalLevelElement);
+      changed = true;
+    }
+    if (totalLevelElement.parentElement !== levelLayout) {
+      levelLayout.appendChild(totalLevelElement);
+      changed = true;
+    }
     const nameElement = Array.from(headerInfoElement.children || []).find((element) =>
       Array.from(element.classList).some((className) => className.startsWith('Header_name'))
     );
@@ -1712,10 +1717,9 @@ export class CharacterCardEntryController {
 
     const existingButton = headerInfoElement.querySelector('.mst-my-character-card-btn');
     if (existingButton) {
-      let changed = false;
       this.updateToolkitButton(existingButton);
-      if (existingButton.nextElementSibling !== totalLevelElement) {
-        headerInfoElement.insertBefore(existingButton, totalLevelElement);
+      if (totalLevelElement.nextElementSibling !== existingButton) {
+        levelLayout.insertBefore(existingButton, totalLevelElement.nextSibling);
         changed = true;
       }
       return changed;
@@ -1725,7 +1729,7 @@ export class CharacterCardEntryController {
     myButton.className = 'mst-my-character-card-btn';
     myButton.type = 'button';
     this.updateToolkitButton(myButton);
-    headerInfoElement.insertBefore(myButton, totalLevelElement);
+    levelLayout.insertBefore(myButton, totalLevelElement.nextSibling);
     return true;
   }
 

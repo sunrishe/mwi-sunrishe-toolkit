@@ -645,26 +645,26 @@
   outline-offset: 1px;
 }
 .mst-header-card-level-layout {
-  display: grid !important;
-  grid-template-columns: auto auto;
+  display: flex !important;
+  flex-wrap: wrap;
+  max-width: 100%;
   align-items: center !important;
-  justify-content: end !important;
+  justify-content: flex-end !important;
   column-gap: var(--spacing-xs, 0.25rem);
-  row-gap: var(--spacing-xs, 0.25rem);
-}
-.mst-header-card-level-layout > [class*='Header_name'] {
-  grid-column: 1/-1;
-  justify-self: end;
-}
-.mst-header-card-level-layout > .mst-my-character-card-btn {
-  grid-column: 2;
-  grid-row: 2;
-  justify-self: end;
+  row-gap: var(--spacing-xxs, 0.125rem);
+  white-space: nowrap;
 }
 .mst-header-card-level-layout > [class*='Header_totalLevel'] {
-  grid-column: 1;
-  grid-row: 2;
-  justify-self: end;
+  flex: 0 1 auto;
+  white-space: nowrap;
+}
+.mst-header-card-level-layout > .mst-my-character-card-btn {
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+.mst-header-card-level-layout > :not([class*='Header_totalLevel']):not(.mst-my-character-card-btn) {
+  flex: 0 0 100%;
+  text-align: right;
   white-space: nowrap;
 }
 .mst-download-section {

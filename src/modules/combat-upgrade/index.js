@@ -2,6 +2,11 @@ import {CombatUpgradePlanner} from './planner.js';
 
 // combat-upgrade-dialog-view
 const combatUpgradeDialogView = {
+  COMBAT_SKILL_HRIDS: new Set([
+    '/skills/stamina', '/skills/intelligence', '/skills/attack', '/skills/defense', '/skills/melee',
+    '/skills/ranged', '/skills/magic'
+  ]),
+
   getProfessionGridHtml(feature) {
     const {CharacterDataService, i18n, utils} = feature.ctx;
     return CharacterDataService.getCombatSkills()
@@ -25,6 +30,7 @@ const combatUpgradeDialogView = {
       <label>${utils.escapeHtml(i18n.t('primaryXpRate'))}        <input data-field="primary-rate" type="number" min="0" step="0.1" inputmode="decimal"></label>
       <label>${utils.escapeHtml(i18n.t('secondaryXpRate'))}        <input data-field="secondary-rate" type="number" min="0" step="0.1" inputmode="decimal"></label>
       <label>${utils.escapeHtml(i18n.t('optionalEph'))}        <input data-field="eph" type="number" min="0" step="0.1" inputmode="decimal"></label>
+      <button type="button" class="mst-combat-current-xp">${utils.escapeHtml(i18n.t('useCurrentCombatXp'))}</button>
       <button type="button" class="mst-calculator-reset">${utils.escapeHtml(i18n.t('resetList'))}</button>
     </div>
     <div class="mst-combat-profession-picker">
@@ -150,6 +156,9 @@ const combatUpgradeInputEvents = {
       },
       listenerOptions
     );
+    popup
+      .querySelector('.mst-combat-current-xp')
+      .addEventListener('click', () => feature.applyCurrentBattleExperience(), listenerOptions);
     popup.querySelector('.mst-combat-profession-picker').addEventListener(
       'dblclick',
       (event) => {
@@ -607,6 +616,102 @@ const combatUpgradeRowView = {
 
 // combat-upgrade-state
 const combatUpgradeState = {
+  getGameState(feature) {
+    const doc = feature.ctx.pageWindow?.document || document;
+    const gamePageElement = doc.querySelector('[class^="GamePage"]');
+    if (!gamePageElement) return null;
+    for (const fiberKey of Reflect.ownKeys(gamePageElement).filter((key) => String(key).startsWith('__reactFiber$'))) {
+      const state = gamePageElement[fiberKey]?.return?.stateNode?.state;
+      if (state) return state;
+    }
+    return null;
+  },
+
+  getCurrentBattleExperienceFill(feature, nowMs = Date.now()) {
+    return this.getBattleExperienceFill(feature, this.getGameState(feature), nowMs);
+  },
+
+  getBattleExperienceFill(feature, gameState, nowMs = Date.now()) {
+    const characterId = gameState?.character?.id;
+    const battlePlayers = Array.isArray(gameState?.battlePlayers) ? gameState.battlePlayers : [];
+    const combatStartMs = new Date(gameState?.combatStartTime || 0).getTime();
+    if (!characterId || !battlePlayers.length || !Number.isFinite(combatStartMs) || combatStartMs <= 0) return null;
+    const player = battlePlayers.find((unit) => unit?.character?.id === characterId);
+    const elapsedHours = Math.max(1 / 3600, (Number(nowMs) - combatStartMs) / 3600000);
+    const rates = Object.entries(player?.totalSkillExperienceMap || {})
+      .filter(
+        ([
+          skillHrid
+        ]) => combatUpgradeDialogView.COMBAT_SKILL_HRIDS.has(skillHrid)
+      )
+      .map(
+        ([
+          skillHrid, experience
+        ]) => ({
+          skillHrid,
+          rate: Math.max(0, Number(experience) || 0) / elapsedHours
+        })
+      )
+      .filter((entry) => entry.rate > 0);
+    return this.getExperienceFillFromRates(feature, rates);
+  },
+
+  getExperienceFillFromRates(feature, rates) {
+    if (!rates.length) return null;
+    if (rates.length === 2) return this.getTwoSkillExperienceFill(feature, rates);
+    const totalRate = rates.reduce((sum, entry) => sum + entry.rate, 0);
+    return {
+      primaryRate: totalRate * 0.3,
+      secondaryRate: totalRate * 0.7
+    };
+  },
+
+  getTwoSkillExperienceFill(feature, rates) {
+    const buckets = rates.map((entry) => ({
+      ...entry,
+      bucket: this.getSkillRateBucket(feature, entry.skillHrid)
+    }));
+    const primary = buckets.find((entry) => entry.bucket === 'primary');
+    const secondary = buckets.find((entry) => entry.bucket === 'secondary');
+    if (primary && secondary) return {primaryRate: primary.rate, secondaryRate: secondary.rate};
+    if (primary) return {primaryRate: primary.rate, secondaryRate: buckets.find((entry) => entry !== primary).rate};
+    if (secondary)
+      return {primaryRate: buckets.find((entry) => entry !== secondary).rate, secondaryRate: secondary.rate};
+    const [
+      lower, higher
+    ] = [
+      ...buckets
+    ].sort((a, b) => a.rate - b.rate);
+    return {primaryRate: lower.rate, secondaryRate: higher.rate};
+  },
+
+  getSkillRateBucket(feature, skillHrid) {
+    const row = feature.rows.find((item) => item.skillHrid === skillHrid);
+    if (row?.trainingType === 'primary' || row?.trainingType === 'secondary') return row.trainingType;
+    const mode = feature.getTrainingTypeMode(skillHrid);
+    return mode === 'primary' || mode === 'secondary' ? mode : '';
+  },
+
+  formatRateInputValue(rate) {
+    return String(Number((Math.max(0, Number(rate) || 0) / 1000).toFixed(1)));
+  },
+
+  applyCurrentBattleExperience(feature) {
+    const {Notifier, i18n} = feature.ctx;
+    const fill = this.getCurrentBattleExperienceFill(feature);
+    if (!fill) {
+      Notifier.toast(i18n.t('currentCombatXpUnavailable'), 'warning');
+      return;
+    }
+    const primaryInput = feature.popup?.querySelector('[data-field="primary-rate"]');
+    const secondaryInput = feature.popup?.querySelector('[data-field="secondary-rate"]');
+    if (!primaryInput || !secondaryInput) return;
+    primaryInput.value = this.formatRateInputValue(fill.primaryRate);
+    secondaryInput.value = this.formatRateInputValue(fill.secondaryRate);
+    feature.recalculate();
+    Notifier.toast(i18n.t('currentCombatXpApplied'), 'success');
+  },
+
   getSkillName(feature, skillHrid) {
     const {DataHub} = feature.ctx;
     return DataHub.getLocalizedGameName('skillNames', skillHrid);
@@ -736,6 +841,18 @@ export class CombatUpgradeCalculatorFeature {
 
   resetState(preserveExperienceOverrides = false) {
     return this.state.resetState(this, preserveExperienceOverrides);
+  }
+
+  getBattleExperienceFill(gameState, nowMs = Date.now()) {
+    return this.state.getBattleExperienceFill(this, gameState, nowMs);
+  }
+
+  getExperienceFillFromRates(rates) {
+    return this.state.getExperienceFillFromRates(this, rates);
+  }
+
+  applyCurrentBattleExperience() {
+    return this.state.applyCurrentBattleExperience(this);
   }
 
   getSequenceState() {

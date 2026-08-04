@@ -12,7 +12,7 @@ MST 是独立脚本，以下项目提供了参考或公开接口；参考类功�
 | **MWI 市场伴侣**，作者 **ColaCola**。[原脚本链接](https://greasyfork.org/zh-CN/scripts/567386) · [当前脚本链接](https://greasyfork.org/scripts/589082)      | 使用其公开接口加入购物车；未安装时相关按钮隐藏。MST 只加购物车，不自动下单。   |
 | **MWITools**，作者 **bot7420、shykai**。[MWITools](https://greasyfork.org/zh-CN/scripts/494467) · [原算法脚本](https://greasyfork.org/zh-CN/scripts/511240) | 战力打造分算法来源，原算法作者为 **Ratatatata**。MST 只实现名片所需算法。      |
 | **MWI-Equipment-Diff**，作者 **BKN46**。[脚本链接](https://greasyfork.org/zh-CN/scripts/537282)                                                             | 装备属性对比参考。MST 独立实现装备提升计算器，不完整复刻原脚本。               |
-| **MWI Combat Simulator**，作者 **shykai**。[项目链接](https://github.com/shykai/MWICombatSimulatorTest)                                                     | DPS 模拟算法来源。MST 内嵌所需核心，不提供完整模拟器界面。                     |
+| **MWI Combat Simulator**，作者 **shykai**。[项目链接](https://github.com/shykai/MWICombatSimulatorTest)                                                     | 每秒伤害（DPS）模拟算法来源。MST 内嵌所需核心，不提供完整模拟器界面。          |
 
 ## Sunrishe 工具箱
 
@@ -139,6 +139,10 @@ Click **Toolkit** in the top character-info area. It is the main entry for cards
 - EDS 历史线保留 `1.x` 版本号，最后一个作为融合基础的版本是 `1.2.7`。
 - MST 从 `2.0.0` 开始，表示从装备数据同步脚本升级为综合工具箱。
 - 后续版本遵循 SemVer：不兼容变更使用 major，向后兼容的新功能使用 minor，修复和兼容性调整使用 patch；开发构建使用 `-dev.<timestamp>` 后缀。
+
+## v2.8.3
+
+1. 修复右上角工具箱入口布局；本地调试脚本新增文件版和 HTTP 版；地下城收益新增“披风不计算收益”并修复数量提前四舍五入导致的轻微偏差；战斗升级新增“使用当前战斗经验”；装备提升修复双手武器方案误叠副手导致 DPS 提升被高估的问题。
 
 ## v2.7.26
 

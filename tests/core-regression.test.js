@@ -1009,8 +1009,9 @@ test('uhtml 通过 @require 全局属性暴露给脚本运行时', () => {
   const uiSource = readSourceFile('src', 'common', 'ui.js');
   assert.match(
     headerSource,
-    /@require\s+https:\/\/cdn\.jsdelivr\.net\/gh\/sunrishe\/mwi-sunrishe-toolkit@master\/vendor\/uhtml\/uhtml\.iife\.min\.js/
+    /@require\s+https:\/\/cdn\.jsdelivr\.net\/gh\/sunrishe\/mwi-sunrishe-toolkit@[0-9a-f]{40}\/vendor\/uhtml\/uhtml\.iife\.min\.js/
   );
+  assert.doesNotMatch(headerSource, /mwi-sunrishe-toolkit@master\/vendor\/uhtml\/uhtml\.iife\.min\.js/);
   assert.match(uiSource, /globalThis\.uhtml/);
 });
 
@@ -1063,12 +1064,15 @@ test('游戏原生跳转和配装读取失败时保留 Firefox 诊断信息', ()
   assert.match(cardSource, /\[MST\] 配装名片数据转换失败:/);
 });
 
-test('本地调试脚本生成器把本地 @require 保持在 @require 分组中', () => {
-  const scriptSource = readSourceFile('scripts', 'generate-local-debug.mjs');
-  assert.match(scriptSource, /lastRequireMatch/);
-  assert.match(scriptSource, /header\.matchAll/);
-  assert.match(scriptSource, /@require/);
-  assert.match(scriptSource, /insertAt/);
+test('本地调试服务把本地 @require 保持在 @require 分组中', () => {
+  const watchServerSource = readSourceFile('scripts', 'watch-server.mjs');
+  assert.match(watchServerSource, /lastRequireMatch/);
+  assert.match(watchServerSource, /header\.matchAll/);
+  assert.match(watchServerSource, /@require/);
+  assert.match(watchServerSource, /insertAt/);
+  assert.match(watchServerSource, /pathToFileURL\(devScriptPath\)\.href/);
+  assert.match(watchServerSource, /MST-local-debug\.user\.js/);
+  assert.match(watchServerSource, /MST-http-debug\.user\.js/);
 });
 
 test('老利润网可从 GM 同步配装并过滤新利润网扩展字段', async () => {

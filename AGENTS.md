@@ -39,6 +39,7 @@
 
 - 仅文档、注释、错别字或极小且明显低风险的改动可以不执行验证，但交付时必须说明未验证。
 - 一般代码改动至少执行相关 lint、测试或构建；涉及多个文件、多个模块、公共能力、依赖或构建流程时执行完整 `yarn run check`。
+- 使用 Playwright MCP 前必须先阅读 `docs/analysis/Playwright MCP 使用规范.md`，确认当前会话暴露的 `mcp__playwright__*` 工具和正确导航流程。
 - 改动范围较大，或涉及 UI、DOM、CSS、交互流程、站点兼容时，除 `yarn run check` 外，必须使用 Playwright MCP 服务打开实际目标页面，验证核心流程、页面显示和控制台错误。
 - 本项目所称 Playwright MCP，只指工具名以 `mcp__playwright__` 开头的 Playwright MCP 服务调用。Browser plugin / Browser skill 内置的 Playwright API、Node REPL 浏览器控制和 `playwright-cli` 均不得替代，也不得在交付说明中记为“Playwright MCP 已通过”。
 - 本地预览页、静态 Mock 和测试夹具只能补充验证布局，不能代替登录后的实际目标页面。若受登录状态限制，必须把实际页面标记为未覆盖。
