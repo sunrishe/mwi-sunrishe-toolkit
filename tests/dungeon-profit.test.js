@@ -344,17 +344,41 @@ test('宝箱掉落期望合并重复物品', () => {
   assert.equal(output.askTotal, 404);
 });
 
-test('队伍人数、战斗掉落 Buff 和旧统计周期参数不影响固定宝箱期望', () => {
+test('队伍人数按官方公式缩放宝箱期望，默认 5 人且战斗掉落 Buff 与旧统计周期参数不参与', () => {
   const Service = loadService();
   const service = new Service(createMarketService(createCompleteMarketData()));
   const input = {actionHrid: '/actions/combat/pirate_cove', difficultyTier: 1, clearMinutes: 14};
   const result = service.calculate(input);
   const legacyInput = service.calculate({...input, partySize: 1, dropQuantity: 10, dropRate: 10, periodDays: 14});
 
+  assert.equal(result.partySize, 5);
+  assert.equal(result.normalPerRun, 1.295);
   assert.equal(legacyInput.clears, result.clears);
-  assert.equal(legacyInput.normalQuantity, result.normalQuantity);
-  assert.equal(legacyInput.refinementQuantity, result.refinementQuantity);
-  assert.equal(legacyInput.ticketQuantity, result.ticketQuantity);
+  assert.equal(legacyInput.normalQuantity, result.normalQuantity * 5);
+  assert.equal(legacyInput.refinementQuantity, result.refinementQuantity * 5);
+  assert.equal(legacyInput.ticketQuantity, result.ticketQuantity * 5);
+  [
+    [
+      1, 6.475
+    ], [
+      2, 3.2375
+    ], [
+      3, (5 / 3) * 1.295
+    ], [
+      4, 1.61875
+    ], [
+      5, 1.295
+    ]
+  ].forEach(
+    ([
+      partySize, expectedPerRun
+    ]) => {
+      const scaled = service.calculate({...input, partySize});
+      assert.ok(Math.abs(scaled.normalPerRun - expectedPerRun) < 1e-12);
+      assert.ok(Math.abs(scaled.normalQuantity - result.normalQuantity * (expectedPerRun / 1.295)) < 1e-12);
+      assert.equal(scaled.ticketQuantity, scaled.normalQuantity);
+    }
+  );
 });
 
 test('门票数量始终等于完整精度的普通宝箱期望', () => {
@@ -597,14 +621,15 @@ test('主脚本包含正式元信息、工具箱入口和完整国际化入口',
   assert.match(dungeonFeatureSource, /item\?\.itemHrid === '\/items\/guzzling_pouch'/);
   assert.doesNotMatch(dungeonFeatureSource, /costMode|costCalculationMode/);
   assert.doesNotMatch(dungeonFeatureSource, /simulationSeed|createRandom/);
-  assert.doesNotMatch(dungeonFeatureSource, /partySize|combatDropQuantity|combatDropRate|periodDays|applyMarketTax/);
+  assert.match(dungeonFeatureSource, /partySize: '5'/);
+  assert.doesNotMatch(dungeonFeatureSource, /combatDropRate|periodDays|applyMarketTax/);
 });
 
 test('地下城操作区保留基础参数并按需展示自定义价格参数', () => {
   const keys = [
-    'dungeon', 'difficultyTier', 'clearTimeMinutes', 'dailyConsumablesCost', 'artisanTea',
-    'guzzlingLevel', 'excludeBackEquipmentValue', 'customMode', 'keySource', 'keyMaterialPurchaseMethod',
-    'goodsSaleMethod'
+    'dungeon', 'difficultyTier', 'partySize', 'clearTimeMinutes', 'dailyConsumablesCost',
+    'artisanTea', 'guzzlingLevel', 'excludeBackEquipmentValue', 'customMode', 'keySource',
+    'keyMaterialPurchaseMethod', 'goodsSaleMethod'
   ];
   const positions = keys.map((key) => dungeonFeatureSource.indexOf(`i18n.t('${key}')`));
 
@@ -776,7 +801,7 @@ test('地下城操作区按可用宽度自动换行且最后一行不拉伸', ()
   );
   assert.match(dungeonFeatureSource, /width: 'min\(38rem, calc\(100vw - 1rem\)\)'/);
   assert.match(dungeonFeatureSource, /mst-dungeon-table-custom/);
-  assert.equal(dungeonFeatureSource.match(/TemplateRenderer\.html`<option/g)?.length, 3);
+  assert.equal(dungeonFeatureSource.match(/TemplateRenderer\.html`<option/g)?.length, 4);
   assert.doesNotMatch(dungeonFeatureSource, /TemplateRenderer\.html`\s+<option/);
   assert.equal(dungeonFeatureSource.match(/<col class="mst-dungeon-col-value/g)?.length, 4);
   assert.match(integratedCssSource, /\.mst-dungeon-table\s*\{[^}]*min-width:\s*35rem/s);
@@ -837,6 +862,7 @@ test('地下城只计算 1 日期望并展示每日净利润', () => {
   assert.equal(calculatedInputs.length, 1);
   assert.equal(calculatedInputs[0].actionHrid, '/actions/combat/chimerical_den');
   assert.equal(calculatedInputs[0].difficultyTier, 0);
+  assert.equal(calculatedInputs[0].partySize, '5');
   assert.equal(calculatedInputs[0].clearMinutes, '30');
   assert.equal(calculatedInputs[0].dailyConsumablesCost, '');
   assert.equal(calculatedInputs[0].useArtisanTea, true);
@@ -894,13 +920,14 @@ test('地下城从角色持有的多个暴饮之囊中选择最高强化等级',
   assert.equal(feature.state.guzzlingLevel, '0');
 });
 
-test('分析文档列明固定宝箱、递归开箱和门票规则', () => {
+test('分析文档列明宝箱数量公式、递归开箱和门票规则', () => {
   assert.match(analysisSource, /普通宝箱.*1\.295/);
   assert.match(analysisSource, /T1.*1\.295 × 0\.33/);
   assert.match(analysisSource, /T2.*1\.295/);
+  assert.match(analysisSource, /5 ÷ 队伍人数/);
   assert.match(analysisSource, /递归|期望掉落/);
   assert.match(analysisSource, /门票.*普通宝箱/);
-  assert.doesNotMatch(analysisSource, /个人产量倍率|队伍人数.*宝箱期望/);
+  assert.doesNotMatch(analysisSource, /个人产量倍率|不受队伍人数/);
   assert.doesNotMatch(analysisSource, /## 5\. 历史利润/);
 });
 
