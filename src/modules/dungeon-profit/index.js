@@ -14,6 +14,7 @@ const dungeonProfitFormView = {
     const calculationInput = {
       actionHrid: feature.state.actionHrid,
       difficultyTier: feature.state.difficultyTier,
+      partySize: feature.state.partySize,
       clearMinutes: feature.state.clearMinutes,
       dailyConsumablesCost: feature.state.dailyConsumablesCost,
       useArtisanTea: feature.state.useArtisanTea,
@@ -36,6 +37,12 @@ const dungeonProfitFormView = {
     ].map(
       (tier) =>
         TemplateRenderer.html`<option value=${String(tier)} .selected=${tier === feature.state.difficultyTier}>T${tier}</option>`
+    );
+    const partySizeOptions = [
+      1, 2, 3, 4, 5
+    ].map(
+      (size) =>
+        TemplateRenderer.html`<option value=${String(size)} .selected=${Number(size) === Number(feature.state.partySize)}>${size}</option>`
     );
     const guzzlingLevelOptions = Array.from(
       {length: 21},
@@ -69,6 +76,18 @@ const dungeonProfitFormView = {
           }}
         >
           ${difficultyOptions}
+        </select>
+      </label>
+      <label class="mst-dungeon-field">
+        <span>${i18n.t('partySize')}</span>
+        <select
+          .value=${String(feature.state.partySize)}
+          @change=${(event) => {
+            feature.state.partySize = event.target.value;
+            feature.render();
+          }}
+        >
+          ${partySizeOptions}
         </select>
       </label>
       <label class="mst-dungeon-field">
@@ -497,6 +516,7 @@ const dungeonProfitState = {
     feature.state = {
       actionHrid: defaultDungeon?.hrid || '',
       difficultyTier: 0,
+      partySize: '5',
       clearMinutes: '30',
       dailyConsumablesCost: '',
       useArtisanTea: true,

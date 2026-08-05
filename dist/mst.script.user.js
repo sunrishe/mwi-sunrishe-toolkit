@@ -3,7 +3,7 @@
 // @name:zh-CN         MWI Sunrishe 工具箱
 // @name:en            MWI Sunrishe Toolkit
 // @namespace          http://tampermonkey.net/
-// @version            2.8.3
+// @version            2.9.0
 // @description        MWI Sunrishe 综合工具箱：提供角色/队伍名片、技能/房屋/战斗升级规划、装备提升计算器、地下城收益、配装同步和市场伴侣增强。
 // @description:zh-CN  MWI Sunrishe 综合工具箱：提供角色/队伍名片、技能/房屋/战斗升级规划、装备提升计算器、地下城收益、配装同步和市场伴侣增强。
 // @description:en     MST toolkit for character/party cards, ability/house/combat upgrade planning, equipment comparison, dungeon profit, loadout sync, and Market Mate enhancements.
@@ -1625,8 +1625,8 @@
   const DUNGEON_CALCULATOR_MESSAGES = {
     dungeonCalculatorHelpTitle: {zh: '查看地下城收益说明', en: 'View dungeon profit instructions'},
     dungeonCalculatorHelp: {
-      zh: '使用：选择地下城、难度和单次耗时；每日固定按 24 小时计算。每日药品/饮料成本可留空，填写时单位为 M。工匠茶和暴饮之囊只影响制作钥匙成本，暴饮之囊需要勾选后才会按所选强化等级生效。\n\n期望：每日轮次 = 1440 ÷ 单次耗时，计算保留完整精度。普通宝箱固定按每车 1.295 个计算；T0 不掉精炼宝箱，T1 精炼宝箱为每车 1.295 × 0.33，T2 为每车 1.295 个。门票数量等于普通宝箱期望数量，数量显示最多保留两位小数并去掉末尾 0。\n\n成本：默认同时展示制作钥匙和购买钥匙。制作钥匙读取官方配方并受工匠茶、暴饮之囊影响；购买钥匙读取门票和开箱钥匙的成品市场价。材料成本区只显示买入方向，预期产出区只显示卖出方向。自定义模式可选择钥匙来源、买入档位和卖出档位；左侧保留所选来源的区间，右侧显示自定义组合。\n\n收益：宝箱内容按官方掉落率和平均数量递归展开，重复物品会合并，嵌套宝箱会继续展开。卖出收入固定扣除 2% 市场税。勾选“披风不计算收益”后，所有背部装备产物按 0 估值。单个普通宝箱税后收益会扣除单箱分摊的门票和普通开箱钥匙成本；单个精炼宝箱税后收益只扣除精炼开箱钥匙成本。每日期望收益按单箱收益乘每日宝箱数量汇总后，再扣除每日药品/饮料成本；每车期望收益等于每日期望收益除以每日轮次。\n\n限制：通关耗时需要手动填写，当前不会自动读取战斗耗时。结果是当前参数和市场价格下的确定性期望，不预测价格变化。完全缺价的物品按 0 估值并提示。',
-      en: 'Usage: Select a dungeon, tier, and clear time. Every day uses a fixed 24-hour calculation. Daily food/drink cost is optional and entered in millions. Artisan Tea and Guzzling Pouch affect crafted-key costs only; Guzzling Pouch applies only when its checkbox is enabled and uses the selected enhancement level.\n\nExpectation: Daily runs = 1440 ÷ clear time, kept at full precision for calculation. Normal Chests use a fixed expectation of 1.295 per run. T0 has no Refinement Chest; T1 uses 1.295 × 0.33 per run; T2 uses 1.295 per run. Entry Ticket quantity equals expected Normal Chest quantity, and displayed quantities use at most two decimals and hide trailing zeros.\n\nCosts: Crafted Keys and Purchased Keys are shown by default. Crafted-key costs use official recipes and are affected by Artisan Tea and Guzzling Pouch; purchased-key costs use finished Entry Ticket and Chest Key market prices. The Material Costs section shows purchase sides only, and Expected Output shows sale sides only. Custom Mode selects the key source, buy side, and sell side; the left columns keep the selected source range, while the right column shows the custom combination.\n\nProfit: Chest contents recursively use official drop rates and average quantities; duplicate items are combined and nested chests are expanded. Sale revenue always deducts a fixed 2% market tax. When Exclude Back Equipment Profit is enabled, all back-equipment output is valued at 0. Each Normal Chest After-Tax Profit deducts allocated Entry Ticket and Normal Chest Key costs; each Refinement Chest After-Tax Profit deducts its Refinement Chest Key cost. Daily Expected Profit multiplies per-chest profit by daily chest quantities, then deducts daily food/drink cost; Expected Profit per Run divides it by Daily Runs.\n\nLimits: Clear time is entered manually and is not read from combat automatically. Results are deterministic expectations at current parameters and market prices and do not predict price changes. Items with no valid price are valued at 0 and reported.'
+      zh: '使用：选择地下城、难度、队伍人数和单次耗时；每日固定按 24 小时计算。每日药品/饮料成本可留空，填写时单位为 M。工匠茶和暴饮之囊只影响制作钥匙成本，暴饮之囊需要勾选后才会按所选强化等级生效。\n\n期望：每日轮次 = 1440 ÷ 单次耗时，计算保留完整精度。普通宝箱按官方公式 5 ÷ 队伍人数 × (1 + 29.5% 战斗掉落数量)计算，5 人时每车 1.295 个；T0 不掉精炼宝箱，T1 精炼宝箱为每车普通宝箱 × 0.33，T2 为每车普通宝箱。门票数量等于普通宝箱期望数量，数量显示最多保留两位小数并去掉末尾 0。\n\n成本：默认同时展示制作钥匙和购买钥匙。制作钥匙读取官方配方并受工匠茶、暴饮之囊影响；购买钥匙读取门票和开箱钥匙的成品市场价。材料成本区只显示买入方向，预期产出区只显示卖出方向。自定义模式可选择钥匙来源、买入档位和卖出档位；左侧保留所选来源的区间，右侧显示自定义组合。\n\n收益：宝箱内容按官方掉落率和平均数量递归展开，重复物品会合并，嵌套宝箱会继续展开。卖出收入固定扣除 2% 市场税。勾选“披风不计算收益”后，所有背部装备产物按 0 估值。单个普通宝箱税后收益会扣除单箱分摊的门票和普通开箱钥匙成本；单个精炼宝箱税后收益只扣除精炼开箱钥匙成本。每日期望收益按单箱收益乘每日宝箱数量汇总后，再扣除每日药品/饮料成本；每车期望收益等于每日期望收益除以每日轮次。\n\n限制：通关耗时和队伍人数需要手动填写/选择，当前不会自动读取战斗耗时和队伍组成。结果是当前参数和市场价格下的确定性期望，不预测价格变化。完全缺价的物品按 0 估值并提示。',
+      en: 'Usage: Select a dungeon, tier, party size, and clear time. Every day uses a fixed 24-hour calculation. Daily food/drink cost is optional and entered in millions. Artisan Tea and Guzzling Pouch affect crafted-key costs only; Guzzling Pouch applies only when its checkbox is enabled and uses the selected enhancement level.\n\nExpectation: Daily runs = 1440 ÷ clear time, kept at full precision for calculation. Normal Chests use the official formula 5 ÷ Party Size × (1 + 29.5% Combat Drop Quantity); at Party Size 5 that is 1.295 per run. T0 has no Refinement Chest; T1 uses Normal Chests × 0.33 per run; T2 uses the Normal Chest expectation per run. Entry Ticket quantity equals expected Normal Chest quantity, and displayed quantities use at most two decimals and hide trailing zeros.\n\nCosts: Crafted Keys and Purchased Keys are shown by default. Crafted-key costs use official recipes and are affected by Artisan Tea and Guzzling Pouch; purchased-key costs use finished Entry Ticket and Chest Key market prices. The Material Costs section shows purchase sides only, and Expected Output shows sale sides only. Custom Mode selects the key source, buy side, and sell side; the left columns keep the selected source range, while the right column shows the custom combination.\n\nProfit: Chest contents recursively use official drop rates and average quantities; duplicate items are combined and nested chests are expanded. Sale revenue always deducts a fixed 2% market tax. When Exclude Back Equipment Profit is enabled, all back-equipment output is valued at 0. Each Normal Chest After-Tax Profit deducts allocated Entry Ticket and Normal Chest Key costs; each Refinement Chest After-Tax Profit deducts its Refinement Chest Key cost. Daily Expected Profit multiplies per-chest profit by daily chest quantities, then deducts daily food/drink cost; Expected Profit per Run divides it by Daily Runs.\n\nLimits: Clear time is entered manually and party size is selected manually; they are not read from combat automatically. Results are deterministic expectations at current parameters and market prices and do not predict price changes. Items with no valid price are valued at 0 and reported.'
     },
     dungeon: {zh: '地下城', en: 'Dungeon'},
     dungeonNameChimericalDen: {zh: '奇幻洞穴', en: 'Chimerical Den'},
@@ -1634,6 +1634,7 @@
     dungeonNameEnchantedFortress: {zh: '秘法要塞', en: 'Enchanted Fortress'},
     dungeonNamePirateCove: {zh: '海盗基地', en: 'Pirate Cove'},
     difficultyTier: {zh: '难度', en: 'Tier'},
+    partySize: {zh: '队伍人数', en: 'Party Size'},
     clearTimeMinutes: {zh: '单次耗时（分钟）', en: 'Clear Time (min)'},
     dailyConsumablesCost: {zh: '每日药品/饮料成本（M）', en: 'Daily Food/Drink Cost (M)'},
     artisanTea: {zh: '使用工匠茶', en: 'Use Artisan Tea'},
@@ -10010,7 +10011,10 @@
     }
   }
 
-  const DUNGEON_NORMAL_CHEST_EXPECTATION = 1.295;
+  // 官方宝箱数量公式：Chests = 5 ÷ Party Size × (1 + Combat Drop Quantity)。
+  // 战斗掉落数量固定按 29.5% 处理，5 人基准下每车普通宝箱期望为 5/5 × 1.295 = 1.295。
+  const DUNGEON_COMBAT_DROP_QUANTITY = 0.295;
+  const DUNGEON_NORMAL_CHEST_EXPECTATION = 5 * (1 + DUNGEON_COMBAT_DROP_QUANTITY);
   const DUNGEON_REFINEMENT_RATE_BY_TIER = Object.freeze([
     0, 0.33, 1
   ]);
@@ -10020,6 +10024,7 @@
     calculate({
       actionHrid,
       difficultyTier = 0,
+      partySize = 5,
       clearMinutes,
       dailyConsumablesCost = 0,
       useArtisanTea = false,
@@ -10039,14 +10044,16 @@
 
       const tier = Math.max(0, Math.min(2, Math.trunc(Number(difficultyTier) || 0)));
       const refinementRate = DUNGEON_REFINEMENT_RATE_BY_TIER[tier];
+      const size = Math.max(1, Math.min(5, Math.trunc(Number(partySize) || 5)));
       const clears = (24 * 60) / minutes;
-      const normalPerRun = DUNGEON_NORMAL_CHEST_EXPECTATION;
-      const refinementPerRun = DUNGEON_NORMAL_CHEST_EXPECTATION * refinementRate;
+      // 官方公式：每车普通宝箱 = 5 ÷ 队伍人数 × (1 + 战斗掉落数量)。
+      const normalPerRun = DUNGEON_NORMAL_CHEST_EXPECTATION / size;
+      const refinementPerRun = normalPerRun * refinementRate;
       const totalChestPerRun = normalPerRun + refinementPerRun;
-      const normalQuantity = clears * DUNGEON_NORMAL_CHEST_EXPECTATION;
-      const refinementQuantity = clears * DUNGEON_NORMAL_CHEST_EXPECTATION * refinementRate;
+      const normalQuantity = clears * normalPerRun;
+      const refinementQuantity = clears * refinementPerRun;
       const totalChestQuantity = normalQuantity + refinementQuantity;
-      // 地下城结束奖励使用固定长期预期，不应用队伍人数或战斗掉落 Buff。
+      // 地下城结束奖励按上述宝箱期望生成，战斗掉落率等其他 Buff 不参与。
       const createRewards = (normalChestQuantity, refinementChestQuantity) =>
         (dungeonInfo.rewardDropTable || []).map((drop) => ({
           ...drop,
@@ -10221,6 +10228,7 @@
       return {
         action,
         difficultyTier: tier,
+        partySize: size,
         clears,
         ticketHrid,
         ticketQuantity,
@@ -10524,6 +10532,7 @@
       const calculationInput = {
         actionHrid: feature.state.actionHrid,
         difficultyTier: feature.state.difficultyTier,
+        partySize: feature.state.partySize,
         clearMinutes: feature.state.clearMinutes,
         dailyConsumablesCost: feature.state.dailyConsumablesCost,
         useArtisanTea: feature.state.useArtisanTea,
@@ -10546,6 +10555,12 @@
       ].map(
         (tier) =>
           TemplateRenderer.html`<option value=${String(tier)} .selected=${tier === feature.state.difficultyTier}>T${tier}</option>`
+      );
+      const partySizeOptions = [
+        1, 2, 3, 4, 5
+      ].map(
+        (size) =>
+          TemplateRenderer.html`<option value=${String(size)} .selected=${Number(size) === Number(feature.state.partySize)}>${size}</option>`
       );
       const guzzlingLevelOptions = Array.from(
         {length: 21},
@@ -10579,6 +10594,18 @@
           }}
         >
           ${difficultyOptions}
+        </select>
+      </label>
+      <label class="mst-dungeon-field">
+        <span>${i18n.t('partySize')}</span>
+        <select
+          .value=${String(feature.state.partySize)}
+          @change=${(event) => {
+            feature.state.partySize = event.target.value;
+            feature.render();
+          }}
+        >
+          ${partySizeOptions}
         </select>
       </label>
       <label class="mst-dungeon-field">
@@ -11007,6 +11034,7 @@
       feature.state = {
         actionHrid: defaultDungeon?.hrid || '',
         difficultyTier: 0,
+        partySize: '5',
         clearMinutes: '30',
         dailyConsumablesCost: '',
         useArtisanTea: true,

@@ -1,6 +1,9 @@
 import {MARKET_TAX_MULTIPLIER} from '../../common/constants.js';
 
-const DUNGEON_NORMAL_CHEST_EXPECTATION = 1.295;
+// 官方宝箱数量公式：Chests = 5 ÷ Party Size × (1 + Combat Drop Quantity)。
+// 战斗掉落数量固定按 29.5% 处理，5 人基准下每车普通宝箱期望为 5/5 × 1.295 = 1.295。
+const DUNGEON_COMBAT_DROP_QUANTITY = 0.295;
+const DUNGEON_NORMAL_CHEST_EXPECTATION = 5 * (1 + DUNGEON_COMBAT_DROP_QUANTITY);
 const DUNGEON_REFINEMENT_RATE_BY_TIER = Object.freeze([
   0, 0.33, 1
 ]);
@@ -10,6 +13,7 @@ const dungeonProfitCalculationMethods = {
   calculate({
     actionHrid,
     difficultyTier = 0,
+    partySize = 5,
     clearMinutes,
     dailyConsumablesCost = 0,
     useArtisanTea = false,
@@ -29,14 +33,16 @@ const dungeonProfitCalculationMethods = {
 
     const tier = Math.max(0, Math.min(2, Math.trunc(Number(difficultyTier) || 0)));
     const refinementRate = DUNGEON_REFINEMENT_RATE_BY_TIER[tier];
+    const size = Math.max(1, Math.min(5, Math.trunc(Number(partySize) || 5)));
     const clears = (24 * 60) / minutes;
-    const normalPerRun = DUNGEON_NORMAL_CHEST_EXPECTATION;
-    const refinementPerRun = DUNGEON_NORMAL_CHEST_EXPECTATION * refinementRate;
+    // 官方公式：每车普通宝箱 = 5 ÷ 队伍人数 × (1 + 战斗掉落数量)。
+    const normalPerRun = DUNGEON_NORMAL_CHEST_EXPECTATION / size;
+    const refinementPerRun = normalPerRun * refinementRate;
     const totalChestPerRun = normalPerRun + refinementPerRun;
-    const normalQuantity = clears * DUNGEON_NORMAL_CHEST_EXPECTATION;
-    const refinementQuantity = clears * DUNGEON_NORMAL_CHEST_EXPECTATION * refinementRate;
+    const normalQuantity = clears * normalPerRun;
+    const refinementQuantity = clears * refinementPerRun;
     const totalChestQuantity = normalQuantity + refinementQuantity;
-    // 地下城结束奖励使用固定长期预期，不应用队伍人数或战斗掉落 Buff。
+    // 地下城结束奖励按上述宝箱期望生成，战斗掉落率等其他 Buff 不参与。
     const createRewards = (normalChestQuantity, refinementChestQuantity) =>
       (dungeonInfo.rewardDropTable || []).map((drop) => ({
         ...drop,
@@ -211,6 +217,7 @@ const dungeonProfitCalculationMethods = {
     return {
       action,
       difficultyTier: tier,
+      partySize: size,
       clears,
       ticketHrid,
       ticketQuantity,
