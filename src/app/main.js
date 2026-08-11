@@ -6,6 +6,7 @@ import {
   HOUSE_MIN_FROM_LEVEL,
   MARKET_CACHE_TTL,
   PROFILE_CACHE_LIMIT,
+  PROFILE_CACHE_MAX_BYTES,
   PROFILE_CACHE_TTL,
   TOAST_DURATION,
   TOAST_MAX_COUNT
@@ -31,6 +32,7 @@ export function runMst() {
     MARKET_CACHE_TTL,
     PROFILE_CACHE_TTL,
     PROFILE_CACHE_LIMIT,
+    PROFILE_CACHE_MAX_BYTES,
     MARKET_URL: `https://www.${domainname}/game_data/marketplace.json`,
     characterId: new URLSearchParams(window.location.search).get('characterId'),
     MIN_FROM_LEVEL: HOUSE_MIN_FROM_LEVEL,

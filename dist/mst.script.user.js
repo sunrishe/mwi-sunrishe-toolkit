@@ -3,7 +3,7 @@
 // @name:zh-CN         MWI Sunrishe 工具箱
 // @name:en            MWI Sunrishe Toolkit
 // @namespace          http://tampermonkey.net/
-// @version            2.9.0
+// @version            2.9.1
 // @description        MWI Sunrishe 综合工具箱：提供角色/队伍名片、技能/房屋/战斗升级规划、装备提升计算器、地下城收益、配装同步和市场伴侣增强。
 // @description:zh-CN  MWI Sunrishe 综合工具箱：提供角色/队伍名片、技能/房屋/战斗升级规划、装备提升计算器、地下城收益、配装同步和市场伴侣增强。
 // @description:en     MST toolkit for character/party cards, ability/house/combat upgrade planning, equipment comparison, dungeon profit, loadout sync, and Market Mate enhancements.
@@ -59,6 +59,8 @@
   const MARKET_CACHE_TTL = 60 * 60 * 1000;
   const PROFILE_CACHE_TTL = 30 * 24 * 60 * 60 * 1000;
   const PROFILE_CACHE_LIMIT = 50;
+  // 名片角色资料缓存占用上限，超限时按最旧淘汰，防止接近浏览器 localStorage 配额。
+  const PROFILE_CACHE_MAX_BYTES = 1024 * 1024;
 
   // 房屋等级上限来自当前官方升级数据，界面批量选择沿用同一边界。
   const HOUSE_MIN_FROM_LEVEL = 1;
@@ -822,8 +824,112 @@
       this.characterData.profiles = Object.fromEntries(entries);
     },
 
+    // 存储裁剪：把完整 profile 压缩成名片渲染所需的最小字段集，避免占用 localStorage 配额。
+    compactProfile(profile) {
+      if (!profile || typeof profile !== 'object') return profile;
+      const pick = (item, fields) => {
+        if (!item || typeof item !== 'object') return item;
+        const out = {};
+        fields.forEach((field) => {
+          if (item[field] != null) out[field] = item[field];
+        });
+        return out;
+      };
+      const wearableItemMap = {};
+      Object.entries(profile.wearableItemMap || {}).forEach(
+        ([
+          key, item
+        ]) => {
+          const compactItem = pick(item, [
+            'itemLocationHrid', 'itemHrid', 'enhancementLevel', 'count'
+          ]);
+          if (compactItem.itemHrid || compactItem.itemLocationHrid) wearableItemMap[key] = compactItem;
+        }
+      );
+      const characterHouseRoomMap = {};
+      Object.entries(profile.characterHouseRoomMap || {}).forEach(
+        ([
+          hrid, room
+        ]) => {
+          if (room && typeof room === 'object') {
+            if (room.houseRoomHrid) characterHouseRoomMap[room.houseRoomHrid] = Number(room.level || 0);
+          } else if (String(hrid).startsWith('/house_rooms/')) {
+            characterHouseRoomMap[hrid] = Number(room || 0);
+          }
+        }
+      );
+      return {
+        ...pick(profile, [
+          'combatLevel', 'hideWearableItems'
+        ]),
+        wearableItemMap,
+        characterSkills: (profile.characterSkills || [])
+          .map((skill) =>
+            pick(skill, [
+              'skillHrid', 'level'
+            ])
+          )
+          .filter((skill) => skill.skillHrid),
+        equippedAbilities: (profile.equippedAbilities || [])
+          .map((ability) =>
+            pick(ability, [
+              'abilityHrid', 'level', 'slotNumber'
+            ])
+          )
+          .filter((ability) => ability.abilityHrid),
+        sharableCharacter:
+          pick(profile.sharableCharacter, [
+            'name', 'specialChatIconHrid', 'chatIconHrid', 'nameColorHrid', 'gameMode'
+          ]) || {},
+        characterHouseRoomMap
+      };
+    },
+
+    // 淘汰最旧一条资料，返回被删除的 [id, profile]，没有可删时返回 null。
+    dropOldestProfile() {
+      const entries = Object.entries(this.characterData.profiles || {});
+      if (!entries.length) return null;
+      const oldest = entries.reduce((min, entry) =>
+        Number(entry[1]?.timestamp || 0) < Number(min[1]?.timestamp || 0) ? entry : min
+      );
+      delete this.characterData.profiles[oldest[0]];
+      return oldest;
+    },
+
     persistProfiles() {
-      localStorage.setItem(this.STORAGE_KEYS.PROFILE_CACHE, JSON.stringify(this.characterData.profiles || {}));
+      const {CONFIG} = this.ctx;
+      const serialize = () => {
+        const compacted = {};
+        Object.entries(this.characterData.profiles || {}).forEach(
+          ([
+            id, profile
+          ]) => {
+            if (!profile || typeof profile !== 'object') return;
+            compacted[id] = {...profile, profile: this.compactProfile(profile.profile)};
+          }
+        );
+        return JSON.stringify(compacted);
+      };
+      const tryWrite = (json) => {
+        try {
+          localStorage.setItem(this.STORAGE_KEYS.PROFILE_CACHE, json);
+          return true;
+        } catch (error) {
+          console.warn('[MST] 名片缓存写入失败，尝试淘汰最旧资料后重试:', error);
+          return false;
+        }
+      };
+      let json = serialize();
+      // 超出容量上限时按最旧淘汰，直到能容纳为止（主要兜底旧版本存下的未裁剪大缓存）。
+      while (json.length > CONFIG.PROFILE_CACHE_MAX_BYTES) {
+        if (!this.dropOldestProfile()) break;
+        json = serialize();
+      }
+      // 写入失败（配额已满等）时同样逐条淘汰后重试，避免缓存静默丢失。
+      while (!tryWrite(json)) {
+        if (!this.dropOldestProfile()) break;
+        json = serialize();
+      }
     },
 
     loadStoredProfiles() {
@@ -4933,9 +5039,18 @@
         const houseMapRaw = profile?.characterHouseRoomMap || {};
         const houseRooms = {};
         try {
-          Object.values(houseMapRaw).forEach((houseRoom) => {
-            if (houseRoom?.houseRoomHrid) houseRooms[houseRoom.houseRoomHrid] = houseRoom.level || 0;
-          });
+          Object.entries(houseMapRaw).forEach(
+            ([
+              hrid, houseRoom
+            ]) => {
+              // 兼容存储裁剪后的 {houseRoomHrid: level} 紧凑格式。
+              if (houseRoom && typeof houseRoom === 'object') {
+                if (houseRoom.houseRoomHrid) houseRooms[houseRoom.houseRoomHrid] = houseRoom.level || 0;
+              } else if (String(hrid).startsWith('/house_rooms/')) {
+                houseRooms[hrid] = houseRoom || 0;
+              }
+            }
+          );
         } catch {}
         return {
           player: {
@@ -20613,6 +20728,7 @@ to{transform:translateY(0);opacity:1}
       MARKET_CACHE_TTL,
       PROFILE_CACHE_TTL,
       PROFILE_CACHE_LIMIT,
+      PROFILE_CACHE_MAX_BYTES,
       MARKET_URL: `https://www.${domainname}/game_data/marketplace.json`,
       characterId: new URLSearchParams(window.location.search).get('characterId'),
       MIN_FROM_LEVEL: HOUSE_MIN_FROM_LEVEL,

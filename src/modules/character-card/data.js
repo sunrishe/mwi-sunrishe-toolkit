@@ -127,9 +127,18 @@ const characterCardProfileDataAdapter = {
       const houseMapRaw = profile?.characterHouseRoomMap || {};
       const houseRooms = {};
       try {
-        Object.values(houseMapRaw).forEach((houseRoom) => {
-          if (houseRoom?.houseRoomHrid) houseRooms[houseRoom.houseRoomHrid] = houseRoom.level || 0;
-        });
+        Object.entries(houseMapRaw).forEach(
+          ([
+            hrid, houseRoom
+          ]) => {
+            // 兼容存储裁剪后的 {houseRoomHrid: level} 紧凑格式。
+            if (houseRoom && typeof houseRoom === 'object') {
+              if (houseRoom.houseRoomHrid) houseRooms[houseRoom.houseRoomHrid] = houseRoom.level || 0;
+            } else if (String(hrid).startsWith('/house_rooms/')) {
+              houseRooms[hrid] = houseRoom || 0;
+            }
+          }
+        );
       } catch {}
       return {
         player: {
