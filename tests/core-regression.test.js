@@ -97,7 +97,7 @@ function loadProfileStore(now) {
     }
   };
   const context = {
-    CONFIG: {PROFILE_CACHE_TTL: 1000, PROFILE_CACHE_LIMIT: 2},
+    CONFIG: {PROFILE_CACHE_TTL: 1000, PROFILE_CACHE_LIMIT: 2, PROFILE_CACHE_MAX_BYTES: 1024 * 1024},
     STORAGE_KEYS: {PROFILE_CACHE: 'MST_CC_profiles'},
     CustomEvent: class {
       constructor(type, options) {
@@ -728,6 +728,164 @@ test('profile_shared 缓存会淘汰过期资料并限制数量', () => {
 
   now.value = 11_000;
   assert.equal(store.getProfile('middle'), null);
+});
+
+test('profile_shared 持久化时裁剪为最小字段集', () => {
+  const now = {value: 1_800_000_000_000};
+  const store = loadProfileStore(now);
+  store.addProfileShared({
+    characterName: 'Tester',
+    profile: {
+      combatLevel: 88,
+      hideWearableItems: false,
+      sharableCharacter: {
+        id: 26623,
+        name: 'Tester',
+        specialChatIconHrid: '/chat_icons/special',
+        chatIconHrid: '/chat_icons/normal',
+        nameColorHrid: '/name_colors/rainbow',
+        gameMode: 'standard',
+        avatarHrid: '/avatars/lucky_koi',
+        isDeleted: false
+      },
+      wearableItemMap: {
+        w1: {
+          itemLocationHrid: '/item_locations/head',
+          itemHrid: '/items/cowboy_hat',
+          enhancementLevel: 5,
+          count: 1,
+          characterID: 26623,
+          name: 'Cowboy Hat',
+          description: 'long description',
+          craftRequirements: []
+        },
+        w2: {
+          itemLocationHrid: '/item_locations/main_hand',
+          itemHrid: '/items/wooden_sword',
+          enhancementLevel: 0,
+          count: 1,
+          extraJunk: 'junk'
+        }
+      },
+      characterSkills: [
+        {skillHrid: '/skills/attack', level: 77, xp: 12345, characterID: 26623}
+      ],
+      equippedAbilities: [
+        {abilityHrid: '/abilities/slash', level: 3, slotNumber: 1, characterID: 26623, junk: true}
+      ],
+      characterHouseRoomMap: {
+        '/house_rooms/dining_room': {
+          houseRoomHrid: '/house_rooms/dining_room',
+          level: 4,
+          characterID: 26623,
+          junk: true
+        }
+      },
+      characterAchievements: [
+        {achievementHrid: '/achievements/first_blood'}
+      ]
+    }
+  });
+  const compact = JSON.parse(store.localStorage.getItem('MST_CC_profiles'))['26623'].profile;
+  assert.deepEqual(compact.wearableItemMap.w1, {
+    itemLocationHrid: '/item_locations/head',
+    itemHrid: '/items/cowboy_hat',
+    enhancementLevel: 5,
+    count: 1
+  });
+  assert.deepEqual(compact.wearableItemMap.w2, {
+    itemLocationHrid: '/item_locations/main_hand',
+    itemHrid: '/items/wooden_sword',
+    enhancementLevel: 0,
+    count: 1
+  });
+  assert.deepEqual(compact.characterSkills, [
+    {skillHrid: '/skills/attack', level: 77}
+  ]);
+  assert.deepEqual(compact.equippedAbilities, [
+    {abilityHrid: '/abilities/slash', level: 3, slotNumber: 1}
+  ]);
+  assert.deepEqual(compact.characterHouseRoomMap, {'/house_rooms/dining_room': 4});
+  assert.deepEqual(compact.sharableCharacter, {
+    name: 'Tester',
+    specialChatIconHrid: '/chat_icons/special',
+    chatIconHrid: '/chat_icons/normal',
+    nameColorHrid: '/name_colors/rainbow',
+    gameMode: 'standard'
+  });
+  assert.equal(compact.combatLevel, 88);
+  assert.equal(compact.characterAchievements, undefined);
+  assert.equal(compact.sharableCharacter.avatarHrid, undefined);
+});
+
+test('名片缓存超过容量上限时按最旧资料淘汰', () => {
+  const now = {value: 10_000};
+  const store = loadProfileStore(now);
+  store.ctx.CONFIG.PROFILE_CACHE_MAX_BYTES = 500;
+  const bigProfile = (char) => ({wearableItemMap: {a: {itemHrid: char.repeat(200)}}});
+  store.characterData.profiles = {
+    oldest: {characterID: 'oldest', timestamp: 1_000, profile: bigProfile('o')},
+    middle: {characterID: 'middle', timestamp: 5_000, profile: bigProfile('m')},
+    newest: {characterID: 'newest', timestamp: 9_000, profile: bigProfile('n')}
+  };
+
+  store.persistProfiles();
+  assert.ok(store.localStorage.getItem('MST_CC_profiles').length <= 500);
+  const stored = JSON.parse(store.localStorage.getItem('MST_CC_profiles'));
+  assert.equal(stored.oldest, undefined);
+  assert.equal(stored.middle, undefined);
+  assert.ok(stored.newest);
+});
+
+test('localStorage 写入失败时逐条淘汰后重试', () => {
+  const now = {value: 10_000};
+  const store = loadProfileStore(now);
+  let failCount = 1;
+  const originalSetItem = store.localStorage.setItem.bind(store.localStorage);
+  store.localStorage.setItem = (key, value) => {
+    if (failCount-- > 0) throw new Error('QuotaExceededError');
+    originalSetItem(key, value);
+  };
+  store.characterData.profiles = {
+    oldest: {characterID: 'oldest', timestamp: 1_000, profile: {wearableItemMap: {}}},
+    newest: {characterID: 'newest', timestamp: 9_000, profile: {wearableItemMap: {}}}
+  };
+
+  store.persistProfiles();
+  assert.equal(store.characterData.profiles.oldest, undefined);
+  assert.ok(store.characterData.profiles.newest);
+  const stored = JSON.parse(store.localStorage.getItem('MST_CC_profiles'));
+  assert.equal(stored.oldest, undefined);
+  assert.ok(stored.newest);
+});
+
+test('读取旧版未裁剪缓存后自动重写为紧凑格式', () => {
+  const now = {value: 10_000};
+  const store = loadProfileStore(now);
+  store.localStorage.setItem(
+    'MST_CC_profiles',
+    JSON.stringify({
+      1: {
+        type: 'profile_shared',
+        characterID: '1',
+        characterName: 'A',
+        timestamp: 5_000,
+        profile: {
+          wearableItemMap: {
+            a: {itemHrid: '/items/x', characterID: 1, junk: 'big'}
+          },
+          characterAchievements: [
+            {}
+          ]
+        }
+      }
+    })
+  );
+
+  store.loadStoredProfiles();
+  const stored = JSON.parse(store.localStorage.getItem('MST_CC_profiles'));
+  assert.deepEqual(stored['1'].profile.wearableItemMap.a, {itemHrid: '/items/x'});
+  assert.equal(stored['1'].profile.characterAchievements, undefined);
 });
 
 test('名片技能数据统一兼容直接等级、官方技能数组和旧 power 字段', () => {

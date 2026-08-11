@@ -751,8 +751,112 @@ const dataHubProfileMethods = {
     this.characterData.profiles = Object.fromEntries(entries);
   },
 
+  // 存储裁剪：把完整 profile 压缩成名片渲染所需的最小字段集，避免占用 localStorage 配额。
+  compactProfile(profile) {
+    if (!profile || typeof profile !== 'object') return profile;
+    const pick = (item, fields) => {
+      if (!item || typeof item !== 'object') return item;
+      const out = {};
+      fields.forEach((field) => {
+        if (item[field] != null) out[field] = item[field];
+      });
+      return out;
+    };
+    const wearableItemMap = {};
+    Object.entries(profile.wearableItemMap || {}).forEach(
+      ([
+        key, item
+      ]) => {
+        const compactItem = pick(item, [
+          'itemLocationHrid', 'itemHrid', 'enhancementLevel', 'count'
+        ]);
+        if (compactItem.itemHrid || compactItem.itemLocationHrid) wearableItemMap[key] = compactItem;
+      }
+    );
+    const characterHouseRoomMap = {};
+    Object.entries(profile.characterHouseRoomMap || {}).forEach(
+      ([
+        hrid, room
+      ]) => {
+        if (room && typeof room === 'object') {
+          if (room.houseRoomHrid) characterHouseRoomMap[room.houseRoomHrid] = Number(room.level || 0);
+        } else if (String(hrid).startsWith('/house_rooms/')) {
+          characterHouseRoomMap[hrid] = Number(room || 0);
+        }
+      }
+    );
+    return {
+      ...pick(profile, [
+        'combatLevel', 'hideWearableItems'
+      ]),
+      wearableItemMap,
+      characterSkills: (profile.characterSkills || [])
+        .map((skill) =>
+          pick(skill, [
+            'skillHrid', 'level'
+          ])
+        )
+        .filter((skill) => skill.skillHrid),
+      equippedAbilities: (profile.equippedAbilities || [])
+        .map((ability) =>
+          pick(ability, [
+            'abilityHrid', 'level', 'slotNumber'
+          ])
+        )
+        .filter((ability) => ability.abilityHrid),
+      sharableCharacter:
+        pick(profile.sharableCharacter, [
+          'name', 'specialChatIconHrid', 'chatIconHrid', 'nameColorHrid', 'gameMode'
+        ]) || {},
+      characterHouseRoomMap
+    };
+  },
+
+  // 淘汰最旧一条资料，返回被删除的 [id, profile]，没有可删时返回 null。
+  dropOldestProfile() {
+    const entries = Object.entries(this.characterData.profiles || {});
+    if (!entries.length) return null;
+    const oldest = entries.reduce((min, entry) =>
+      Number(entry[1]?.timestamp || 0) < Number(min[1]?.timestamp || 0) ? entry : min
+    );
+    delete this.characterData.profiles[oldest[0]];
+    return oldest;
+  },
+
   persistProfiles() {
-    localStorage.setItem(this.STORAGE_KEYS.PROFILE_CACHE, JSON.stringify(this.characterData.profiles || {}));
+    const {CONFIG} = this.ctx;
+    const serialize = () => {
+      const compacted = {};
+      Object.entries(this.characterData.profiles || {}).forEach(
+        ([
+          id, profile
+        ]) => {
+          if (!profile || typeof profile !== 'object') return;
+          compacted[id] = {...profile, profile: this.compactProfile(profile.profile)};
+        }
+      );
+      return JSON.stringify(compacted);
+    };
+    const tryWrite = (json) => {
+      try {
+        localStorage.setItem(this.STORAGE_KEYS.PROFILE_CACHE, json);
+        return true;
+      } catch (error) {
+        console.warn('[MST] 名片缓存写入失败，尝试淘汰最旧资料后重试:', error);
+        return false;
+      }
+    };
+    let json = serialize();
+    // 超出容量上限时按最旧淘汰，直到能容纳为止（主要兜底旧版本存下的未裁剪大缓存）。
+    while (json.length > CONFIG.PROFILE_CACHE_MAX_BYTES) {
+      if (!this.dropOldestProfile()) break;
+      json = serialize();
+    }
+    // 写入失败（配额已满等）时同样逐条淘汰后重试，避免缓存静默丢失。
+    while (!tryWrite(json)) {
+      if (!this.dropOldestProfile()) break;
+      json = serialize();
+    }
   },
 
   loadStoredProfiles() {
