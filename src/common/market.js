@@ -4,9 +4,13 @@ export class MarketDataService {
     this.ctx = ctx;
     this.marketData = {};
     this.marketTimestamp = 0;
+    // 官方市场价值（市场指导价）：0814 更新后游戏在 localStorage 维护，
+    // 挂单与最近成交都缺失时用它兜底，避免完全缺价物品按 0 估值。
+    this.marketItemValues = {};
   }
 
   async load() {
+    this.loadMarketItemValues();
     // 优先复用 MWI 市场伴侣缓存，减少重复请求并保证购物车价格口径一致。
     const mwiToolsData = this._readMWIToolsMarketData();
     if (mwiToolsData) {
@@ -29,13 +33,57 @@ export class MarketDataService {
   getPrice(itemHrid, level = 0) {
     if (itemHrid === '/items/coin') return 1;
     const row = this.marketData?.[itemHrid]?.[String(level)];
-    if (!row) return 0;
-    // a/p/b 分别对应左一、最近成交、右一；缺侧时按可用价格兜底。
-    return Number(row.a ?? row.p ?? row.b ?? 0) || 0;
+    // a/p/b 分别对应左一、最近成交、右一；缺侧时按可用价格兜底，全缺时取官方市场价值。
+    const price = Number(row?.a ?? row?.p ?? row?.b ?? 0) || 0;
+    return price || this.getMarketValue(itemHrid, level);
   }
 
   getMarketRow(itemHrid, level = 0) {
     return this.marketData?.[itemHrid]?.[String(level)] || null;
+  }
+
+  getMarketValue(itemHrid, level = 0) {
+    const itemValues = this.marketItemValues?.[itemHrid];
+    if (!itemValues) return 0;
+    const value = Number(itemValues[level] ?? itemValues[String(level)] ?? 0);
+    return Number.isFinite(value) && value > 0 ? value : 0;
+  }
+
+  loadMarketItemValues() {
+    const {pageWindow} = this.ctx;
+    try {
+      // 优先读游戏官方缓存工具，与 initClientData 的读取方式保持一致。
+      const official = pageWindow?.localStorageUtil?.getMarketItemValues;
+      if (typeof official === 'function') {
+        const parsed = official();
+        if (parsed?.marketItemValues) {
+          this.marketItemValues = parsed.marketItemValues;
+          return;
+        }
+      }
+      const raw = localStorage.getItem('marketItemValues');
+      const parsed = this._parseMarketItemValues(raw);
+      if (parsed?.marketItemValues) {
+        this.marketItemValues = parsed.marketItemValues;
+      }
+    } catch (error) {
+      console.warn('[MST] 读取官方市场价值失败:', error);
+    }
+  }
+
+  _parseMarketItemValues(raw) {
+    if (!raw || typeof raw !== 'string') return null;
+    const tryParse = (json) => {
+      if (!json || typeof json !== 'string') return null;
+      try {
+        const parsed = JSON.parse(json);
+        return parsed?.marketItemValues ? parsed : null;
+      } catch {
+        return null;
+      }
+    };
+    // 游戏以 LZString UTF16 压缩写入，个别环境可能未压缩，两种都试。
+    return tryParse(this.ctx.DataHub?.lzDecompressUTF16?.(raw)) || tryParse(raw) || null;
   }
 
   getUpdatedText() {

@@ -1,6 +1,14 @@
 // 市场卖出收益统一从这里扣税，交易税调整时只改这一处。
-export const MARKET_TAX_RATE = 0.02;
+export const MARKET_TAX_RATE = 0.05;
 export const MARKET_TAX_MULTIPLIER = 1 - MARKET_TAX_RATE;
+
+// 牛铃袋在市场上出售按 18% 特殊税率扣税，与普通市场税分开管理，调整时只改这一处。
+export const COWBELL_TAX_RATE = 0.18;
+export const COWBELL_TAX_MULTIPLIER = 1 - COWBELL_TAX_RATE;
+
+// 牛铃袋挂单、最近成交和官方市场价值（marketItemValues）全部缺失时的最后兜底估值，
+// 避免牛铃及牛铃袋递归估值为 0；取官方 marketplace 快照（2026-08-15）牛铃袋最近成交价 1,075,167。
+export const COWBELL_BAG_FALLBACK_PRICE = 1075167;
 
 // 缓存时间按数据类型区分：市场价格短缓存，角色资料可长期复用。
 export const MARKET_CACHE_TTL = 60 * 60 * 1000;

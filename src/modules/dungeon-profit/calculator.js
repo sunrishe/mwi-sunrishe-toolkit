@@ -1,4 +1,4 @@
-import {MARKET_TAX_MULTIPLIER} from '../../common/constants.js';
+import {COWBELL_BAG_FALLBACK_PRICE, COWBELL_TAX_MULTIPLIER, MARKET_TAX_MULTIPLIER} from '../../common/constants.js';
 
 // 官方宝箱数量公式：Chests = 5 ÷ Party Size × (1 + Combat Drop Quantity)。
 // 战斗掉落数量固定按 29.5% 处理，5 人基准下每车普通宝箱期望为 5/5 × 1.295 = 1.295。
@@ -281,6 +281,8 @@ const dungeonProfitPricingMethods = {
     if (itemHrid === '/items/coin') return 1;
     const special = this.specialPriceSources[itemHrid];
     const marketHrid = special?.itemHrid || itemHrid;
+    // 牛铃袋按 18% 特殊税率折算，其余物品统一按普通市场税。
+    const taxMultiplier = marketHrid === '/items/bag_of_10_cowbells' ? COWBELL_TAX_MULTIPLIER : MARKET_TAX_MULTIPLIER;
     const row = this.marketService.getMarketRow(marketHrid, 0);
     const getPositivePrice = (rawValue) => {
       const value = Number(rawValue);
@@ -289,11 +291,17 @@ const dungeonProfitPricingMethods = {
     let value = getPositivePrice(side === 'ask' ? row?.a : row?.b);
     if (!value && side === 'ask') {
       const bid = getPositivePrice(row?.b);
-      if (bid) value = Math.ceil(bid / MARKET_TAX_MULTIPLIER);
+      if (bid) value = Math.ceil(bid / taxMultiplier);
     }
     if (!value) value = getPositivePrice(row?.p);
+    // 挂单与最近成交都缺失时取官方市场价值（市场指导价），比参考价更贴近官方口径。
+    if (!value) value = getPositivePrice(this.marketService?.getMarketValue?.(marketHrid, 0));
+    // 牛铃袋连市场价值也缺失时按参考兜底价估值，牛铃经 divisor 同步继承，避免宝箱牛铃收益算成 0。
+    if (!value && marketHrid === '/items/bag_of_10_cowbells') {
+      value = COWBELL_BAG_FALLBACK_PRICE;
+    }
     if (applyMarketTax && value > 0) {
-      value = Math.floor(value * MARKET_TAX_MULTIPLIER);
+      value = Math.floor(value * taxMultiplier);
     }
     return value / (special?.divisor || 1);
   },
@@ -383,7 +391,9 @@ const dungeonProfitExpectationMethods = {
     };
     const expandChest = (itemHrid, quantity, target, targetOpeningKeys, stack = new Set()) => {
       if (!(quantity > 0)) return;
-      const drops = lootMap[itemHrid];
+      // 牛铃袋保留为直接市场估值，不递归展开成牛铃：牛铃再按牛铃袋折算会形成估值环，
+      // 牛铃袋缺价时会把两者都算成 0，与康康运气的口径一致。
+      const drops = itemHrid === '/items/bag_of_10_cowbells' ? null : lootMap[itemHrid];
       if (!Array.isArray(drops)) {
         addDrop(target, itemHrid, quantity);
         return;
