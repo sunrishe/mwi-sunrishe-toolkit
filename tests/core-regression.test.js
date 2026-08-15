@@ -1617,3 +1617,49 @@ test('战斗模拟 Worker 入口独立成模块，聚合器只负责装配', () 
   assert.match(readSourceFile('src', 'app', 'app-controller.js'), /function installAppStyles\(\)/);
   assert.match(readSourceFile('src', 'app', 'app-controller.js'), /installAppStyles\(\)/);
 });
+
+test('市场指导价优先读官方 localStorageUtil，缺价时用于兜底估值', () => {
+  const marketValues = {'/items/bag_of_10_cowbells': {0: 800000}};
+  const loadMarketService = ({pageWindow = {}, localStorage}) =>
+    vm.runInNewContext(
+      `${readVmSource('src/common/market.js')}
+          new MarketDataService({pageWindow, DataHub: {lzDecompressUTF16() { return null; }}});`,
+      {console, localStorage, pageWindow}
+    );
+
+  // 官方缓存工具优先，不触碰 localStorage。
+  const official = loadMarketService({
+    pageWindow: {
+      localStorageUtil: {
+        getMarketItemValues() {
+          return {marketValuesVersion: 'v1', marketItemValues: marketValues};
+        }
+      }
+    },
+    localStorage: {
+      getItem() {
+        throw new Error('不应读取 localStorage');
+      }
+    }
+  });
+  official.loadMarketItemValues();
+  assert.equal(official.getMarketValue('/items/bag_of_10_cowbells', 0), 800000);
+  assert.equal(official.getMarketValue('/items/bag_of_10_cowbells', 3), 0);
+
+  // 无官方工具时解析 localStorage 明文缓存。
+  const fallback = loadMarketService({
+    pageWindow: {},
+    localStorage: {
+      getItem(key) {
+        return key === 'marketItemValues' ? JSON.stringify({marketItemValues: marketValues}) : null;
+      }
+    }
+  });
+  fallback.loadMarketItemValues();
+  assert.equal(fallback.getMarketValue('/items/bag_of_10_cowbells', 0), 800000);
+
+  // 挂单数据全缺时 getPrice 回落到市场价值。
+  fallback.marketData = {};
+  assert.equal(fallback.getPrice('/items/bag_of_10_cowbells', 0), 800000);
+  assert.equal(fallback.getPrice('/items/bag_of_10_cowbells', 0) && fallback.getPrice('/items/coin', 0), 1);
+});

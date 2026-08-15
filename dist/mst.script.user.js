@@ -3,7 +3,7 @@
 // @name:zh-CN         MWI Sunrishe 工具箱
 // @name:en            MWI Sunrishe Toolkit
 // @namespace          http://tampermonkey.net/
-// @version            2.9.1
+// @version            2.9.3
 // @description        MWI Sunrishe 综合工具箱：提供角色/队伍名片、技能/房屋/战斗升级规划、装备提升计算器、地下城收益、配装同步和市场伴侣增强。
 // @description:zh-CN  MWI Sunrishe 综合工具箱：提供角色/队伍名片、技能/房屋/战斗升级规划、装备提升计算器、地下城收益、配装同步和市场伴侣增强。
 // @description:en     MST toolkit for character/party cards, ability/house/combat upgrade planning, equipment comparison, dungeon profit, loadout sync, and Market Mate enhancements.
@@ -52,8 +52,16 @@
   });
 
   // 市场卖出收益统一从这里扣税，交易税调整时只改这一处。
-  const MARKET_TAX_RATE = 0.02;
+  const MARKET_TAX_RATE = 0.05;
   const MARKET_TAX_MULTIPLIER = 1 - MARKET_TAX_RATE;
+
+  // 牛铃袋在市场上出售按 18% 特殊税率扣税，与普通市场税分开管理，调整时只改这一处。
+  const COWBELL_TAX_RATE = 0.18;
+  const COWBELL_TAX_MULTIPLIER = 1 - COWBELL_TAX_RATE;
+
+  // 牛铃袋挂单、最近成交和官方市场价值（marketItemValues）全部缺失时的最后兜底估值，
+  // 避免牛铃及牛铃袋递归估值为 0；取官方 marketplace 快照（2026-08-15）牛铃袋最近成交价 1,075,167。
+  const COWBELL_BAG_FALLBACK_PRICE = 1075167;
 
   // 缓存时间按数据类型区分：市场价格短缓存，角色资料可长期复用。
   const MARKET_CACHE_TTL = 60 * 60 * 1000;
@@ -1327,9 +1335,13 @@
       this.ctx = ctx;
       this.marketData = {};
       this.marketTimestamp = 0;
+      // 官方市场价值（市场指导价）：0814 更新后游戏在 localStorage 维护，
+      // 挂单与最近成交都缺失时用它兜底，避免完全缺价物品按 0 估值。
+      this.marketItemValues = {};
     }
 
     async load() {
+      this.loadMarketItemValues();
       // 优先复用 MWI 市场伴侣缓存，减少重复请求并保证购物车价格口径一致。
       const mwiToolsData = this._readMWIToolsMarketData();
       if (mwiToolsData) {
@@ -1352,13 +1364,57 @@
     getPrice(itemHrid, level = 0) {
       if (itemHrid === '/items/coin') return 1;
       const row = this.marketData?.[itemHrid]?.[String(level)];
-      if (!row) return 0;
-      // a/p/b 分别对应左一、最近成交、右一；缺侧时按可用价格兜底。
-      return Number(row.a ?? row.p ?? row.b ?? 0) || 0;
+      // a/p/b 分别对应左一、最近成交、右一；缺侧时按可用价格兜底，全缺时取官方市场价值。
+      const price = Number(row?.a ?? row?.p ?? row?.b ?? 0) || 0;
+      return price || this.getMarketValue(itemHrid, level);
     }
 
     getMarketRow(itemHrid, level = 0) {
       return this.marketData?.[itemHrid]?.[String(level)] || null;
+    }
+
+    getMarketValue(itemHrid, level = 0) {
+      const itemValues = this.marketItemValues?.[itemHrid];
+      if (!itemValues) return 0;
+      const value = Number(itemValues[level] ?? itemValues[String(level)] ?? 0);
+      return Number.isFinite(value) && value > 0 ? value : 0;
+    }
+
+    loadMarketItemValues() {
+      const {pageWindow} = this.ctx;
+      try {
+        // 优先读游戏官方缓存工具，与 initClientData 的读取方式保持一致。
+        const official = pageWindow?.localStorageUtil?.getMarketItemValues;
+        if (typeof official === 'function') {
+          const parsed = official();
+          if (parsed?.marketItemValues) {
+            this.marketItemValues = parsed.marketItemValues;
+            return;
+          }
+        }
+        const raw = localStorage.getItem('marketItemValues');
+        const parsed = this._parseMarketItemValues(raw);
+        if (parsed?.marketItemValues) {
+          this.marketItemValues = parsed.marketItemValues;
+        }
+      } catch (error) {
+        console.warn('[MST] 读取官方市场价值失败:', error);
+      }
+    }
+
+    _parseMarketItemValues(raw) {
+      if (!raw || typeof raw !== 'string') return null;
+      const tryParse = (json) => {
+        if (!json || typeof json !== 'string') return null;
+        try {
+          const parsed = JSON.parse(json);
+          return parsed?.marketItemValues ? parsed : null;
+        } catch {
+          return null;
+        }
+      };
+      // 游戏以 LZString UTF16 压缩写入，个别环境可能未压缩，两种都试。
+      return tryParse(this.ctx.DataHub?.lzDecompressUTF16?.(raw)) || tryParse(raw) || null;
     }
 
     getUpdatedText() {
@@ -1731,8 +1787,8 @@
   const DUNGEON_CALCULATOR_MESSAGES = {
     dungeonCalculatorHelpTitle: {zh: '查看地下城收益说明', en: 'View dungeon profit instructions'},
     dungeonCalculatorHelp: {
-      zh: '使用：选择地下城、难度、队伍人数和单次耗时；每日固定按 24 小时计算。每日药品/饮料成本可留空，填写时单位为 M。工匠茶和暴饮之囊只影响制作钥匙成本，暴饮之囊需要勾选后才会按所选强化等级生效。\n\n期望：每日轮次 = 1440 ÷ 单次耗时，计算保留完整精度。普通宝箱按官方公式 5 ÷ 队伍人数 × (1 + 29.5% 战斗掉落数量)计算，5 人时每车 1.295 个；T0 不掉精炼宝箱，T1 精炼宝箱为每车普通宝箱 × 0.33，T2 为每车普通宝箱。门票数量等于普通宝箱期望数量，数量显示最多保留两位小数并去掉末尾 0。\n\n成本：默认同时展示制作钥匙和购买钥匙。制作钥匙读取官方配方并受工匠茶、暴饮之囊影响；购买钥匙读取门票和开箱钥匙的成品市场价。材料成本区只显示买入方向，预期产出区只显示卖出方向。自定义模式可选择钥匙来源、买入档位和卖出档位；左侧保留所选来源的区间，右侧显示自定义组合。\n\n收益：宝箱内容按官方掉落率和平均数量递归展开，重复物品会合并，嵌套宝箱会继续展开。卖出收入固定扣除 2% 市场税。勾选“披风不计算收益”后，所有背部装备产物按 0 估值。单个普通宝箱税后收益会扣除单箱分摊的门票和普通开箱钥匙成本；单个精炼宝箱税后收益只扣除精炼开箱钥匙成本。每日期望收益按单箱收益乘每日宝箱数量汇总后，再扣除每日药品/饮料成本；每车期望收益等于每日期望收益除以每日轮次。\n\n限制：通关耗时和队伍人数需要手动填写/选择，当前不会自动读取战斗耗时和队伍组成。结果是当前参数和市场价格下的确定性期望，不预测价格变化。完全缺价的物品按 0 估值并提示。',
-      en: 'Usage: Select a dungeon, tier, party size, and clear time. Every day uses a fixed 24-hour calculation. Daily food/drink cost is optional and entered in millions. Artisan Tea and Guzzling Pouch affect crafted-key costs only; Guzzling Pouch applies only when its checkbox is enabled and uses the selected enhancement level.\n\nExpectation: Daily runs = 1440 ÷ clear time, kept at full precision for calculation. Normal Chests use the official formula 5 ÷ Party Size × (1 + 29.5% Combat Drop Quantity); at Party Size 5 that is 1.295 per run. T0 has no Refinement Chest; T1 uses Normal Chests × 0.33 per run; T2 uses the Normal Chest expectation per run. Entry Ticket quantity equals expected Normal Chest quantity, and displayed quantities use at most two decimals and hide trailing zeros.\n\nCosts: Crafted Keys and Purchased Keys are shown by default. Crafted-key costs use official recipes and are affected by Artisan Tea and Guzzling Pouch; purchased-key costs use finished Entry Ticket and Chest Key market prices. The Material Costs section shows purchase sides only, and Expected Output shows sale sides only. Custom Mode selects the key source, buy side, and sell side; the left columns keep the selected source range, while the right column shows the custom combination.\n\nProfit: Chest contents recursively use official drop rates and average quantities; duplicate items are combined and nested chests are expanded. Sale revenue always deducts a fixed 2% market tax. When Exclude Back Equipment Profit is enabled, all back-equipment output is valued at 0. Each Normal Chest After-Tax Profit deducts allocated Entry Ticket and Normal Chest Key costs; each Refinement Chest After-Tax Profit deducts its Refinement Chest Key cost. Daily Expected Profit multiplies per-chest profit by daily chest quantities, then deducts daily food/drink cost; Expected Profit per Run divides it by Daily Runs.\n\nLimits: Clear time is entered manually and party size is selected manually; they are not read from combat automatically. Results are deterministic expectations at current parameters and market prices and do not predict price changes. Items with no valid price are valued at 0 and reported.'
+      zh: '使用：选择地下城、难度、队伍人数和单次耗时；每日固定按 24 小时计算。每日药品/饮料成本可留空，填写时单位为 M。工匠茶和暴饮之囊只影响制作钥匙成本，暴饮之囊需要勾选后才会按所选强化等级生效。\n\n期望：每日轮次 = 1440 ÷ 单次耗时，计算保留完整精度。普通宝箱按官方公式 5 ÷ 队伍人数 × (1 + 29.5% 战斗掉落数量)计算，5 人时每车 1.295 个；T0 不掉精炼宝箱，T1 精炼宝箱为每车普通宝箱 × 0.33，T2 为每车普通宝箱。门票数量等于普通宝箱期望数量，数量显示最多保留两位小数并去掉末尾 0。\n\n成本：默认同时展示制作钥匙和购买钥匙。制作钥匙读取官方配方并受工匠茶、暴饮之囊影响；购买钥匙读取门票和开箱钥匙的成品市场价。材料成本区只显示买入方向，预期产出区只显示卖出方向。自定义模式可选择钥匙来源、买入档位和卖出档位；左侧保留所选来源的区间，右侧显示自定义组合。\n\n收益：宝箱内容按官方掉落率和平均数量递归展开，重复物品会合并，嵌套宝箱会继续展开。卖出收入固定扣除 5% 市场税（牛铃袋按 18% 特殊税率）。勾选“披风不计算收益”后，所有背部装备产物按 0 估值。单个普通宝箱税后收益会扣除单箱分摊的门票和普通开箱钥匙成本；单个精炼宝箱税后收益只扣除精炼开箱钥匙成本。每日期望收益按单箱收益乘每日宝箱数量汇总后，再扣除每日药品/饮料成本；每车期望收益等于每日期望收益除以每日轮次。\n\n限制：通关耗时和队伍人数需要手动填写/选择，当前不会自动读取战斗耗时和队伍组成。结果是当前参数和市场价格下的确定性期望，不预测价格变化。完全缺价的物品按 0 估值并提示。',
+      en: 'Usage: Select a dungeon, tier, party size, and clear time. Every day uses a fixed 24-hour calculation. Daily food/drink cost is optional and entered in millions. Artisan Tea and Guzzling Pouch affect crafted-key costs only; Guzzling Pouch applies only when its checkbox is enabled and uses the selected enhancement level.\n\nExpectation: Daily runs = 1440 ÷ clear time, kept at full precision for calculation. Normal Chests use the official formula 5 ÷ Party Size × (1 + 29.5% Combat Drop Quantity); at Party Size 5 that is 1.295 per run. T0 has no Refinement Chest; T1 uses Normal Chests × 0.33 per run; T2 uses the Normal Chest expectation per run. Entry Ticket quantity equals expected Normal Chest quantity, and displayed quantities use at most two decimals and hide trailing zeros.\n\nCosts: Crafted Keys and Purchased Keys are shown by default. Crafted-key costs use official recipes and are affected by Artisan Tea and Guzzling Pouch; purchased-key costs use finished Entry Ticket and Chest Key market prices. The Material Costs section shows purchase sides only, and Expected Output shows sale sides only. Custom Mode selects the key source, buy side, and sell side; the left columns keep the selected source range, while the right column shows the custom combination.\n\nProfit: Chest contents recursively use official drop rates and average quantities; duplicate items are combined and nested chests are expanded. Sale revenue always deducts a fixed 5% market tax (Cowbell Bags use the special 18% rate). When Exclude Back Equipment Profit is enabled, all back-equipment output is valued at 0. Each Normal Chest After-Tax Profit deducts allocated Entry Ticket and Normal Chest Key costs; each Refinement Chest After-Tax Profit deducts its Refinement Chest Key cost. Daily Expected Profit multiplies per-chest profit by daily chest quantities, then deducts daily food/drink cost; Expected Profit per Run divides it by Daily Runs.\n\nLimits: Clear time is entered manually and party size is selected manually; they are not read from combat automatically. Results are deterministic expectations at current parameters and market prices and do not predict price changes. Items with no valid price are valued at 0 and reported.'
     },
     dungeon: {zh: '地下城', en: 'Dungeon'},
     dungeonNameChimericalDen: {zh: '奇幻洞穴', en: 'Chimerical Den'},
@@ -10407,6 +10463,8 @@
       if (itemHrid === '/items/coin') return 1;
       const special = this.specialPriceSources[itemHrid];
       const marketHrid = special?.itemHrid || itemHrid;
+      // 牛铃袋按 18% 特殊税率折算，其余物品统一按普通市场税。
+      const taxMultiplier = marketHrid === '/items/bag_of_10_cowbells' ? COWBELL_TAX_MULTIPLIER : MARKET_TAX_MULTIPLIER;
       const row = this.marketService.getMarketRow(marketHrid, 0);
       const getPositivePrice = (rawValue) => {
         const value = Number(rawValue);
@@ -10415,11 +10473,17 @@
       let value = getPositivePrice(side === 'ask' ? row?.a : row?.b);
       if (!value && side === 'ask') {
         const bid = getPositivePrice(row?.b);
-        if (bid) value = Math.ceil(bid / MARKET_TAX_MULTIPLIER);
+        if (bid) value = Math.ceil(bid / taxMultiplier);
       }
       if (!value) value = getPositivePrice(row?.p);
+      // 挂单与最近成交都缺失时取官方市场价值（市场指导价），比参考价更贴近官方口径。
+      if (!value) value = getPositivePrice(this.marketService?.getMarketValue?.(marketHrid, 0));
+      // 牛铃袋连市场价值也缺失时按参考兜底价估值，牛铃经 divisor 同步继承，避免宝箱牛铃收益算成 0。
+      if (!value && marketHrid === '/items/bag_of_10_cowbells') {
+        value = COWBELL_BAG_FALLBACK_PRICE;
+      }
       if (applyMarketTax && value > 0) {
-        value = Math.floor(value * MARKET_TAX_MULTIPLIER);
+        value = Math.floor(value * taxMultiplier);
       }
       return value / (special?.divisor || 1);
     },
@@ -10509,7 +10573,9 @@
       };
       const expandChest = (itemHrid, quantity, target, targetOpeningKeys, stack = new Set()) => {
         if (!(quantity > 0)) return;
-        const drops = lootMap[itemHrid];
+        // 牛铃袋保留为直接市场估值，不递归展开成牛铃：牛铃再按牛铃袋折算会形成估值环，
+        // 牛铃袋缺价时会把两者都算成 0，与康康运气的口径一致。
+        const drops = itemHrid === '/items/bag_of_10_cowbells' ? null : lootMap[itemHrid];
         if (!Array.isArray(drops)) {
           addDrop(target, itemHrid, quantity);
           return;
