@@ -4,9 +4,11 @@
 
 ## 目录说明
 
-- `game-data/init_character_data.json`：游戏网站返回的当前用户数据，对应 WebSocket 的 `init_character_data`。
-- `game-data/init_client_data.json`：游戏网站返回的基础数据，对应 WebSocket 的 `init_client_data`。
-- `game-source/www.milkywayidle.com/`：从游戏网站下载下来的前端源码。
+- `game-data/init_character_data.json`：游戏网站返回的当前用户数据，对应 WebSocket 的 `init_character_data`（2026-08-15 更新）。
+- `game-data/init_client_data.json`：游戏网站返回的基础数据，对应 WebSocket 的 `init_client_data`（2026-08-15 更新）。
+- `game-data/marketplace.json`：官方 `game_data/marketplace.json` 市场数据样例，含左一/最近成交/右一价（`a`/`p`/`b`）与成交量（`v`），供市场口径核对。
+- `game-source/www.milkywayidle.com_v1.20260814.0/`：从游戏网站下载下来的前端源码（当前版本）。
+- `game-source/www.milkywayidle.com_v1.20260715.0/`：`2026-08-15` 更新前的旧版前端源码备份，用于新旧对比核对。
 - `legacy-scripts/eds/`：MST 融合前的 EDS 原始脚本，用于兼容逻辑和历史版本核对。
 - `legacy-scripts/mst/`：MST 历史基准脚本和备份脚本，仅用于核对，不参与构建。
 - `external-tools/mwi-tool/`：旧版配装与价格计算工具，当前用于方案和市场数据核对。

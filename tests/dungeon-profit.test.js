@@ -53,11 +53,17 @@ function loadService(activeClientData = clientData, activeCharacterData = charac
   );
 }
 
-function createMarketService(data = {}) {
+function createMarketService(data = {}, marketValues = {}) {
   return {
     marketData: data,
     getMarketRow(itemHrid, level = 0) {
       return this.marketData?.[itemHrid]?.[String(level)] || null;
+    },
+    getMarketValue(itemHrid, level = 0) {
+      const itemValues = marketValues?.[itemHrid];
+      if (!itemValues) return 0;
+      const value = Number(itemValues[level] ?? itemValues[String(level)] ?? 0);
+      return Number.isFinite(value) && value > 0 ? value : 0;
     }
   };
 }
@@ -133,7 +139,7 @@ test('不可交易牛铃和披风沿用康康运气的可交易替代物估值',
 
   assert.equal(service.getDirectPrice('/items/cowbell', 'ask'), 100);
   assert.equal(service.getDirectPrice('/items/cowbell', 'bid'), 80);
-  assert.equal(service.getDirectPrice('/items/cowbell', 'bid', true), 78.4);
+  assert.equal(service.getDirectPrice('/items/cowbell', 'bid', true), 65.6);
   assert.equal(service.getDirectPrice('/items/chimerical_quiver', 'ask'), 5000);
   assert.equal(service.getDirectPrice('/items/enchanted_cloak', 'bid'), 4000);
 });
@@ -223,7 +229,7 @@ test('制作材料成本读取官方配方并应用工匠茶与暴饮之囊强�
   assert.equal(service.getCostPrice('/items/pirate_entry_key', 'ask', 'market', 0.888), 100);
 });
 
-test('两种卖出总价对所有可交易物品统一扣除 2% 市场税', () => {
+test('卖出总价按普通 5% 市场税与牛铃袋 18% 特殊税率分别扣税', () => {
   const syntheticClientData = {
     actionDetailMap: {},
     itemDetailMap: {'/items/test_chest': {hrid: '/items/test_chest'}},
@@ -257,8 +263,8 @@ test('两种卖出总价对所有可交易物品统一扣除 2% 市场税', () =
 
   assert.equal(untaxed.bidTotal, 200);
   assert.equal(untaxed.askTotal, 220);
-  assert.equal(taxed.bidTotal, 196);
-  assert.equal(taxed.askTotal, 215);
+  assert.equal(taxed.bidTotal, 177);
+  assert.equal(taxed.askTotal, 196);
 });
 
 test('可选择让所有背部装备产物按 0 计算收益', () => {
@@ -276,8 +282,8 @@ test('可选择让所有背部装备产物按 0 计算收益', () => {
   });
 
   assert.equal(service.isBackEquipment('/items/chimerical_quiver'), true);
-  assert.equal(normal.askTotal, 1960);
-  assert.equal(normal.bidTotal, 1568);
+  assert.equal(normal.askTotal, 1900);
+  assert.equal(normal.bidTotal, 1520);
   assert.equal(excluded.askTotal, 0);
   assert.equal(excluded.bidTotal, 0);
   assert.equal(missing.has('/items/chimerical_quiver'), false);
@@ -287,10 +293,15 @@ test('交易税倍率只通过公共常量使用', () => {
   const constantsSource = readSourceFile('src', 'common', 'constants.js');
   const calculatorSource = readSourceFile('src', 'modules', 'dungeon-profit', 'calculator.js');
 
-  assert.match(constantsSource, /MARKET_TAX_RATE\s*=\s*0\.02/);
+  assert.match(constantsSource, /MARKET_TAX_RATE\s*=\s*0\.05/);
   assert.match(constantsSource, /MARKET_TAX_MULTIPLIER\s*=\s*1 - MARKET_TAX_RATE/);
+  assert.match(constantsSource, /COWBELL_TAX_RATE\s*=\s*0\.18/);
+  assert.match(constantsSource, /COWBELL_TAX_MULTIPLIER\s*=\s*1 - COWBELL_TAX_RATE/);
   assert.match(calculatorSource, /MARKET_TAX_MULTIPLIER/);
+  assert.match(calculatorSource, /COWBELL_TAX_MULTIPLIER/);
   assert.doesNotMatch(calculatorSource, /\b0\.98\b/);
+  assert.doesNotMatch(calculatorSource, /\b0\.95\b/);
+  assert.doesNotMatch(calculatorSource, /\b0\.82\b/);
 });
 
 test('市场单侧缺价时按参考实现回退，避免宝箱产出误算为零', () => {
@@ -299,10 +310,93 @@ test('市场单侧缺价时按参考实现回退，避免宝箱产出误算为�
     createMarketService({'/items/bid_only': {0: {a: -1, b: 98}}, '/items/recent_only': {0: {a: -1, b: -1, p: 75}}})
   );
 
-  assert.equal(service.getDirectPrice('/items/bid_only', 'ask'), 100);
+  assert.equal(service.getDirectPrice('/items/bid_only', 'ask'), 104);
   assert.equal(service.getDirectPrice('/items/bid_only', 'bid'), 98);
   assert.equal(service.getDirectPrice('/items/recent_only', 'ask'), 75);
-  assert.equal(service.getDirectPrice('/items/recent_only', 'bid', true), 73);
+  assert.equal(service.getDirectPrice('/items/recent_only', 'bid', true), 71);
+});
+
+test('牛铃袋市场完全缺价时牛铃按兜底价估值且不报缺价', () => {
+  const Service = loadService();
+  const service = new Service(createMarketService({'/items/bag_of_10_cowbells': {0: {a: -1, b: -1, p: -1}}}));
+  const missing = new Set();
+  const drops = new Map([
+    [
+      '/items/cowbell', 1
+    ]
+  ]);
+  const result = service.valueExpectedDrops(drops, service.getTokenValues(true), true, missing);
+
+  assert.equal(result.askTotal, 88163.6);
+  assert.equal(result.bidTotal, 88163.6);
+  assert.equal(missing.has('/items/cowbell'), false);
+  assert.equal(service.getDirectPrice('/items/bag_of_10_cowbells', 'ask', true), 881636);
+});
+
+test('牛铃袋市场缺价但有官方市场价值时按市场指导价估值', () => {
+  const Service = loadService();
+  const service = new Service(
+    createMarketService(
+      {'/items/bag_of_10_cowbells': {0: {a: -1, b: -1, p: -1}}},
+      {'/items/bag_of_10_cowbells': {0: 800000}}
+    )
+  );
+  const missing = new Set();
+  const drops = new Map([
+    [
+      '/items/cowbell', 1
+    ]
+  ]);
+  const result = service.valueExpectedDrops(drops, service.getTokenValues(true), true, missing);
+
+  assert.equal(result.askTotal, 65600);
+  assert.equal(result.bidTotal, 65600);
+  assert.equal(missing.has('/items/cowbell'), false);
+  assert.equal(service.getDirectPrice('/items/bag_of_10_cowbells', 'ask', true), 656000);
+});
+
+test('牛铃袋挂单存在时仍优先使用挂单价，市场价值只作缺价兜底', () => {
+  const Service = loadService();
+  const service = new Service(
+    createMarketService(
+      {'/items/bag_of_10_cowbells': {0: {a: 900000, b: 800000, p: 850000}}},
+      {'/items/bag_of_10_cowbells': {0: 800000}}
+    )
+  );
+
+  assert.equal(service.getDirectPrice('/items/bag_of_10_cowbells', 'ask', true), 738000);
+  assert.equal(service.getDirectPrice('/items/bag_of_10_cowbells', 'bid', true), 656000);
+});
+
+test('牛铃袋作为掉落时保留直接市场估值，不递归展开成牛铃', () => {
+  const syntheticClientData = {
+    actionDetailMap: {
+      '/actions/combat/test_dungeon': {
+        hrid: '/actions/combat/test_dungeon',
+        combatZoneInfo: {isDungeon: true, dungeonInfo: {keyItemHrid: '/items/entry_key', rewardDropTable: [
+              {itemHrid: '/items/test_chest'}
+            ]}}
+      }
+    },
+    itemDetailMap: {'/items/test_chest': {openKeyItemHrid: '/items/chest_key'}},
+    openableLootDropMap: {
+      '/items/test_chest': [
+        {itemHrid: '/items/bag_of_10_cowbells', dropRate: 1, minCount: 1, maxCount: 1}
+      ],
+      '/items/bag_of_10_cowbells': [
+        {itemHrid: '/items/cowbell', dropRate: 1, minCount: 10, maxCount: 10}
+      ]
+    },
+    shopItemDetailMap: {}
+  };
+  const Service = loadService(syntheticClientData, {});
+  const service = new Service(createMarketService({'/items/bag_of_10_cowbells': {0: {a: 1000, b: 1000}}}));
+  const result = service.calculate({actionHrid: '/actions/combat/test_dungeon', clearMinutes: 1440});
+
+  assert.equal(result.expectedDrops.length, 1);
+  assert.equal(result.expectedDrops[0].itemHrid, '/items/bag_of_10_cowbells');
+  assert.equal(result.expectedDrops[0].quantity, 1.295);
+  assert.equal(result.expectedDrops[0].ask, 820);
 });
 
 test('宝箱掉落期望合并重复物品', () => {
@@ -423,14 +517,14 @@ test('制作和购买钥匙分别扣除门票与开箱钥匙成本后得到收�
 
   assert.equal(result.totalChestQuantity, 1.295);
   assert.equal(result.expectedDrops[0].quantity, 2.59);
-  assert.ok(Math.abs(result.totalRevenueConservative - 202.02) < 1e-12);
-  assert.ok(Math.abs(result.totalRevenueOptimistic - 253.82) < 1e-12);
+  assert.ok(Math.abs(result.totalRevenueConservative - 196.84) < 1e-12);
+  assert.ok(Math.abs(result.totalRevenueOptimistic - 246.05) < 1e-12);
   assert.ok(Math.abs(market.totalCostConservative - 18.13) < 1e-12);
   assert.ok(Math.abs(market.totalCostOptimistic - 14.245) < 1e-12);
-  assert.ok(Math.abs(market.profitConservative - 183.89) < 1e-12);
-  assert.ok(Math.abs(market.profitOptimistic - 239.575) < 1e-12);
-  assert.ok(Math.abs(market.normalChestUnitProfitConservative - 142) < 1e-12);
-  assert.ok(Math.abs(market.normalChestUnitProfitOptimistic - 185) < 1e-12);
+  assert.ok(Math.abs(market.profitConservative - 178.71) < 1e-12);
+  assert.ok(Math.abs(market.profitOptimistic - 231.805) < 1e-12);
+  assert.ok(Math.abs(market.normalChestUnitProfitConservative - 138) < 1e-12);
+  assert.ok(Math.abs(market.normalChestUnitProfitOptimistic - 179) < 1e-12);
   assert.equal(market.profitPerRunConservative, market.profitConservative);
   assert.equal(market.profitPerRunOptimistic, market.profitOptimistic);
   assert.equal(materials.totalCostConservative, 0);
@@ -443,16 +537,16 @@ test('制作和购买钥匙分别扣除门票与开箱钥匙成本后得到收�
       sellSide: 'ask',
       ticketPrice: 10,
       openingKeyPrice: 4,
-      unitProfit: 182,
-      profit: 235.69
-    }, {buySide: 'ask', sellSide: 'bid', ticketPrice: 10, openingKeyPrice: 4, unitProfit: 142, profit: 183.89}, {
+      unitProfit: 176,
+      profit: 227.92
+    }, {buySide: 'ask', sellSide: 'bid', ticketPrice: 10, openingKeyPrice: 4, unitProfit: 138, profit: 178.71}, {
       buySide: 'bid',
       sellSide: 'ask',
       ticketPrice: 8,
       openingKeyPrice: 3,
-      unitProfit: 185,
-      profit: 239.575
-    }, {buySide: 'bid', sellSide: 'bid', ticketPrice: 8, openingKeyPrice: 3, unitProfit: 145, profit: 187.775}
+      unitProfit: 179,
+      profit: 231.805
+    }, {buySide: 'bid', sellSide: 'bid', ticketPrice: 8, openingKeyPrice: 3, unitProfit: 141, profit: 182.595}
   ];
   for (const customCase of customCases) {
     const customResult = service.calculate({
