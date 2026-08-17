@@ -110,10 +110,6 @@ const dataHubClientCacheMethods = {
     return this.clientData.raw;
   },
 
-  getInitClientData() {
-    return this.getClientData();
-  },
-
   getClientDataMap(key) {
     return this.clientData.raw?.[key] || {};
   }
@@ -456,8 +452,7 @@ const dataHubI18nIndexMethods = {
   },
 
   resolveItemName(hrid) {
-    const {i18n} = this.ctx;
-    const utils = new Proxy({}, {get: (_target, key) => this.ctx.utils?.[key]});
+    const {i18n, utils} = this.ctx;
     const fullHrid = utils.normalizeItemHrid(hrid);
     const langMap = {zh: this.clientData.indexes.hridToNameZh, en: this.clientData.indexes.hridToNameEn}[
       i18n.languageKey
@@ -480,7 +475,7 @@ const dataHubI18nIndexMethods = {
   },
 
   getLocalizedGameName(group, hrid, lang = this.ctx.i18n.languageKey) {
-    const utils = new Proxy({}, {get: (_target, key) => this.ctx.utils?.[key]});
+    const {utils} = this.ctx;
     const resources = this.getGameI18nResources();
     const resource = resources?.[lang]?.translation?.[group]?.[hrid];
     if (resource) return String(resource);
@@ -488,7 +483,7 @@ const dataHubI18nIndexMethods = {
     let detailMap = {};
     if (group === 'skillNames') detailMap = this.getClientDataMap('skillDetailMap');
     else if (group === 'abilityNames') detailMap = this.getClientDataMap('abilityDetailMap');
-    return detailMap?.[hrid]?.name || utils?.substrLastSlash?.(hrid)?.replace(/_/g, ' ') || String(hrid || '');
+    return detailMap?.[hrid]?.name || utils.substrLastSlash(hrid)?.replace(/_/g, ' ') || String(hrid || '');
   }
 };
 
@@ -785,6 +780,20 @@ const dataHubProfileMethods = {
         }
       }
     );
+    // 公会增益等级保持官方对象结构（hrid → {guildBuffHrid, level}），只去掉时间戳等无关字段，
+    // 供着装评分公会神龛计算使用。
+    const guildBuffLevelMap = {};
+    Object.entries(profile.guildBuffLevelMap || {}).forEach(
+      ([
+        hrid, record
+      ]) => {
+        if (!record || typeof record !== 'object') return;
+        const compactRecord = pick(record, [
+          'guildBuffHrid', 'level'
+        ]);
+        if (compactRecord.level != null) guildBuffLevelMap[hrid] = compactRecord;
+      }
+    );
     return {
       ...pick(profile, [
         'combatLevel', 'hideWearableItems'
@@ -808,7 +817,8 @@ const dataHubProfileMethods = {
         pick(profile.sharableCharacter, [
           'name', 'specialChatIconHrid', 'chatIconHrid', 'nameColorHrid', 'gameMode'
         ]) || {},
-      characterHouseRoomMap
+      characterHouseRoomMap,
+      guildBuffLevelMap
     };
   },
 
@@ -909,8 +919,6 @@ export function createDataHub(ctx, STORAGE_KEYS) {
     clientDataCacheSource: '',
 
     init() {
-      // Sprite 路径来自当前游戏页面，不保留旧版本曾写入的静态缓存。
-      localStorage.removeItem('MST_CC_spritePaths');
       this.loadStoredProfiles();
       this.initClientDataFromCache();
       this.refreshI18nIndexes();
@@ -924,9 +932,14 @@ export function createDataHub(ctx, STORAGE_KEYS) {
 
 // character-data-service
 export function createCharacterDataService(ctx, DataHub) {
-  const utils = new Proxy({}, {get: (_target, key) => ctx.utils?.[key]});
-
+  // utils 由 installRuntimeHelpers 在 installDataModule 之后才挂到 ctx，
+  // 这里必须延迟到调用时解析：构造时解构会把 utils 冻结为 undefined，
+  // 导致 getLevelExperience 等依赖 clampLevel 的方法在运行时崩溃。
   const CharacterDataService = {
+    get utils() {
+      return ctx.utils;
+    },
+
     get raw() {
       return DataHub.characterData.raw;
     },
@@ -934,17 +947,17 @@ export function createCharacterDataService(ctx, DataHub) {
     getCharacterItems() {
       const raw = this.raw;
       if (Array.isArray(raw?.characterItems)) return raw.characterItems;
-      return utils.getCollectionValues(DataHub.getGameState().characterItemMap);
+      return this.utils.getCollectionValues(DataHub.getGameState().characterItemMap);
     },
 
     getCharacterSkills() {
       if (Array.isArray(this.raw?.characterSkills)) return this.raw.characterSkills;
-      return utils.getCollectionValues(DataHub.getGameState().characterSkillMap);
+      return this.utils.getCollectionValues(DataHub.getGameState().characterSkillMap);
     },
 
     getCharacterAbilities() {
       if (Array.isArray(this.raw?.characterAbilities)) return this.raw.characterAbilities;
-      return utils.getCollectionValues(DataHub.getGameState().characterAbilityMap);
+      return this.utils.getCollectionValues(DataHub.getGameState().characterAbilityMap);
     },
 
     getCharacterSkill(skillHrid) {
@@ -957,7 +970,7 @@ export function createCharacterDataService(ctx, DataHub) {
 
     getLevelExperience(level) {
       const table = DataHub.getClientData()?.levelExperienceTable || [];
-      const safeLevel = utils.clampLevel(level, 0, 200);
+      const safeLevel = this.utils.clampLevel(level, 0, 200);
       return Number(table[safeLevel] || 0);
     },
 
@@ -998,7 +1011,7 @@ export function createCharacterDataService(ctx, DataHub) {
     },
 
     getInventoryCount(itemHrid, level = 0) {
-      const fullHrid = utils.normalizeItemHrid(itemHrid);
+      const fullHrid = this.utils.normalizeItemHrid(itemHrid);
       if (!fullHrid) return 0;
       const targetLevel = Math.max(0, Number(level) || 0);
       let count = 0;

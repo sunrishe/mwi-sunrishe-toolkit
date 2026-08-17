@@ -1,5 +1,6 @@
-// build-score-score-calculators
-const buildScoreScoreCalculators = {
+// build-score-legacy（MWITools v25 及以下的“战力打造分”算法，与 v26.js 着装评分并行可选）
+// 对应参考：references/legacy-scripts/MWITools/MWITools_v25.14.js（Ratatatata 算法）
+export const buildScoreLegacyCalculators = {
   _calculateHouseScore(cardData, clientData) {
     const battleHouseIds = new Set([
       'dining_room', 'library', 'dojo', 'gym', 'armory',
@@ -11,7 +12,7 @@ const buildScoreScoreCalculators = {
         key, room
       ]) => {
         const houseRoomHrid = room?.houseRoomHrid || (key.startsWith('/house_rooms/') ? key : '');
-        const houseId = houseRoomHrid.split('/').pop();
+        const houseId = this.ctx.utils.substrLastSlash(houseRoomHrid);
         if (!battleHouseIds.has(houseId)) return;
         const level = Number(typeof room === 'object' ? room?.level : room) || 0;
         const upgradeCostsMap = clientData.houseRoomDetailMap[houseRoomHrid]?.upgradeCostsMap || {};
@@ -65,19 +66,17 @@ const buildScoreScoreCalculators = {
       networthBid += count * (Number(marketRow.b) > 0 ? Number(marketRow.b) : 0);
     }
     return (networthAsk * 0.5 + networthBid * 0.5) / 1_000_000;
-  }
-};
+  },
 
-// build-score-market-methods
-const buildScoreMarketMethods = {
   _getWeightedMarketPrice(itemHrid, ratio = 0.5) {
     if (itemHrid === '/items/coin') return 1;
     const row = this.marketService.getMarketRow(itemHrid, 0);
     if (!row) return 0;
     let ask = Number(row.a);
     let bid = Number(row.b);
-    if (ask > 0 && bid < 0) bid = ask;
-    if (bid > 0 && ask < 0) ask = bid;
+    // 缺价哨兵统一按 <= 0 判断（游戏缺价可能填 0 或 -1），避免把有效单侧价按比例打折成 0。
+    if (ask > 0 && bid <= 0) bid = ask;
+    if (bid > 0 && ask <= 0) ask = bid;
     if (!Number.isFinite(ask) || !Number.isFinite(bid)) return 0;
     return ask * ratio + bid * (1 - ratio);
   },
@@ -85,11 +84,11 @@ const buildScoreMarketMethods = {
   _getItemMarketPrice(itemHrid, ratio = this.inputDefaults.priceAskBidRatio) {
     if (itemHrid === '/items/coin') return 1;
     const row = this.marketService.getMarketRow(itemHrid, 0);
-    if (!row || (Number(row.a) < 0 && Number(row.b) < 0)) return 0;
+    if (!row || (Number(row.a) <= 0 && Number(row.b) <= 0)) return 0;
     const ask = Number(row.a);
     const bid = Number(row.b);
-    if (ask > 0 && bid < 0) return ask;
-    if (bid > 0 && ask < 0) return bid;
+    if (ask > 0 && bid <= 0) return ask;
+    if (bid > 0 && ask <= 0) return bid;
     return ask * ratio + bid * (1 - ratio);
   },
 
@@ -135,8 +134,8 @@ const buildScoreMarketMethods = {
   }
 };
 
-// build-score-enhancement-methods
-const buildScoreEnhancementMethods = {
+// build-score-enhancement-methods（强化期望成本，供旧版装备分与新版强化装备估值共用）
+export const buildScoreEnhancementMethods = {
   _findBestEnhanceStrategyWithPhiMirror(itemHrid, enhancementLevel, clientData) {
     const itemCosts = this._getEnhancementCosts(itemHrid, clientData);
     let best = this._findBestEnhanceStrategy(itemHrid, enhancementLevel, clientData, itemCosts);
@@ -290,80 +289,3 @@ const buildScoreEnhancementMethods = {
     return {baseCost, protectionCost: Number(protectionCost || 0), perActionCost};
   }
 };
-
-// build-score-service
-export class BuildScoreService {
-  constructor(ctx, marketService) {
-    this.ctx = ctx;
-    this.marketService = marketService;
-    this.marketPromise = null;
-    this.scoreCache = new WeakMap();
-    // 仅缓存与装备 HRID、市场价格无关的强化期望值，供相同强化参数的装备共用。
-    this.enhancementExpectationCache = new Map();
-    this.enhancementSuccessRates = Object.freeze([
-      50, 45, 45, 40, 40,
-      40, 35, 35, 35, 35,
-      30, 30, 30, 30, 30,
-      30, 30, 30, 30, 30
-    ]);
-    this.phiMirrorFibonacci = Object.freeze([
-      0, 1, 1, 2, 3,
-      5, 8, 13, 21, 34,
-      55, 89, 144, 233, 377,
-      610, 987, 1597, 2584, 4181
-    ]);
-    this.inputDefaults = {
-      enhancingLevel: 125,
-      laboratoryLevel: 6,
-      enhancerBonus: 5.42,
-      gloveBonus: 12.9,
-      teaEnhancing: false,
-      teaSuperEnhancing: false,
-      teaUltraEnhancing: true,
-      teaBlessed: true,
-      priceAskBidRatio: 1
-    };
-    Object.assign(this, buildScoreScoreCalculators, buildScoreEnhancementMethods, buildScoreMarketMethods);
-  }
-
-  calculate(cardData) {
-    const {i18n} = this.ctx;
-    if (!cardData || typeof cardData !== 'object') return Promise.reject(new Error(i18n.t('invalidCharacterCardData')));
-    const cached = this.scoreCache.get(cardData);
-    if (cached) return cached;
-    const promise = this._calculate(cardData);
-    this.scoreCache.set(cardData, promise);
-    return promise;
-  }
-
-  async _calculate(cardData) {
-    const {DataHub, i18n} = this.ctx;
-    DataHub.initClientDataFromCache();
-    const clientData = DataHub.clientData.raw;
-    if (!clientData?.itemDetailMap || !clientData?.houseRoomDetailMap || !clientData?.levelExperienceTable) {
-      throw new Error(i18n.t('clientDataUnavailable'));
-    }
-    if (!this.marketPromise) {
-      this.marketPromise = this.marketService.load().catch((error) => {
-        this.marketPromise = null;
-        throw error;
-      });
-    }
-    await this.marketPromise;
-
-    const houseScore = this._calculateHouseScore(cardData, clientData);
-    const equipmentHidden = cardData.hideWearableItems || cardData.dataAvailability?.equipment === false;
-    if (equipmentHidden) {
-      return {total: houseScore, house: houseScore, ability: 0, equipment: 0, equipmentHidden: true};
-    }
-    const abilityScore = this._calculateAbilityScore(cardData, clientData);
-    const equipmentScore = await this._calculateEquipmentScore(cardData, clientData);
-    return {
-      total: houseScore + abilityScore + equipmentScore,
-      house: houseScore,
-      ability: abilityScore,
-      equipment: equipmentScore,
-      equipmentHidden: false
-    };
-  }
-}

@@ -35,7 +35,7 @@ export const HOUSE_CALCULATOR_MESSAGES = {
   title: {zh: '房屋升级材料计算器', en: 'House Upgrade Material Calculator'},
   houseCalculatorHelpTitle: {zh: '查看房屋升级说明', en: 'View house upgrade instructions'},
   houseCalculatorHelp: {
-    zh: '使用：勾选需要升级的房屋，分别设置每个房屋的起始等级和目标等级；也可以用顶部批量等级快速设置。起始等级会优先读取当前角色房屋数据，重置等级会恢复为当前读取到的房屋等级。\n\n计算：未勾选任何房屋时不会计算材料。每个房屋按官方升级配置逐级累加材料，并结合当前背包库存计算缺口；结果会显示升级房屋、市场数据时间、材料种类、缺少数量、总价值、所需金币、已有材料价值和缺口价值。\n\n操作：物品显示格式可在名称和 HRID 之间切换，导出 CSV 会导出当前计算结果。安装并加载 MWI 市场伴侣后，可以把缺失材料加入购物车；只会加入缺口材料，不会自动下单。\n\n限制：房屋数据、库存和市场价格来自当前游戏页面已加载数据；市场缺价时对应价值可能为 0 或不完整。',
+    zh: '使用：勾选需要升级的房屋，分别设置每个房屋的起始等级和目标等级；也可以用顶部批量等级快速设置。起始等级会优先读取当前角色房屋数据，重置等级会恢复为当前读取到的房屋等级。\n\n计算：未勾选任何房屋时不会计算材料。每个房屋按官方升级配置逐级累加材料，并结合当前背包库存计算缺口；结果会显示升级房屋、市场数据时间、材料种类、缺少数量、总价值、所需金币、已有材料价值和缺口价值。\n\n操作：物品显示格式可在名称和 HRID 之间切换，导出 CSV 会导出当前计算结果。MWITools 购物车就绪后，可以把缺失材料加入购物车；只会加入缺口材料，不会自动下单。\n\n限制：房屋数据、库存和市场价格来自当前游戏页面已加载数据；市场缺价时对应价值可能为 0 或不完整。',
     en: "Usage: Select the house rooms to upgrade, then set each room's start and target levels. The batch level controls can quickly set multiple rows. Start levels prefer the current character house data, and Reset Levels restores the levels currently read from the game.\n\nCalculation: No materials are calculated until at least one room is selected. Each selected room sums official upgrade costs level by level, then compares them with current inventory to calculate shortages. Results include selected upgrades, market data time, material types, missing quantity, total value, required coins, owned material value, and shortfall value.\n\nActions: Item display can switch between names and HRIDs, and Export CSV exports the current result. When MWI Market Mate is installed and ready, missing materials can be added to its cart; only shortages are added, and no orders are placed automatically.\n\nLimits: House data, inventory, and market prices come from the data currently loaded on the game page. Missing market prices can make related values 0 or incomplete."
   },
   trigger: {zh: '升级计算器', en: 'Upgrade Calculator'},
@@ -97,11 +97,11 @@ export const MARKET_MATE_MESSAGES = {
   toastImportClipboardFailed: {zh: '导入剪贴板失败：{0}', en: 'Clipboard import failed: {0}'},
   addMissingToCart: {zh: '加入购物车', en: 'Add to Cart'},
   addMissingToCartTitle: {
-    zh: '把缺失材料加入 MWI 市场伴侣购物车',
-    en: 'Add missing materials to the MWI Market Mate cart'
+    zh: '把缺失材料加入 MWITools 购物车',
+    en: 'Add missing materials to the MWITools cart'
   },
   addMissingToCartDone: {zh: '已添加 {0} 种缺失材料，共 {1} 个', en: 'Added {0} missing item types ({1} total)'},
-  marketMateUnavailable: {zh: 'MWI 市场伴侣尚未就绪', en: 'MWI Market Mate is not ready'}
+  marketMateUnavailable: {zh: 'MWITools 购物车尚未就绪', en: 'MWITools cart is not ready'}
 };
 
 // character-switcher-messages
@@ -196,7 +196,16 @@ export const CHARACTER_CARD_MESSAGES = {
   houseScore: {zh: '房屋分', en: 'House score'},
   abilityScore: {zh: '技能分', en: 'Ability score'},
   equipmentScore: {zh: '装备分', en: 'Equipment score'},
+  toolScore: {zh: '工具分', en: 'Tools score'},
+  battleShrineScore: {zh: '战斗神龛', en: 'Combat shrine'},
+  skillingShrineScore: {zh: '生活神龛', en: 'Skilling shrine'},
+  battleScore: {zh: '战斗评分', en: 'Combat Score'},
+  skillingScore: {zh: '生活评分', en: 'Skilling Score'},
   algorithmSourceMwiTools: {zh: '算法来源：MWITools', en: 'Algorithm source: MWITools'},
+  battleGearScore: {zh: '战斗着装评分', en: 'Combat Gear Score'},
+  skillingGearScore: {zh: '生活着装评分', en: 'Skilling Gear Score'},
+  useNewBuildScore: {zh: '启用着装评分', en: 'Use gear score'},
+  newBuildScoreBadge: {zh: '着装评分（MWITools 口径）', en: 'Gear score (MWITools)'},
   skillingTools: {zh: '生活工具', en: 'Skilling Tools'},
   skillingLevelsAndHouses: {zh: '生活等级与房屋', en: 'Skilling Levels & Houses'},
   combatLevelsAndHouse: {zh: '战斗等级与房屋', en: 'Combat Levels & House'},
@@ -240,7 +249,6 @@ export const CHARACTER_CARD_MESSAGES = {
     en: 'Error occurred while generating my character card\n\nError: {0}'
   },
   viewCharacterCard: {zh: '查看角色名片', en: 'View Character Card'},
-  cardShort: {zh: '名片', en: 'Card'},
   combat: {zh: '战斗', en: 'Combat'},
   diningRoom: {zh: '餐厅', en: 'Dining Room'},
   library: {zh: '图书馆', en: 'Library'},
@@ -275,8 +283,8 @@ export const TOOLKIT_MENU_MESSAGES = {
 export const DUNGEON_CALCULATOR_MESSAGES = {
   dungeonCalculatorHelpTitle: {zh: '查看地下城收益说明', en: 'View dungeon profit instructions'},
   dungeonCalculatorHelp: {
-    zh: '使用：选择地下城、难度、队伍人数和单次耗时；每日固定按 24 小时计算。每日药品/饮料成本可留空，填写时单位为 M。工匠茶和暴饮之囊只影响制作钥匙成本，暴饮之囊需要勾选后才会按所选强化等级生效。\n\n期望：每日轮次 = 1440 ÷ 单次耗时，计算保留完整精度。普通宝箱按官方公式 5 ÷ 队伍人数 × (1 + 29.5% 战斗掉落数量)计算，5 人时每车 1.295 个；T0 不掉精炼宝箱，T1 精炼宝箱为每车普通宝箱 × 0.33，T2 为每车普通宝箱。门票数量等于普通宝箱期望数量，数量显示最多保留两位小数并去掉末尾 0。\n\n成本：默认同时展示制作钥匙和购买钥匙。制作钥匙读取官方配方并受工匠茶、暴饮之囊影响；购买钥匙读取门票和开箱钥匙的成品市场价。材料成本区只显示买入方向，预期产出区只显示卖出方向。自定义模式可选择钥匙来源、买入档位和卖出档位；左侧保留所选来源的区间，右侧显示自定义组合。\n\n收益：宝箱内容按官方掉落率和平均数量递归展开，重复物品会合并，嵌套宝箱会继续展开。卖出收入固定扣除 5% 市场税（牛铃袋按 18% 特殊税率）。勾选“披风不计算收益”后，所有背部装备产物按 0 估值。单个普通宝箱税后收益会扣除单箱分摊的门票和普通开箱钥匙成本；单个精炼宝箱税后收益只扣除精炼开箱钥匙成本。每日期望收益按单箱收益乘每日宝箱数量汇总后，再扣除每日药品/饮料成本；每车期望收益等于每日期望收益除以每日轮次。\n\n限制：通关耗时和队伍人数需要手动填写/选择，当前不会自动读取战斗耗时和队伍组成。结果是当前参数和市场价格下的确定性期望，不预测价格变化。完全缺价的物品按 0 估值并提示。',
-    en: 'Usage: Select a dungeon, tier, party size, and clear time. Every day uses a fixed 24-hour calculation. Daily food/drink cost is optional and entered in millions. Artisan Tea and Guzzling Pouch affect crafted-key costs only; Guzzling Pouch applies only when its checkbox is enabled and uses the selected enhancement level.\n\nExpectation: Daily runs = 1440 ÷ clear time, kept at full precision for calculation. Normal Chests use the official formula 5 ÷ Party Size × (1 + 29.5% Combat Drop Quantity); at Party Size 5 that is 1.295 per run. T0 has no Refinement Chest; T1 uses Normal Chests × 0.33 per run; T2 uses the Normal Chest expectation per run. Entry Ticket quantity equals expected Normal Chest quantity, and displayed quantities use at most two decimals and hide trailing zeros.\n\nCosts: Crafted Keys and Purchased Keys are shown by default. Crafted-key costs use official recipes and are affected by Artisan Tea and Guzzling Pouch; purchased-key costs use finished Entry Ticket and Chest Key market prices. The Material Costs section shows purchase sides only, and Expected Output shows sale sides only. Custom Mode selects the key source, buy side, and sell side; the left columns keep the selected source range, while the right column shows the custom combination.\n\nProfit: Chest contents recursively use official drop rates and average quantities; duplicate items are combined and nested chests are expanded. Sale revenue always deducts a fixed 5% market tax (Cowbell Bags use the special 18% rate). When Exclude Back Equipment Profit is enabled, all back-equipment output is valued at 0. Each Normal Chest After-Tax Profit deducts allocated Entry Ticket and Normal Chest Key costs; each Refinement Chest After-Tax Profit deducts its Refinement Chest Key cost. Daily Expected Profit multiplies per-chest profit by daily chest quantities, then deducts daily food/drink cost; Expected Profit per Run divides it by Daily Runs.\n\nLimits: Clear time is entered manually and party size is selected manually; they are not read from combat automatically. Results are deterministic expectations at current parameters and market prices and do not predict price changes. Items with no valid price are valued at 0 and reported.'
+    zh: '使用：选择地下城、难度、队伍人数和单次耗时；每日固定按 24 小时计算。每日药品/饮料成本可留空，填写时单位为 M。工匠茶和暴饮之囊只影响制作钥匙成本，暴饮之囊需要勾选后才会按所选强化等级生效。\n\n期望：每日轮次 = 1440 ÷ 单次耗时，计算保留完整精度。普通宝箱按官方公式 5 ÷ 队伍人数 × (1 + 29.5% 战斗掉落数量)计算，5 人时每车 1.295 个；T0 不掉精炼宝箱，T1 精炼宝箱为每车普通宝箱 × 0.33，T2 为每车普通宝箱。门票数量等于普通宝箱期望数量，数量显示最多保留两位小数并去掉末尾 0。\n\n成本：默认同时展示制作钥匙和购买钥匙。制作钥匙读取官方配方并受工匠茶、暴饮之囊影响；购买钥匙读取门票和开箱钥匙的成品市场价。材料成本区只显示买入方向，预期产出区只显示卖出方向。自定义模式可选择钥匙来源、买入档位和卖出档位；左侧保留所选来源的区间，右侧显示自定义组合。\n\n收益：宝箱内容按官方掉落率和平均数量递归展开，重复物品会合并，嵌套宝箱会继续展开。每日普通/精炼宝箱产出完全按市场报价税前计算（不扣税）。“收益扣除市场税”默认勾选，卖出收入按市场税扣除（普通物品 {0}%、牛铃/牛铃袋 {1}%）；不勾选时所有物品都按市场报价直接计算，不扣任何税。勾选“披风不计算收益”后，所有背部装备产物按 0 估值。单个普通宝箱收益会扣除单箱分摊的门票和普通开箱钥匙成本；单个精炼宝箱收益只扣除精炼开箱钥匙成本。每日期望收益按单箱收益乘每日宝箱数量汇总后，再扣除每日药品/饮料成本；每车期望收益等于每日期望收益除以每日轮次。\n\n限制：通关耗时和队伍人数需要手动填写/选择，当前不会自动读取战斗耗时和队伍组成。结果是当前参数和市场价格下的确定性期望，不预测价格变化。完全缺价的物品按 0 估值并提示。',
+    en: 'Usage: Select a dungeon, tier, party size, and clear time. Every day uses a fixed 24-hour calculation. Daily food/drink cost is optional and entered in millions. Artisan Tea and Guzzling Pouch affect crafted-key costs only; Guzzling Pouch applies only when its checkbox is enabled and uses the selected enhancement level.\n\nExpectation: Daily runs = 1440 ÷ clear time, kept at full precision for calculation. Normal Chests use the official formula 5 ÷ Party Size × (1 + 29.5% Combat Drop Quantity); at Party Size 5 that is 1.295 per run. T0 has no Refinement Chest; T1 uses Normal Chests × 0.33 per run; T2 uses the Normal Chest expectation per run. Entry Ticket quantity equals expected Normal Chest quantity, and displayed quantities use at most two decimals and hide trailing zeros.\n\nCosts: Crafted Keys and Purchased Keys are shown by default. Crafted-key costs use official recipes and are affected by Artisan Tea and Guzzling Pouch; purchased-key costs use finished Entry Ticket and Chest Key market prices. The Material Costs section shows purchase sides only, and Expected Output shows sale sides only. Custom Mode selects the key source, buy side, and sell side; the left columns keep the selected source range, while the right column shows the custom combination.\n\nProfit: Chest contents recursively use official drop rates and average quantities; duplicate items are combined and nested chests are expanded. Daily Normal/Refinement Chest Output is valued at quoted market prices before tax (no tax deducted). Deduct Market Tax is enabled by default and sale revenue deducts the market tax (regular items {0}%, Cowbells and Cowbell Bags {1}%); when disabled, all items use quoted prices directly with no tax deducted. When Exclude Back Equipment Profit is enabled, all back-equipment output is valued at 0. Each Normal Chest Profit deducts allocated Entry Ticket and Normal Chest Key costs; each Refinement Chest Profit deducts its Refinement Chest Key cost. Daily Expected Profit multiplies per-chest profit by daily chest quantities, then deducts daily food/drink cost; Expected Profit per Run divides it by Daily Runs.\n\nLimits: Clear time is entered manually and party size is selected manually; they are not read from combat automatically. Results are deterministic expectations at current parameters and market prices and do not predict price changes. Items with no valid price are valued at 0 and reported.'
   },
   dungeon: {zh: '地下城', en: 'Dungeon'},
   dungeonNameChimericalDen: {zh: '奇幻洞穴', en: 'Chimerical Den'},
@@ -291,6 +299,11 @@ export const DUNGEON_CALCULATOR_MESSAGES = {
   useGuzzlingPouch: {zh: '使用暴饮之囊', en: 'Use Guzzling Pouch'},
   guzzlingLevel: {zh: '暴饮之囊强化等级', en: 'Guzzling Pouch Enhancement Level'},
   excludeBackEquipmentValue: {zh: '披风不计算收益', en: 'Exclude Back Equipment Profit'},
+  applyMarketTax: {zh: '收益扣除市场税', en: 'Deduct Market Tax'},
+  applyMarketTaxHint: {
+    zh: '勾选时卖出收益按市场税扣除（普通物品 {0}%，牛铃/牛铃袋 {1}%）；不勾选时所有物品都按市场报价直接计算，不扣任何税。',
+    en: 'When enabled, sale revenue deducts the market tax (regular items {0}%, Cowbells and Cowbell Bags {1}%); when disabled, all items use quoted prices directly with no tax deducted.'
+  },
   customMode: {zh: '自定义模式', en: 'Custom Mode'},
   keySource: {zh: '钥匙来源', en: 'Key Source'},
   keyMaterialPurchaseMethod: {zh: '钥匙材料购买方式', en: 'Key Material Purchase Method'},
@@ -317,8 +330,10 @@ export const DUNGEON_CALCULATOR_MESSAGES = {
   materialCostBreakdown: {zh: '材料成本', en: 'Material Costs'},
   totalDailyCost: {zh: '每日总成本', en: 'Daily Total Cost'},
   expectedChestOutputBreakdown: {zh: '预期产出', en: 'Expected Output'},
-  normalChestRevenue: {zh: '单个普通宝箱税后收益', en: 'Normal Chest After-Tax Profit (Each)'},
-  refinementChestRevenue: {zh: '单个精炼宝箱税后收益', en: 'Refinement Chest After-Tax Profit (Each)'},
+  normalChestRevenue: {zh: '单个普通宝箱收益', en: 'Normal Chest Profit (Each)'},
+  refinementChestRevenue: {zh: '单个精炼宝箱收益', en: 'Refinement Chest Profit (Each)'},
+  normalChestDailyOutput: {zh: '每日普通宝箱产出', en: 'Daily Normal Chest Output'},
+  refinementChestDailyOutput: {zh: '每日精炼宝箱产出', en: 'Daily Refinement Chest Output'},
   netProfit: {zh: '每日期望收益', en: 'Daily Expected Profit'},
   profitPerRun: {zh: '每车期望收益', en: 'Expected Profit per Run'},
   ticketUnitPrice: {zh: '门票单位成本', en: 'Entry Unit Cost'},
@@ -343,9 +358,9 @@ export const EQUIPMENT_COMPARISON_MESSAGES = {
   presetGroupRanged: {zh: '远程', en: 'Ranged'},
   presetGroupMagic: {zh: '魔法', en: 'Magic'},
   presetMeleeHammer: {zh: '近战 - 锤', en: 'Melee - Hammer'},
-  presetMeleeBulwark: {zh: '近战 - 盾', en: 'Melee - Bulwark'},
+  presetMeleeBulwark: {zh: '近战 - 重盾', en: 'Melee - Bulwark'},
   presetMeleeSword: {zh: '近战 - 剑', en: 'Melee - Sword'},
-  presetMeleeSpear: {zh: '近战 - 枪', en: 'Melee - Spear'},
+  presetMeleeSpear: {zh: '近战 - 长枪', en: 'Melee - Spear'},
   presetRangedBow: {zh: '远程 - 弓', en: 'Ranged - Bow'},
   presetRangedCrossbow: {zh: '远程 - 弩', en: 'Ranged - Crossbow'},
   presetMagicFire: {zh: '魔法 - 火', en: 'Magic - Fire'},
@@ -356,7 +371,6 @@ export const EQUIPMENT_COMPARISON_MESSAGES = {
   chooseOwnedEquipment: {zh: '请选择基准装备', en: 'Choose baseline equipment'},
   chooseComparisonEquipment: {zh: '请选择同部位装备', en: 'Choose equipment for the same slot'},
   chooseOwnedEquipmentFirst: {zh: '请先选择基准装备', en: 'Choose baseline equipment first'},
-  noOwnedEquipment: {zh: '未找到可用装备', en: 'No equipment found'},
   noCompatibleEquipment: {zh: '该部位没有可对比装备', en: 'No equipment is available for this slot'},
   searchEquipment: {zh: '搜索装备名称或 HRID', en: 'Search equipment name or HRID'},
   allEquipmentSlots: {zh: '全部部位', en: 'All Slots'},
@@ -416,7 +430,6 @@ export const COMBAT_CALCULATOR_MESSAGES = {
     en: 'A training plan requires at least one primary profession; secondary professions such as Stamina cannot train on their own.'
   },
   totalHours: {zh: '耗时', en: 'Duration'},
-  totalDays: {zh: '总时间（天）', en: 'Total Time (days)'},
   estimatedUpgradeTime: {zh: '预计升级时间', en: 'Estimated Completion'},
   estimatedStartTime: {zh: '预计开始时间', en: 'Estimated Start'},
   totalRuns: {zh: '总次数', en: 'Total Runs'},
@@ -428,21 +441,20 @@ export const COMBAT_CALCULATOR_MESSAGES = {
 export const ABILITY_CALCULATOR_MESSAGES = {
   abilityCalculatorHelpTitle: {zh: '查看技能升级说明', en: 'View ability calculator instructions'},
   abilityCalculatorHelp: {
-    zh: '使用：选择职业方案会清空列表并加入对应技能；预设等级会按列表顺序设置前五个技能的目标等级。也可以单独添加技能，并按中文、英文或 HRID 搜索。点击技能图标会关闭弹窗并跳转到对应技能书市场；安装并加载 MWI 市场伴侣后，可以把需要购买的技能书加入购物车。\n\n限制：只能添加有对应技能书的技能，同一技能不能重复。起始等级范围为 0-199，目标等级范围为 1-200；目标等级不高于起点时无需购买技能书。缺少某侧市场价格时，只影响该侧总价显示。\n\n计算：默认从角色当前实际等级和经验百分比开始；勾选自定义起始等级后，从该等级 0% 经验开始。0 级技能额外计入 1 本解锁技能书。所需技能书显示到 0.1 本，购物车数量和价格计算按整本向上取整；合计行的技能书数量累加显示值，价格合计累加整本购买成本。',
+    zh: '使用：选择职业方案会清空列表并加入对应技能；预设等级会按列表顺序设置前五个技能的目标等级。也可以单独添加技能，并按中文、英文或 HRID 搜索。点击技能图标会关闭弹窗并跳转到对应技能书市场；MWITools 购物车就绪后，可以把需要购买的技能书加入购物车。\n\n限制：只能添加有对应技能书的技能，同一技能不能重复。起始等级范围为 0-199，目标等级范围为 1-200；目标等级不高于起点时无需购买技能书。缺少某侧市场价格时，只影响该侧总价显示。\n\n计算：默认从角色当前实际等级和经验百分比开始；勾选自定义起始等级后，从该等级 0% 经验开始。0 级技能额外计入 1 本解锁技能书。所需技能书显示到 0.1 本，购物车数量和价格计算按整本向上取整；合计行的技能书数量累加显示值，价格合计累加整本购买成本。',
     en: 'Usage: Choosing a profession preset clears the list and adds its abilities. A level preset sets target levels for the first five abilities in list order. You can also add individual abilities and search by Chinese, English, or HRID. Clicking an ability icon closes the dialog and opens that ability book in the marketplace. When MWI Market Mate is installed and ready, required books can be added to its cart.\n\nLimits: Only abilities with a corresponding book can be added, and duplicates are not allowed. Start levels range from 0 to 199 and target levels from 1 to 200. No books are needed when the target does not exceed the start. Missing market prices only affect the total for that side.\n\nCalculation: By default, actual character level and XP percentage are used. With a custom start level, calculation begins at 0% XP of that level. A level-0 ability includes one extra unlock book. Required books display to 0.1, while cart quantity and price calculation round up to whole books. The total book row sums displayed quantities, and price totals sum whole-book purchase costs.'
   },
-  chooseAbility: {zh: '选择技能', en: 'Choose Ability'},
   searchAbility: {zh: '搜索中文、英文或 HRID', en: 'Search Chinese, English, or HRID'},
   experiencePerBook: {zh: '每本书技能经验', en: 'Ability Exp Per Book'},
   customStartLevel: {zh: '自行设置起始等级', en: 'Custom Start Level'},
   resetActualLevel: {zh: '重置实际等级', en: 'Reset Actual Level'},
   requiredBooks: {zh: '所需技能书', en: 'Books Required'},
   openMarket: {zh: '前往市场', en: 'View Marketplace'},
-  addAbilityBooksToCart: {zh: '加入市场伴侣购物车', en: 'Add to Market Mate Cart'},
-  abilityBooksAddedToCart: {zh: '已将 {0} 本「{1}」加入市场伴侣购物车', en: 'Added {0} × {1} to the Market Mate cart'},
+  addAbilityBooksToCart: {zh: '加入 MWITools 购物车', en: 'Add to MWITools Cart'},
+  abilityBooksAddedToCart: {zh: '已将 {0} 本「{1}」加入 MWITools 购物车', en: 'Added {0} × {1} to the MWITools cart'},
   abilityBooksCartFailed: {
-    zh: '技能书未能加入市场伴侣购物车',
-    en: 'The ability books could not be added to the Market Mate cart'
+    zh: '技能书未能加入 MWITools 购物车',
+    en: 'The ability books could not be added to the MWITools cart'
   },
   noAbilityBooksNeeded: {zh: '当前技能无需购买技能书', en: 'No ability books are required'},
   noAbilityMatch: {zh: '没有匹配的技能', en: 'No matching abilities'},
@@ -468,7 +480,6 @@ export const ABILITY_CALCULATOR_MESSAGES = {
   askPriceAndTotal: {zh: '左一 / 总价', en: 'Best Ask Price / Total'},
   bidPriceAndTotal: {zh: '右一 / 总价', en: 'Best Bid Price / Total'},
   total: {zh: '合计', en: 'Total'},
-  totalBooks: {zh: '技能书合计', en: 'Total Books'},
   noAbilitiesSelected: {
     zh: '暂无技能，请添加技能或选择预置方案',
     en: 'No abilities. Add an ability or choose a preset.'

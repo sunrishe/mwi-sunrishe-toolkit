@@ -3,6 +3,7 @@ import http from 'node:http';
 import path from 'node:path';
 import {spawn} from 'node:child_process';
 import {pathToFileURL} from 'node:url';
+import {formatDevVersionTimestamp as formatTimestamp} from './lib/version.mjs';
 
 const rootDir = process.cwd();
 const distDir = path.join(rootDir, 'dist');
@@ -12,14 +13,6 @@ const localDebugPath = path.join(distDir, 'MST-local-debug.user.js');
 const httpDebugPath = path.join(distDir, 'MST-http-debug.user.js');
 const host = process.env.MST_DEV_SERVER_HOST || '127.0.0.1';
 const startPort = Number.parseInt(process.env.MST_DEV_SERVER_PORT || '5173', 10);
-
-function formatTimestamp(date = new Date()) {
-  const pad = (value, length = 2) => String(value).padStart(length, '0');
-  return [
-    date.getFullYear(), pad(date.getMonth() + 1), pad(date.getDate()), pad(date.getHours()), pad(date.getMinutes()),
-    pad(date.getSeconds())
-  ].join('');
-}
 
 function getDevScriptVersion() {
   try {

@@ -781,6 +781,20 @@ test('profile_shared 持久化时裁剪为最小字段集', () => {
           junk: true
         }
       },
+      guildBuffLevelMap: {
+        '/guild_buffs/force_combat': {
+          characterID: 26623,
+          guildBuffHrid: '/guild_buffs/force_combat',
+          level: 3,
+          createdAt: '2026-08-07T13:08:29Z',
+          updatedAt: '2026-08-07T13:08:29Z'
+        },
+        '/guild_buffs/scholar_combat': {
+          guildBuffHrid: '/guild_buffs/scholar_combat',
+          level: 1,
+          junk: true
+        }
+      },
       characterAchievements: [
         {achievementHrid: '/achievements/first_blood'}
       ]
@@ -806,6 +820,11 @@ test('profile_shared 持久化时裁剪为最小字段集', () => {
     {abilityHrid: '/abilities/slash', level: 3, slotNumber: 1}
   ]);
   assert.deepEqual(compact.characterHouseRoomMap, {'/house_rooms/dining_room': 4});
+  // 公会增益等级保持官方对象结构，只去掉时间戳等无关字段，供着装评分神龛计算使用。
+  assert.deepEqual(compact.guildBuffLevelMap, {
+    '/guild_buffs/force_combat': {guildBuffHrid: '/guild_buffs/force_combat', level: 3},
+    '/guild_buffs/scholar_combat': {guildBuffHrid: '/guild_buffs/scholar_combat', level: 1}
+  });
   assert.deepEqual(compact.sharableCharacter, {
     name: 'Tester',
     specialChatIconHrid: '/chat_icons/special',
@@ -1628,11 +1647,14 @@ test('市场指导价优先读官方 localStorageUtil，缺价时用于兜底估
     );
 
   // 官方缓存工具优先，不触碰 localStorage。
+  // 游戏真实实现的方法体依赖 this（this.safeGetItem/this.Keys），mock 也按此建模，
+  // 防止实现退化成“取出函数裸调”导致 this 丢失而误走本地缓存兜底。
   const official = loadMarketService({
     pageWindow: {
       localStorageUtil: {
+        marketValues,
         getMarketItemValues() {
-          return {marketValuesVersion: 'v1', marketItemValues: marketValues};
+          return {marketValuesVersion: 'v1', marketItemValues: this.marketValues};
         }
       }
     },
@@ -1662,4 +1684,93 @@ test('市场指导价优先读官方 localStorageUtil，缺价时用于兜底估
   fallback.marketData = {};
   assert.equal(fallback.getPrice('/items/bag_of_10_cowbells', 0), 800000);
   assert.equal(fallback.getPrice('/items/bag_of_10_cowbells', 0) && fallback.getPrice('/items/coin', 0), 1);
+});
+
+test('市场价格统一按有效正数取值，缺价哨兵 0/-1 不再透传', () => {
+  const service = vm.runInNewContext(
+    `${readVmSource('src/common/market.js')}
+        new MarketDataService({pageWindow: {}, DataHub: {lzDecompressUTF16() { return null; }}});`,
+    {console, localStorage: {getItem: () => null}, pageWindow: {}}
+  );
+  service.marketData = {
+    '/items/sentinel_neg': {
+      0: {a: -1, p: 200, b: 300}
+    },
+    '/items/sentinel_zero': {
+      0: {a: 0, b: 400}
+    },
+    '/items/sentinel_all_missing': {
+      0: {a: -1, p: -1, b: -1}
+    },
+    '/items/sentinel_ask_only': {
+      0: {a: 120, p: 0, b: -1}
+    }
+  };
+
+  // 负数哨兵不参与取值，回退到第一个有效正数侧。
+  assert.equal(service.getPrice('/items/sentinel_neg', 0), 200);
+  // 0 哨兵同样不参与，回退到有效买价。
+  assert.equal(service.getPrice('/items/sentinel_zero', 0), 400);
+  // 全缺时回落到官方市场价值（无即 0）。
+  assert.equal(service.getPrice('/items/sentinel_all_missing', 0), 0);
+  // 单侧有效时直接取该侧。
+  assert.equal(service.getPrice('/items/sentinel_ask_only', 0), 120);
+  // 金币恒为 1。
+  assert.equal(service.getPrice('/items/coin', 0), 1);
+});
+
+test('构建开关只保留正式包实际消费的 showLanguageToggle', () => {
+  const source = readSourceFile('src', 'common', 'build-flags.js');
+  assert.match(source, /showLanguageToggle/);
+  assert.doesNotMatch(source, /BUILD_ENV|showDebugInfo|enableDevMenu|isDev:/);
+});
+
+test('角色数据服务延迟解析 utils：真实启动顺序（utils 晚于服务构造安装）下可正常调用', () => {
+  const DataHub = {
+    // raw 不含 characterItems，走 getCollectionValues(characterItemMap) 兜底分支。
+    characterData: {raw: {}},
+    getClientData() {
+      return {levelExperienceTable: [
+          0, 100, 250
+        ]};
+    },
+    getGameState() {
+      return {characterItemMap: {a: {itemHrid: '/items/a', count: 1, itemLocationHrid: '/item_locations/inventory'}}};
+    }
+  };
+  const ctx = {DataHub};
+  const context = {
+    console,
+    ctx,
+    DataHub,
+    window: {dispatchEvent() {}}
+  };
+  const service = vm.runInNewContext(
+    `${readVmSource('src/common/data.js')}
+        createCharacterDataService(ctx, DataHub);`,
+    context
+  );
+  // 模拟 installRuntimeHelpers 在 installDataModule 之后挂载 utils；
+  // 若服务构造时解构 utils，这里会读到 undefined 并导致 clampLevel 调用崩溃。
+  ctx.utils = {
+    clampLevel(value, min, max) {
+      return Math.min(max, Math.max(min, Number(value) || min));
+    },
+    getCollectionValues(collection) {
+      return Object.values(collection || {});
+    },
+    normalizeItemHrid(value) {
+      const itemId = String(value || '')
+        .replace(/^#/, '')
+        .replace(/^\/items\//, '');
+      return itemId ? '/items/' + itemId : '';
+    }
+  };
+  assert.equal(service.getLevelExperience(1), 100);
+  assert.equal(service.getLevelExperiencePercent(1, 100), 0);
+  assert.equal(service.getLevelExperiencePercent(1, 250), 100);
+  assert.equal(service.getCharacterItems().length, 1);
+  // 房屋材料缺口等路径依赖 getInventoryCount（经 this.utils.normalizeItemHrid 匹配背包物品）。
+  assert.equal(service.getInventoryCount('/items/a'), 1);
+  assert.equal(service.getInventoryCount('/items/not_owned'), 0);
 });
