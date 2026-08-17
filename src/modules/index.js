@@ -1,5 +1,5 @@
 import {AbilityUpgradeCalculatorFeature} from './ability-upgrade/index.js';
-import {BuildScoreService} from './character-card/build-score.js';
+import {BuildScoreService} from './character-card/build-score/index.js';
 import {CharacterCardFeature, createOriginalCharacterCardFeature} from './character-card/index.js';
 import {CombatUpgradeCalculatorFeature} from './combat-upgrade/index.js';
 import {DungeonProfitCalculatorService} from './dungeon-profit/calculator.js';
@@ -9,7 +9,6 @@ import {EdsMilkonomyFeature} from './eds-milkonomy/index.js';
 import {EquipmentComparisonService} from './equipment-comparison/comparison.js';
 import {EquipmentComparisonFeature} from './equipment-comparison/index.js';
 import {CombatSimulationService} from './equipment-comparison/simulator.js';
-import {mstCombatWorkerRuntime} from './equipment-comparison/worker-runtime.js';
 import {HouseCalculator} from './house-calculator/calculator.js';
 import {HouseCalculatorLauncher, HouseCalculatorUI} from './house-calculator/index.js';
 import {ToolkitMenuFeature} from './toolkit-menu/index.js';
@@ -38,8 +37,5 @@ export function installModules(ctx) {
   ctx.EquipmentComparisonService = EquipmentComparisonService;
   ctx.HouseCalculator = HouseCalculator;
   ctx.HouseCalculatorUI = HouseCalculatorUI;
-  ctx.HouseCalculatorLauncher = HouseCalculatorLauncher;
-  ctx.OriginalCharacterCardFeature = OriginalCharacterCardFeature;
   ctx.ToolkitMenuFeature = ToolkitMenuFeature;
-  ctx.mstCombatWorkerRuntime = mstCombatWorkerRuntime;
 }

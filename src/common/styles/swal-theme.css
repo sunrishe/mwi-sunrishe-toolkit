@@ -106,6 +106,9 @@
   margin: var(--spacing-sm, 0.5rem) 0 0;
   padding: var(--input-padding-y, 0.25rem) var(--input-padding-x, 0.625rem);
   box-sizing: border-box;
+  /* 下拉框与输入框共用同一套边框，避免继承 sweetalert2 默认亮色边框。 */
+  border: var(--swal2-input-border);
+  border-radius: var(--radius-xs, 0.125rem);
   color: var(--color-text-dark-mode, #e7e7e7);
   font-family: Roboto, Helvetica, Arial, sans-serif;
   font-size: var(--font-size-base, 0.875rem);

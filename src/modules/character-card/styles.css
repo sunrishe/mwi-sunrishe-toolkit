@@ -143,6 +143,10 @@
 }
 .mst-card-build-score {
   flex: 0 0 auto;
+  /* 固定最小宽高：两种评分模式（战力打造分单块 / 着装评分两行）内容尺寸不同，
+     若不固定会让评分区宽高随模式变化，推动 header 与下方内容区产生视觉抖动。 */
+  min-width: 88px;
+  min-height: 25px;
   display: flex;
   flex-direction: column;
   align-items: flex-end;
@@ -151,13 +155,44 @@
   line-height: 1.15;
   white-space: nowrap;
   cursor: help;
+  gap: 0.1rem;
+}
+.mst-card-build-score-row {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+}
+/* 战力打造分单块布局：标签在上、数值在下。 */
+.mst-card-build-score-row.mst-card-build-score-legacy {
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0.1rem;
+}
+.mst-card-build-score-row[hidden] {
+  display: none;
 }
 .mst-card-build-score-label {
   font-size: 8px;
   font-weight: 500;
 }
+.mst-card-build-score-heading {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.2rem;
+}
 .mst-card-build-score-value {
   font-size: 10px;
+}
+.mst-card-build-score-new {
+  color: #ffd76a;
+  font-size: 9px;
+  line-height: 1;
+}
+.mst-card-build-score-new[hidden] {
+  display: none;
+}
+.mst-card-new-score-toggle {
+  min-width: max-content;
 }
 .mst-card-content {
   display: grid;
@@ -718,7 +753,8 @@
   min-width: 8.5rem;
   height: var(--button-height-normal, 1.875rem);
   padding: 0 1.75rem 0 0.625rem;
-  border: 1px solid var(--color-space-400, #7184d8);
+  /* 未选中时与输入框边框同色，避免亮色边框刺眼；悬停再提亮。 */
+  border: 1px solid var(--color-midnight-100, #454771);
   border-radius: var(--radius-sm, 0.25rem);
   background-color: var(--color-midnight-500, #2c2e45);
   color: var(--color-text-dark-mode, #e7e7e7);
@@ -745,7 +781,8 @@
   align-items: center;
   gap: 0.3rem;
   padding: 0 0.5rem;
-  border: 1px solid var(--color-space-400, #7184d8);
+  /* 未选中时与输入框边框同色，避免亮色边框刺眼；悬停再提亮。 */
+  border: 1px solid var(--color-midnight-100, #454771);
   border-radius: var(--radius-sm, 0.25rem);
   background: var(--color-midnight-500, #2c2e45);
   color: var(--color-text-dark-mode, #e7e7e7);
@@ -1210,36 +1247,6 @@
   font-size: var(--font-size-sm, 0.75rem);
   line-height: 1.4;
   text-align: center;
-}
-/* 轻量全局提示条 */
-.mst-character-card-toast-notice {
-  position: fixed;
-  top: 16px;
-  right: 16px;
-  padding: 8px 12px;
-  border-radius: 4px;
-  color: #fff;
-  font-size: 12px;
-  z-index: 20001;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
-  opacity: 0;
-  transform: translateY(-6px);
-  transition:
-    opacity 0.2s ease,
-    transform 0.2s ease;
-}
-.mst-character-card-toast-notice.mst-character-card-toast-visible {
-  opacity: 1;
-  transform: translateY(0);
-}
-.mst-character-card-toast-success {
-  background: #344386;
-}
-.mst-character-card-toast-error {
-  background: #4f171f;
-}
-.mst-character-card-toast-info {
-  background: #344386;
 }
 /* 空队伍提示样式 */
 .mst-empty-team-placeholder {

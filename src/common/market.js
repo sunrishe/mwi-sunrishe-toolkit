@@ -11,7 +11,7 @@ export class MarketDataService {
 
   async load() {
     this.loadMarketItemValues();
-    // 优先复用 MWI 市场伴侣缓存，减少重复请求并保证购物车价格口径一致。
+    // 优先复用 MWITools 市场缓存，减少重复请求并保证购物车价格口径一致。
     const mwiToolsData = this._readMWIToolsMarketData();
     if (mwiToolsData) {
       this._applyMarketData(mwiToolsData);
@@ -33,8 +33,14 @@ export class MarketDataService {
   getPrice(itemHrid, level = 0) {
     if (itemHrid === '/items/coin') return 1;
     const row = this.marketData?.[itemHrid]?.[String(level)];
-    // a/p/b 分别对应左一、最近成交、右一；缺侧时按可用价格兜底，全缺时取官方市场价值。
-    const price = Number(row?.a ?? row?.p ?? row?.b ?? 0) || 0;
+    // a/p/b 分别对应左一、最近成交、右一；缺价哨兵（0/-1）透传会导致负数或零价，
+    // 统一取第一个有效正数侧，全缺时回退官方市场价值。
+    const price =
+      [
+        row?.a, row?.p, row?.b
+      ]
+        .map(Number)
+        .find((value) => Number.isFinite(value) && value > 0) || 0;
     return price || this.getMarketValue(itemHrid, level);
   }
 
@@ -53,12 +59,19 @@ export class MarketDataService {
     const {pageWindow} = this.ctx;
     try {
       // 优先读游戏官方缓存工具，与 initClientData 的读取方式保持一致。
-      const official = pageWindow?.localStorageUtil?.getMarketItemValues;
-      if (typeof official === 'function') {
-        const parsed = official();
-        if (parsed?.marketItemValues) {
-          this.marketItemValues = parsed.marketItemValues;
-          return;
+      // getMarketItemValues 是 localStorageUtil 的实例方法，内部依赖 this.safeGetItem/this.Keys，
+      // 必须按方法调用保留 this；以裸函数方式调用会因 this 丢失抛错并误走本地缓存降级。
+      const localStorageUtil = pageWindow?.localStorageUtil;
+      if (typeof localStorageUtil?.getMarketItemValues === 'function') {
+        try {
+          const parsed = localStorageUtil.getMarketItemValues();
+          if (parsed?.marketItemValues) {
+            this.marketItemValues = parsed.marketItemValues;
+            return;
+          }
+        } catch (error) {
+          // 仍有极小概率在游戏启动早期未就绪时抛错，此时降级读本地缓存，避免着装评分漏掉官方指导价。
+          console.warn('[MST] 官方市场价值接口未就绪，改用本地缓存:', error);
         }
       }
       const raw = localStorage.getItem('marketItemValues');

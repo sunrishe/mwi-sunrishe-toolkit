@@ -93,7 +93,7 @@ export class CharacterCardIdentityRenderer {
 
   generateChatIcon(chatIconHrid) {
     if (!chatIconHrid) return '';
-    const iconId = String(chatIconHrid).split('/').pop();
+    const iconId = this.utils.substrLastSlash(chatIconHrid);
     const spritePath = this.state.svgTool.getChatIconsSpritePath();
     const gameClass = this.getGameCharacterNameClass('chatIcon');
     return `
@@ -113,9 +113,7 @@ export class CharacterCardIdentityRenderer {
 
     const wrapperClass = this.getGameCharacterNameClass('characterName');
     const nameClass = this.getGameCharacterNameClass('name');
-    const colorId = String(player.nameColorHrid || '')
-      .split('/')
-      .pop();
+    const colorId = this.utils.substrLastSlash(player.nameColorHrid);
     const colorClass = this.getGameCharacterNameClass(colorId);
     const gameModeClass = this.getGameCharacterNameClass('gameMode');
     let gameModeTag = '';
@@ -146,14 +144,68 @@ export class CharacterCardBuildScoreRenderer {
     return key;
   }
 
-  renderBuildScore(scoreElement, value) {
-    const label = scoreElement.querySelector('.mst-card-build-score-label');
-    const score = scoreElement.querySelector('.mst-card-build-score-value');
-    if (label) label.textContent = this.i18n.t('buildScore');
-    if (score) score.textContent = value;
+  // 着装评分分战斗/生活两行展示（✦ 在文案前，标签后跟分数）；战力打造分保持
+  // 单块布局（标签在上、数值在下）。
+  renderBuildScore(scoreElement, score) {
+    const battleRow = scoreElement.querySelector('[data-score-row="battle"]');
+    const skillingRow = scoreElement.querySelector('[data-score-row="skilling"]');
+    const battleLabel = battleRow?.querySelector('.mst-card-build-score-label');
+    const battleValue = battleRow?.querySelector('.mst-card-build-score-value');
+    const skillingLabel = skillingRow?.querySelector('.mst-card-build-score-label');
+    const skillingValue = skillingRow?.querySelector('.mst-card-build-score-value');
+    const setMarker = (hidden) => {
+      scoreElement.querySelectorAll('.mst-card-build-score-new').forEach((marker) => {
+        marker.hidden = hidden;
+      });
+    };
+    const setLegacyLayout = (legacy) => {
+      if (battleRow) battleRow.classList.toggle('mst-card-build-score-legacy', legacy);
+    };
+    if (typeof score === 'string') {
+      // 计算中或错误提示：两个分数块同显，不显示新版本标识。
+      if (battleLabel) battleLabel.textContent = this.i18n.t('battleScore');
+      if (battleValue) battleValue.textContent = score;
+      if (skillingLabel) skillingLabel.textContent = this.i18n.t('skillingScore');
+      if (skillingValue) skillingValue.textContent = score;
+      if (skillingRow) skillingRow.hidden = false;
+      setLegacyLayout(false);
+      setMarker(true);
+      return;
+    }
+    const hiddenText = score.equipmentHidden ? ` (${this.i18n.t('equipmentHidden')})` : '';
+    if (score.newVersion) {
+      // 卡片两行：战斗评分 / 生活评分，完整口径与分项在悬浮提示中。
+      if (battleLabel) battleLabel.textContent = this.i18n.t('battleScore');
+      if (battleValue) battleValue.textContent = `${score.battle.total.toFixed(1)}${hiddenText}`;
+      if (skillingLabel) skillingLabel.textContent = this.i18n.t('skillingScore');
+      if (skillingValue) {
+        skillingValue.textContent = score.skilling.available ? `${score.skilling.total.toFixed(1)}${hiddenText}` : '-';
+      }
+      if (skillingRow) skillingRow.hidden = false;
+      setLegacyLayout(false);
+      setMarker(false);
+    } else {
+      // 战力打造分：标签在上、数值在下，生活行隐藏。
+      if (battleLabel) battleLabel.textContent = this.i18n.t('buildScore');
+      if (battleValue) battleValue.textContent = `${score.total.toFixed(1)}${hiddenText}`;
+      if (skillingRow) skillingRow.hidden = true;
+      setLegacyLayout(true);
+      setMarker(true);
+    }
   }
 
-  hydrateBuildScores(root = document) {
+  // 新版战力分开关：默认启用，仅在用户明确关闭时使用旧版算法。
+  getUseNewBuildScore() {
+    try {
+      return localStorage.getItem('mst.buildScoreUseNew') !== '0';
+    } catch {
+      return true;
+    }
+  }
+
+  // showCalculating 为 false 时（切换评分模式），保留旧分数作为占位，计算完成
+  // 后一次性替换，避免"计算中"中间态让评分框宽度变化、推动 header 布局抖动。
+  hydrateBuildScores(root = document, {showCalculating = true} = {}) {
     const scoreElements = Array.from(root.querySelectorAll('.mst-card-build-score[data-build-score-key]'));
     return Promise.all(
       scoreElements.map(async (scoreElement) => {
@@ -164,15 +216,14 @@ export class CharacterCardBuildScoreRenderer {
         if (scoreElement.dataset.scoreState === 'loading' && scoreElement.dataset.loadingScoreKey === key) return;
         scoreElement.dataset.scoreState = 'loading';
         scoreElement.dataset.loadingScoreKey = key;
-        this.renderBuildScore(scoreElement, this.i18n.t('calculating'));
+        if (showCalculating) {
+          this.renderBuildScore(scoreElement, this.i18n.t('calculating'));
+        }
         try {
-          const score = await this.ctx.buildScoreService.calculate(data);
+          const score = await this.ctx.buildScoreService.calculate(data, this.getUseNewBuildScore());
           if (scoreElement.dataset.buildScoreKey !== key) return;
-          const hiddenText = score.equipmentHidden ? ` (${this.i18n.t('equipmentHidden')})` : '';
-          this.renderBuildScore(scoreElement, `${score.total.toFixed(1)}${hiddenText}`);
-          scoreElement.title = [
-            `${this.i18n.t('houseScore')}: ${score.house.toFixed(1)}`, `${this.i18n.t('abilityScore')}: ${score.ability.toFixed(1)}`, `${this.i18n.t('equipmentScore')}: ${score.equipment.toFixed(1)}`, this.i18n.t('algorithmSourceMwiTools')
-          ].join('\n');
+          this.renderBuildScore(scoreElement, score);
+          scoreElement.title = this.buildScoreTooltip(score);
           scoreElement.dataset.scoreState = 'complete';
           scoreElement.dataset.renderedScoreKey = key;
         } catch (error) {
@@ -188,6 +239,26 @@ export class CharacterCardBuildScoreRenderer {
         }
       })
     );
+  }
+
+  // 悬浮提示参考 MWITools：战斗分（房屋/技能/装备/战斗神龛）与生活分（房屋/工具/装备/生活神龛）。
+  buildScoreTooltip(score) {
+    if (!score.newVersion) {
+      return [
+        `${this.i18n.t('houseScore')}: ${score.house.toFixed(1)}`, `${this.i18n.t('abilityScore')}: ${score.ability.toFixed(1)}`, `${this.i18n.t('equipmentScore')}: ${score.equipment.toFixed(1)}`, this.i18n.t('algorithmSourceMwiTools')
+      ].join('\n');
+    }
+    const {battle, skilling} = score;
+    const hiddenText = score.equipmentHidden ? ` (${this.i18n.t('equipmentHidden')})` : '';
+    return [
+      `${this.i18n.t('battleGearScore')}: ${battle.total.toFixed(1)}${hiddenText}`, `  ${this.i18n.t('houseScore')}: ${battle.house.toFixed(1)}`, `  ${this.i18n.t('abilityScore')}: ${battle.abilities.toFixed(1)}`, `  ${this.i18n.t('equipmentScore')}: ${battle.equipment.toFixed(1)}`, ...(Number.isFinite(battle.shrine) ? [
+            `  ${this.i18n.t('battleShrineScore')}: ${battle.shrine.toFixed(1)}`
+          ] : []),
+      `${this.i18n.t('skillingGearScore')}: ${skilling.available ? skilling.total.toFixed(1) : '-'}${hiddenText}`, `  ${this.i18n.t('houseScore')}: ${skilling.house.toFixed(1)}`, `  ${this.i18n.t('toolScore')}: ${skilling.tools.toFixed(1)}`, `  ${this.i18n.t('equipmentScore')}: ${skilling.equipment.toFixed(1)}`, ...(Number.isFinite(skilling.shrine) ? [
+            `  ${this.i18n.t('skillingShrineScore')}: ${skilling.shrine.toFixed(1)}`
+          ] : []),
+      this.i18n.t('algorithmSourceMwiTools')
+    ].join('\n');
   }
 
   formatCardTime(timestamp) {
@@ -590,7 +661,7 @@ export class CharacterCardProgressionRenderer {
       const maxAllCombat = Math.max(attack, defense, melee, ranged, magic);
       return Math.floor(0.1 * (stamina + intelligence + attack + defense + maxCombatSkill) + 0.5 * maxAllCombat);
     } catch (error) {
-      console.log('计算战斗等级失败:', error);
+      console.warn('计算战斗等级失败:', error);
       return 0;
     }
   }
@@ -798,8 +869,20 @@ export function createCharacterCardRenderer(deps) {
     <div class="mst-card-header">
       <div class="mst-card-header-identity">${TemplateRenderer.raw(headerContent)}</div>
       <span class="mst-card-build-score" data-build-score-key=${buildScoreKey} data-score-state="pending">
-        <span class="mst-card-build-score-label">${i18n.t('buildScore')}</span>
-        <span class="mst-card-build-score-value">${i18n.t('calculating')}</span>
+        <span class="mst-card-build-score-row" data-score-row="battle">
+          <span class="mst-card-build-score-heading">
+            <span class="mst-card-build-score-new" title=${i18n.t('newBuildScoreBadge')} hidden>✦</span>
+            <span class="mst-card-build-score-label">${i18n.t('battleScore')}</span>
+          </span>
+          <span class="mst-card-build-score-value">${i18n.t('calculating')}</span>
+        </span>
+        <span class="mst-card-build-score-row" data-score-row="skilling">
+          <span class="mst-card-build-score-heading">
+            <span class="mst-card-build-score-new" title=${i18n.t('newBuildScoreBadge')} hidden>✦</span>
+            <span class="mst-card-build-score-label">${i18n.t('skillingScore')}</span>
+          </span>
+          <span class="mst-card-build-score-value">${i18n.t('calculating')}</span>
+        </span>
       </span>
     </div>
     <div class="mst-card-content">
@@ -826,6 +909,7 @@ export function createCharacterCardRenderer(deps) {
     CardRenderer,
     createSvgIcon,
     getAbilityDisplayNames,
+    registerBuildScoreSource: buildScoreRenderer.registerBuildScoreSource.bind(buildScoreRenderer),
     hydrateBuildScores: buildScoreRenderer.hydrateBuildScores.bind(buildScoreRenderer),
     formatCardTime: buildScoreRenderer.formatCardTime.bind(buildScoreRenderer),
     getCharacterCardContentSignature: buildScoreRenderer.getCharacterCardContentSignature.bind(buildScoreRenderer),

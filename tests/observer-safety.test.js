@@ -176,8 +176,16 @@ test('动态弹窗和工具箱菜单按实际视口约束位置', () => {
   assert.match(source, /window\.visualViewport\?\.addEventListener\('resize', positionDropdown\)/);
   assert.match(source, /window\.visualViewport\?\.addEventListener\('scroll', positionDropdown\)/);
   assert.match(integratedCss, /#mst-toolkit-character-dropdown\s*\{[^}]*position:\s*fixed/s);
-  assert.match(integratedCss, /\.mst-ability-picker\s*\{[^}]*position:\s*fixed[^}]*env\(safe-area-inset-top\)/s);
-  assert.match(integratedCss, /\.mst-ability-picker-panel\s*\{[^}]*100dvw[^}]*100dvh/s);
+  // 技能选择浮层改为弹窗内容区内覆盖（对齐装备提升选择装备），不再全屏固定遮挡弹窗边框。
+  assert.match(integratedCss, /\.mst-ability-picker\s*\{[^}]*position:\s*absolute[^}]*inset:\s*0/s);
+  assert.match(
+    integratedCss,
+    /\.mst-ability-picker-panel\s*\{[^}]*width:\s*100%[^}]*height:\s*100%[^}]*min-height:\s*0/s
+  );
+  assert.match(
+    integratedCss,
+    /\.mst-ability-upgrade-calculator\.mst-ability-picker-open\s*\{[^}]*min-height:\s*min\(36rem, calc\(100vh - 10rem\)\)/s
+  );
 });
 
 test('技能升级为纵向滚动条预留宽度，装备提升按内容收紧弹窗和列宽', () => {
@@ -237,8 +245,8 @@ test('正式构建保留 JS 可读输出，并继续压缩内嵌 CSS', () => {
   assert.match(rollupSource, /\(source\) =>\s*formatStringArrayBlock\(source\)/);
   assert.match(rollupSource, /compactStringArraysPlugin\(\)/);
   assert.match(rollupSource, /return `export default \$\{toRawTemplateLiteral\(css\)\};`;/);
-  assert.match(rollupSource, /banner: isDev \? banner : ''/);
-  assert.match(rollupSource, /code: `\$\{banner\.trimEnd\(\)\}\\n\$\{code\}`/);
+  assert.match(rollupSource, /banner: isDev \? \(\) => computeBanner\(\) : ''/);
+  assert.match(rollupSource, /code: `\$\{computeBanner\(\)\.trimEnd\(\)\}\\n\$\{code\}`/);
 });
 
 test('全局 DOM 观察按帧合并，并在执行订阅回调时暂停监听', () => {
@@ -319,4 +327,19 @@ test('市场伴侣剪贴板导入只按 MST 按钮自身去重', () => {
 
   assert.match(featureSource, /querySelectorAll\('#mst-mmm-import-clipboard'\)/);
   assert.doesNotMatch(featureSource, /data-act=["']importclip/);
+});
+
+test('市场技能书悬浮菜单注入技能升级计算器入口且复用公共观察器', () => {
+  const abilitySource = readSourceFile('src', 'modules', 'ability-upgrade', 'index.js');
+
+  assert.match(abilitySource, /mountMarketDetailButton/);
+  assert.match(abilitySource, /MuiTooltip-popper/);
+  assert.match(abilitySource, /popperInteractive/);
+  assert.match(abilitySource, /Item_actionMenu/);
+  assert.match(abilitySource, /actionMenu\.appendChild\(button\)/);
+  assert.match(abilitySource, /mst-ability-tooltip-calculator/);
+  assert.match(abilitySource, /abilityBookDetail/);
+  assert.match(abilitySource, /feature\.open\(book\.abilityHrid\)/);
+  assert.match(abilitySource, /this\.mountMarketDetailButton\(feature\);/);
+  assert.doesNotMatch(abilitySource, /new MutationObserver/);
 });

@@ -39,7 +39,6 @@ export function createGameUiAdapter() {
       loadoutMetadata: '[class*="LoadoutsPanel_metadata__"], [class*="metadata"]',
       characterName: '[class*="CharacterName_characterName__"]',
       header: '[class*="Header_header__"]',
-      headerAvatar: '[class*="Header_avatar"]',
       headerCharacterInfo: '[class*="Header_characterInfo"]',
       headerNameData: '[class*="Header_name"] [data-name]',
       gameButton: 'button[class*="Button_button__"]'
@@ -701,7 +700,7 @@ export function createGameNavigationService(ctx) {
       } catch (error) {
         hostReadError = error?.message || String(error);
       }
-      const marketMate = read(() => pageWindow.MWIMM, null);
+      const marketMate = read(() => pageWindow.MWITools?.shopping, null);
       return {
         action,
         characterId: DataHub.characterData?.raw?.character?.id ?? null,
@@ -779,7 +778,7 @@ export function createGameNavigationService(ctx) {
       }
       let marketMate = null;
       try {
-        marketMate = pageWindow.MWIMM;
+        marketMate = pageWindow.MWITools?.shopping;
         if (marketMate?.ready === true && typeof marketMate.openMarketplace === 'function') {
           return marketMate.openMarketplace(fullHrid) === true;
         }
@@ -810,7 +809,8 @@ export function createMarketMateBridge(ctx) {
     attempts: 0,
 
     getApi() {
-      const api = pageWindow.MWIMM;
+      // 市场伴侣已整合进 MWITools，通过 window.MWITools.shopping 提供购物车 API。
+      const api = pageWindow.MWITools?.shopping;
       return api && typeof api.addToCart === 'function' ? api : null;
     },
 
