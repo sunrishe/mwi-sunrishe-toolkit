@@ -13,6 +13,10 @@ const dungeonFeatureSource = fs.readFileSync(
   'utf8'
 );
 const dungeonMessagesSource = fs.readFileSync(path.resolve(__dirname, '..', 'src', 'common', 'messages.js'), 'utf8');
+const dungeonCalculatorSource = fs.readFileSync(
+  path.resolve(__dirname, '..', 'src', 'modules', 'dungeon-profit', 'calculator.js'),
+  'utf8'
+);
 const integratedCssSource = fs.readFileSync(
   path.resolve(__dirname, '..', 'src', 'common', 'styles', 'integrated.css'),
   'utf8'
@@ -95,7 +99,7 @@ test('读取四个官方地下城并按难度计算精炼宝箱概率', () => {
 
 test('地下城名称在官方语言资源缺失时使用内置中英文兜底', () => {
   const Feature = vm.runInNewContext(
-    `${readVmSource('src/modules/dungeon-profit/index.js')}
+    `${readVmSource('src/common/constants.js', 'src/modules/dungeon-profit/index.js')}
         DungeonProfitCalculatorFeature;`
   );
   const messages = {
@@ -140,7 +144,11 @@ test('不可交易牛铃和披风沿用康康运气的可交易替代物估值',
   assert.equal(service.getDirectPrice('/items/cowbell', 'ask'), 100);
   assert.equal(service.getDirectPrice('/items/cowbell', 'bid'), 80);
   assert.equal(service.getDirectPrice('/items/cowbell', 'bid', true), 65.6);
+  // 关闭市场税选项后牛铃袋也不扣税，牛铃随袋继承；开启时才按 18% 特殊税率扣税。
+  assert.equal(service.getDirectPrice('/items/cowbell', 'bid', false), 80);
   assert.equal(service.getDirectPrice('/items/chimerical_quiver', 'ask'), 5000);
+  assert.equal(service.getDirectPrice('/items/chimerical_quiver', 'ask', true), 4750);
+  assert.equal(service.getDirectPrice('/items/chimerical_quiver', 'ask', false), 5000);
   assert.equal(service.getDirectPrice('/items/enchanted_cloak', 'bid'), 4000);
 });
 
@@ -258,13 +266,61 @@ test('卖出总价按普通 5% 市场税与牛铃袋 18% 特殊税率分别扣�
       '/items/cowbell', 1
     ]
   ]);
+  // 关闭市场税选项（applyMarketTax=false）时所有物品按报价直接计算，牛铃/牛铃袋也不扣税，与产出口径一致。
   const untaxed = service.valueExpectedDrops(drops, service.getTokenValues(false), false, new Set());
   const taxed = service.valueExpectedDrops(drops, service.getTokenValues(true), true, new Set());
+  // 每日产出完全按报价税前计算：普通物品与牛铃/牛铃袋都不扣税。
+  const pretaxOutput = service.valueExpectedDrops(drops, service.getTokenValues(undefined), undefined, new Set());
 
   assert.equal(untaxed.bidTotal, 200);
   assert.equal(untaxed.askTotal, 220);
   assert.equal(taxed.bidTotal, 177);
   assert.equal(taxed.askTotal, 196);
+  assert.equal(pretaxOutput.bidTotal, 200);
+  assert.equal(pretaxOutput.askTotal, 220);
+});
+
+test('商店拆分代币估值在产出中不扣税，收益中随市场税选项扣税', () => {
+  const syntheticClientData = {
+    actionDetailMap: {},
+    itemDetailMap: {
+      '/items/test_chest': {hrid: '/items/test_chest'},
+      '/items/essence': {hrid: '/items/essence'}
+    },
+    openableLootDropMap: {
+      '/items/test_chest': [
+        {itemHrid: '/items/token', dropRate: 1, minCount: 1, maxCount: 1}
+      ]
+    },
+    shopItemDetailMap: {
+      '/items/essence': {itemHrid: '/items/essence', costs: [
+          {itemHrid: '/items/token', count: 1}
+        ]}
+    }
+  };
+  const Service = loadService(syntheticClientData, {});
+  const service = new Service(
+    createMarketService({
+      '/items/essence': {0: {a: 100, b: 80}},
+      '/items/token': {0: {a: -1, b: -1}}
+    })
+  );
+  // token 无市场价，估值来自商店拆分：产出路径必须不扣税（含 undefined 与关闭选项），勾选时才按 5% 扣税。
+  assert.equal(service.getTokenValues(undefined).bid.get('/items/token'), 80);
+  assert.equal(service.getTokenValues(false).bid.get('/items/token'), 80);
+  assert.equal(service.getTokenValues(true).bid.get('/items/token'), 76);
+  const drops = new Map([
+    [
+      '/items/token', 1
+    ]
+  ]);
+  const pretax = service.valueExpectedDrops(drops, service.getTokenValues(undefined), undefined, new Set());
+  const untaxed = service.valueExpectedDrops(drops, service.getTokenValues(false), false, new Set());
+  const taxed = service.valueExpectedDrops(drops, service.getTokenValues(true), true, new Set());
+
+  assert.equal(pretax.bidTotal, 80);
+  assert.equal(untaxed.bidTotal, 80);
+  assert.equal(taxed.bidTotal, 76);
 });
 
 test('可选择让所有背部装备产物按 0 计算收益', () => {
@@ -333,7 +389,7 @@ test('牛铃袋市场完全缺价时牛铃按兜底价估值且不报缺价', ()
   assert.equal(service.getDirectPrice('/items/bag_of_10_cowbells', 'ask', true), 881636);
 });
 
-test('牛铃袋市场缺价但有官方市场价值时按市场指导价估值', () => {
+test('牛铃袋市场缺价时不再使用官方市场价值，直接按固定参考价兜底', () => {
   const Service = loadService();
   const service = new Service(
     createMarketService(
@@ -349,13 +405,14 @@ test('牛铃袋市场缺价但有官方市场价值时按市场指导价估值',
   ]);
   const result = service.valueExpectedDrops(drops, service.getTokenValues(true), true, missing);
 
-  assert.equal(result.askTotal, 65600);
-  assert.equal(result.bidTotal, 65600);
+  // 官方市场价值不再参与兜底，牛铃袋按固定参考价 1,075,167 折算（×0.82 后 ÷10）。
+  assert.equal(result.askTotal, 88163.6);
+  assert.equal(result.bidTotal, 88163.6);
   assert.equal(missing.has('/items/cowbell'), false);
-  assert.equal(service.getDirectPrice('/items/bag_of_10_cowbells', 'ask', true), 656000);
+  assert.equal(service.getDirectPrice('/items/bag_of_10_cowbells', 'ask', true), 881636);
 });
 
-test('牛铃袋挂单存在时仍优先使用挂单价，市场价值只作缺价兜底', () => {
+test('牛铃袋挂单存在时优先使用挂单价，与官方市场价值无关', () => {
   const Service = loadService();
   const service = new Service(
     createMarketService(
@@ -519,6 +576,17 @@ test('制作和购买钥匙分别扣除门票与开箱钥匙成本后得到收�
   assert.equal(result.expectedDrops[0].quantity, 2.59);
   assert.ok(Math.abs(result.totalRevenueConservative - 196.84) < 1e-12);
   assert.ok(Math.abs(result.totalRevenueOptimistic - 246.05) < 1e-12);
+  // 每日宝箱产出完全按报价税前计算，不随市场税选项变化。
+  assert.ok(Math.abs(result.normalChestOutputConservative - 207.2) < 1e-12);
+  assert.ok(Math.abs(result.normalChestOutputOptimistic - 259) < 1e-12);
+  // 关闭市场税选项后普通物品按报价直接计算，收益不再扣 5% 市场税。
+  const untaxedResult = service.calculate({
+    actionHrid: '/actions/combat/test_dungeon',
+    clearMinutes: 1440,
+    applyMarketTax: false
+  });
+  assert.ok(Math.abs(untaxedResult.totalRevenueConservative - 207.2) < 1e-12);
+  assert.ok(Math.abs(untaxedResult.totalRevenueOptimistic - 259) < 1e-12);
   assert.ok(Math.abs(market.totalCostConservative - 18.13) < 1e-12);
   assert.ok(Math.abs(market.totalCostOptimistic - 14.245) < 1e-12);
   assert.ok(Math.abs(market.profitConservative - 178.71) < 1e-12);
@@ -716,14 +784,16 @@ test('主脚本包含正式元信息、工具箱入口和完整国际化入口',
   assert.doesNotMatch(dungeonFeatureSource, /costMode|costCalculationMode/);
   assert.doesNotMatch(dungeonFeatureSource, /simulationSeed|createRandom/);
   assert.match(dungeonFeatureSource, /partySize: '5'/);
-  assert.doesNotMatch(dungeonFeatureSource, /combatDropRate|periodDays|applyMarketTax/);
+  assert.doesNotMatch(dungeonFeatureSource, /combatDropRate|periodDays/);
+  // 市场税选项重新提供，但默认勾选，避免回归到 v2.8 之前默认不扣税的行为。
+  assert.match(dungeonFeatureSource, /applyMarketTax: true/);
 });
 
 test('地下城操作区保留基础参数并按需展示自定义价格参数', () => {
   const keys = [
     'dungeon', 'difficultyTier', 'partySize', 'clearTimeMinutes', 'dailyConsumablesCost',
-    'artisanTea', 'guzzlingLevel', 'excludeBackEquipmentValue', 'customMode', 'keySource',
-    'keyMaterialPurchaseMethod', 'goodsSaleMethod'
+    'artisanTea', 'guzzlingLevel', 'applyMarketTax', 'excludeBackEquipmentValue', 'customMode',
+    'keySource', 'keyMaterialPurchaseMethod', 'goodsSaleMethod'
   ];
   const positions = keys.map((key) => dungeonFeatureSource.indexOf(`i18n.t('${key}')`));
 
@@ -750,6 +820,9 @@ test('地下城操作区保留基础参数并按需展示自定义价格参数',
   assert.doesNotMatch(dungeonFeatureSource, /\$\{feature\.renderResult\(result\)\}/);
   assert.doesNotMatch(dungeonFeatureSource, /\.disabled=\$\{!feature\.state\.useArtisanTea/);
   assert.doesNotMatch(dungeonFeatureSource, /manualDrop|CharacterDrop|i18n\.t\('combatDrop/);
+  // 单次耗时与每日成本输入 step=1：加减按钮按整数步进，手动输入仍可保留一位小数（无表单校验拦截）。
+  assert.equal(dungeonFeatureSource.match(/step="1"/g)?.length, 2);
+  assert.doesNotMatch(dungeonFeatureSource, /step="0\.1"/);
 });
 
 test('地下城结果明确分为材料成本和预期产出并并列两种钥匙来源', () => {
@@ -766,6 +839,19 @@ test('地下城结果明确分为材料成本和预期产出并并列两种钥�
   assert.match(dungeonFeatureSource, /key: 'profitPerRun'/);
   assert.match(dungeonFeatureSource, /key: 'netProfit'[\s\S]*?type: 'revenue'/);
   assert.match(dungeonFeatureSource, /key: 'profitPerRun'[\s\S]*?type: 'revenue'/);
+  // 每日普通/精炼宝箱产出跟在对应宝箱收益行之后，使用完全税前报价估值。
+  assert.match(dungeonFeatureSource, /key: 'normalChestDailyOutput'/);
+  assert.match(dungeonFeatureSource, /key: 'refinementChestDailyOutput'/);
+  assert.match(dungeonFeatureSource, /normalChestOutputConservative/);
+  assert.match(dungeonFeatureSource, /refinementChestOutputConservative/);
+  assert.match(
+    dungeonMessagesSource,
+    /normalChestDailyOutput: \{zh: '每日普通宝箱产出', en: 'Daily Normal Chest Output'\}/
+  );
+  assert.match(
+    dungeonMessagesSource,
+    /refinementChestDailyOutput: \{zh: '每日精炼宝箱产出', en: 'Daily Refinement Chest Output'\}/
+  );
   assert.match(dungeonFeatureSource, /row\.values\.materials\.conservative/);
   assert.match(dungeonFeatureSource, /row\.values\.market\.conservative/);
   assert.match(dungeonFeatureSource, /row\.values\.custom/);
@@ -792,13 +878,22 @@ test('地下城结果明确分为材料成本和预期产出并并列两种钥�
   assert.match(dungeonMessagesSource, /rightSell: \{zh: '右卖', en: 'Bid Sell'\}/);
   assert.match(dungeonMessagesSource, /conservative: \{zh: '右卖 \/ 左买', en: 'Bid Sell \/ Ask Buy'\}/);
   assert.match(dungeonMessagesSource, /optimistic: \{zh: '左卖 \/ 右买', en: 'Ask Sell \/ Bid Buy'\}/);
-  assert.match(dungeonMessagesSource, /normalChestRevenue: \{zh: '单个普通宝箱税后收益'/);
+  assert.match(
+    dungeonMessagesSource,
+    /normalChestRevenue: \{zh: '单个普通宝箱收益', en: 'Normal Chest Profit \(Each\)'\}/
+  );
+  assert.match(
+    dungeonMessagesSource,
+    /refinementChestRevenue: \{zh: '单个精炼宝箱收益', en: 'Refinement Chest Profit \(Each\)'\}/
+  );
+  // 地下城价格只来自市场挂单/成交与牛铃袋固定参考价，不使用官方市场价值（marketItemValues）。
+  assert.doesNotMatch(dungeonCalculatorSource, /getMarketValue/);
   assert.doesNotMatch(dungeonMessagesSource, /(?:conservative|optimistic): \{zh: '[^']*(?:Bid|Ask)/);
 });
 
 test('地下城成本和产出分区列头只显示各自相关的价格方向', () => {
   const Feature = vm.runInNewContext(
-    `${readVmSource('src/modules/dungeon-profit/index.js')}
+    `${readVmSource('src/common/constants.js', 'src/modules/dungeon-profit/index.js')}
         DungeonProfitCalculatorFeature;`
   );
   Feature.configure({i18n: {t: (key) => key}});
@@ -813,9 +908,80 @@ test('地下城成本和产出分区列头只显示各自相关的价格方向',
   );
 });
 
+test('市场税选项默认勾选，悬浮提示与帮助文案从公共常量动态生成税率', () => {
+  const Feature = vm.runInNewContext(
+    `${readVmSource('src/common/constants.js', 'src/modules/dungeon-profit/index.js')}
+        DungeonProfitCalculatorFeature;`
+  );
+  const rendered = {};
+  const TemplateRenderer = {
+    html(strings, ...values) {
+      return strings.reduce((result, string, index) => result + string + (values[index] ?? ''), '');
+    },
+    render(template) {
+      rendered.markup = template();
+      return null;
+    }
+  };
+  const i18n = {
+    t(key, ...args) {
+      return args.length ? `${key}(${args.join('/')})` : key;
+    }
+  };
+  const service = {
+    getDungeons() {
+      return [
+        {hrid: '/actions/combat/pirate_cove'}
+      ];
+    },
+    calculate(input) {
+      rendered.input = input;
+      return null;
+    }
+  };
+  const feature = {
+    root: {
+      querySelector() {
+        return null;
+      }
+    },
+    state: {
+      actionHrid: '/actions/combat/pirate_cove',
+      difficultyTier: 0,
+      partySize: '5',
+      clearMinutes: '30',
+      dailyConsumablesCost: '',
+      useArtisanTea: true,
+      useGuzzlingPouch: true,
+      guzzlingLevel: '0',
+      excludeBackEquipmentValue: false,
+      applyMarketTax: true,
+      customMode: false,
+      customKeySource: 'materials',
+      customBuySide: 'ask',
+      customSellSide: 'ask'
+    },
+    service,
+    getDungeonName() {
+      return '海盗基地';
+    }
+  };
+  Feature.configure({TemplateRenderer, i18n});
+  Feature.formView.renderCalculator(feature);
+
+  // 默认勾选并透传计算选项；悬浮提示按 {0}/{1} 占位符接收由常量生成的百分比。
+  assert.equal(rendered.input.applyMarketTax, true);
+  assert.match(rendered.markup, /applyMarketTaxHint\(5\/18\)/);
+  assert.match(rendered.markup, /\.checked=true/);
+  assert.match(dungeonFeatureSource, /applyMarketTax: true/);
+  // 百分比由公共税率常量动态生成，界面与帮助文案不硬编码税率数值。
+  assert.match(dungeonFeatureSource, /Math\.round\(MARKET_TAX_RATE \* 100\)/);
+  assert.match(dungeonFeatureSource, /Math\.round\(COWBELL_TAX_RATE \* 100\)/);
+});
+
 test('地下城成本表同时展示制作和购买钥匙的单位及每日成本', () => {
   const Feature = vm.runInNewContext(
-    `${readVmSource('src/modules/dungeon-profit/index.js')}
+    `${readVmSource('src/common/constants.js', 'src/modules/dungeon-profit/index.js')}
         DungeonProfitCalculatorFeature;`
   );
   Feature.configure({i18n: {locale: 'zh-CN', t: (key) => key}});
@@ -825,13 +991,14 @@ test('地下城成本表同时展示制作和购买钥匙的单位及每日成�
             {ask: 4, bid: 3}
           ], ticketCostConservative: 1332, ticketCostOptimistic: 1065.6, openingCostConservative: 532.8, openingCostOptimistic: 399.6, totalCostConservative: 1864.8, totalCostOptimistic: 1465.2, normalChestUnitProfitConservative: 10, normalChestUnitProfitOptimistic: 11, profitConservative: 135.2, profitOptimistic: 1534.8, profitPerRunConservative: 1.31, profitPerRunOptimistic: 14.92}, market: {ticketPrices: {ask: 12, bid: 9}, openingKeys: [
             {ask: 5, bid: 4}
-          ], ticketCostConservative: 1598.4, ticketCostOptimistic: 1198.8, openingCostConservative: 666, openingCostOptimistic: 532.8, totalCostConservative: 2264.4, totalCostOptimistic: 1731.6, normalChestUnitProfitConservative: 8, normalChestUnitProfitOptimistic: 9, profitConservative: -264.4, profitOptimistic: 1268.4, profitPerRunConservative: -2.57, profitPerRunOptimistic: 12.33}}, customScenario: {keySource: 'market', buySide: 'bid', sellSide: 'ask', ticketPrice: 9, openingKeyPrice: 4, ticketCost: 1198.8, openingCost: 532.8, totalCost: 1731.6, normalChestUnitProfit: 9, profit: 1268.4, profitPerRun: 12.33}, dailyConsumablesCost: 0, ticketQuantity: 133.2, openingKeyQuantity: 133.2, normalQuantity: 133.2, normalRevenueConservative: 2000, normalRevenueOptimistic: 3000, refinementQuantity: 0}
+          ], ticketCostConservative: 1598.4, ticketCostOptimistic: 1198.8, openingCostConservative: 666, openingCostOptimistic: 532.8, totalCostConservative: 2264.4, totalCostOptimistic: 1731.6, normalChestUnitProfitConservative: 8, normalChestUnitProfitOptimistic: 9, profitConservative: -264.4, profitOptimistic: 1268.4, profitPerRunConservative: -2.57, profitPerRunOptimistic: 12.33}}, customScenario: {keySource: 'market', buySide: 'bid', sellSide: 'ask', ticketPrice: 9, openingKeyPrice: 4, ticketCost: 1198.8, openingCost: 532.8, totalCost: 1731.6, normalChestUnitProfit: 9, profit: 1268.4, profitPerRun: 12.33}, dailyConsumablesCost: 0, ticketQuantity: 133.2, openingKeyQuantity: 133.2, normalQuantity: 133.2, normalRevenueConservative: 2000, normalRevenueOptimistic: 3000, normalChestOutputConservative: 2500, normalChestOutputOptimistic: 3500, refinementQuantity: 0}
   );
   const keys = Array.from(rows, (row) => row.key || row.label);
 
   assert.deepEqual(keys, [
     'materialCostBreakdown', 'ticketUnitPrice', 'keyUnitPrice', 'entryTicketDailyCost', 'chestOpeningDailyCost',
-    'totalDailyCost', 'expectedChestOutputBreakdown', 'normalChestRevenue', 'profitPerRun', 'netProfit'
+    'totalDailyCost', 'expectedChestOutputBreakdown', 'normalChestRevenue', 'normalChestDailyOutput', 'profitPerRun',
+    'netProfit'
   ]);
   assert.equal(rows[0].priceDirection, 'buy');
   assert.equal(rows[6].priceDirection, 'sell');
@@ -845,21 +1012,29 @@ test('地下城成本表同时展示制作和购买钥匙的单位及每日成�
   assert.equal(rows[2].values.materials.optimistic, 3);
   assert.equal(rows[2].values.market.conservative, 5);
   assert.equal(rows[2].values.market.optimistic, 4);
-  assert.equal(rows[7].quantity, 133.2);
+  // 单个宝箱收益行是单箱值，不显示数量；每日产出行显示每日宝箱数量。
+  assert.equal(rows[7].quantity, null);
   assert.equal(rows[7].values.materials.conservative, 10);
   assert.equal(rows[7].values.materials.optimistic, 11);
   assert.equal(rows[7].values.market.conservative, 8);
   assert.equal(rows[7].values.market.optimistic, 9);
+  // 每日普通宝箱产出按税前报价展示，与收益和钥匙来源无关；自定义档位跟随卖出方向。
+  assert.equal(rows[8].quantity, 133.2);
+  assert.equal(rows[8].values.materials.conservative, 2500);
+  assert.equal(rows[8].values.materials.optimistic, 3500);
+  assert.equal(rows[8].values.market.conservative, 2500);
+  assert.equal(rows[8].values.market.optimistic, 3500);
+  assert.equal(rows[8].values.custom, 3500);
   assert.equal(rows[1].values.custom, 9);
   assert.equal(rows[2].values.custom, 4);
   assert.equal(rows[7].values.custom, 9);
-  assert.equal(rows[8].values.custom, 12.33);
-  assert.equal(rows[9].values.custom, 1268.4);
+  assert.equal(rows[9].values.custom, 12.33);
+  assert.equal(rows[10].values.custom, 1268.4);
 });
 
 test('地下城数量和金额最多显示两位小数且不补尾随零', () => {
   const Feature = vm.runInNewContext(
-    `${readVmSource('src/modules/dungeon-profit/index.js')}
+    `${readVmSource('src/common/constants.js', 'src/modules/dungeon-profit/index.js')}
         DungeonProfitCalculatorFeature;`
   );
   Feature.configure({i18n: {locale: 'zh-CN'}});
@@ -930,7 +1105,7 @@ test('地下城只计算 1 日期望并展示每日净利润', () => {
     }
   }
   const Feature = vm.runInNewContext(
-    `${readVmSource('src/modules/dungeon-profit/index.js')}
+    `${readVmSource('src/common/constants.js', 'src/modules/dungeon-profit/index.js')}
         DungeonProfitCalculatorFeature;`
   );
   Feature.configure({
@@ -988,7 +1163,7 @@ test('地下城从角色持有的多个暴饮之囊中选择最高强化等级',
     }
   ];
   const Feature = vm.runInNewContext(
-    `${readVmSource('src/modules/dungeon-profit/index.js')}
+    `${readVmSource('src/common/constants.js', 'src/modules/dungeon-profit/index.js')}
         DungeonProfitCalculatorFeature;`
   );
   Feature.configure({CharacterDataService: {getCharacterItems: () => characterItems}});

@@ -347,7 +347,7 @@ export class CharacterCardExportActions {
       } finally {
         this.canvasApi.releaseCanvas(canvas);
       }
-      console.log('名片图片已生成并下载');
+      console.debug('名片图片已生成并下载');
     } catch (error) {
       console.error('下载名片失败:', error);
       Notifier.alert(`${i18n.t('downloadCharacterCardFailed')}\n\n${error.message || ''}`.trim());
@@ -407,7 +407,7 @@ export class CharacterCardExportActions {
       } finally {
         this.canvasApi.releaseCanvas(canvas);
       }
-      console.log('队伍名片图片已生成并下载');
+      console.debug('队伍名片图片已生成并下载');
     } catch (error) {
       console.error('下载队伍名片失败:', error);
       Notifier.alert(i18n.t('downloadPartyCardFailed'));

@@ -1,9 +1,15 @@
+import {COWBELL_TAX_RATE, MARKET_TAX_RATE} from '../../common/constants.js';
+
 const DUNGEON_NAME_MESSAGE_KEYS = Object.freeze({
   '/actions/combat/chimerical_den': 'dungeonNameChimericalDen',
   '/actions/combat/sinister_circus': 'dungeonNameSinisterCircus',
   '/actions/combat/enchanted_fortress': 'dungeonNameEnchantedFortress',
   '/actions/combat/pirate_cove': 'dungeonNamePirateCove'
 });
+
+// 税率显示从公共常量动态生成，市场税调整后提示与帮助文案自动跟随，不手工维护百分比。
+const marketTaxPercent = Math.round(MARKET_TAX_RATE * 100);
+const cowbellTaxPercent = Math.round(COWBELL_TAX_RATE * 100);
 
 // dungeon-profit-form-view
 const dungeonProfitFormView = {
@@ -21,6 +27,7 @@ const dungeonProfitFormView = {
       useGuzzlingPouch: feature.state.useGuzzlingPouch,
       guzzlingLevel: feature.state.guzzlingLevel,
       excludeBackEquipmentValue: feature.state.excludeBackEquipmentValue,
+      applyMarketTax: feature.state.applyMarketTax,
       customMode: feature.state.customMode,
       customKeySource: feature.state.customKeySource,
       customBuySide: feature.state.customBuySide,
@@ -95,7 +102,7 @@ const dungeonProfitFormView = {
         <input
           type="number"
           min="0.1"
-          step="0.1"
+          step="1"
           .value=${feature.state.clearMinutes}
           @input=${(event) => feature.updateNumber('clearMinutes', event.target.value)}
         >
@@ -105,7 +112,7 @@ const dungeonProfitFormView = {
         <input
           type="number"
           min="0"
-          step="0.1"
+          step="1"
           placeholder="0"
           .value=${feature.state.dailyConsumablesCost}
           @input=${(event) => feature.updateNumber('dailyConsumablesCost', event.target.value)}
@@ -149,6 +156,22 @@ const dungeonProfitFormView = {
           </select>
         </span>
       </label>
+      <div class="mst-dungeon-field mst-dungeon-toggle-field">
+        <label
+          class="mst-dungeon-auto-buff"
+          title=${i18n.t('applyMarketTaxHint', marketTaxPercent, cowbellTaxPercent)}
+        >
+          <input
+            type="checkbox"
+            .checked=${feature.state.applyMarketTax}
+            @change=${(event) => {
+              feature.state.applyMarketTax = event.target.checked;
+              feature.render();
+            }}
+          >
+          <span>${i18n.t('applyMarketTax')}</span>
+        </label>
+      </div>
       <div class="mst-dungeon-field mst-dungeon-toggle-field">
         <label class="mst-dungeon-auto-buff">
           <input
@@ -321,7 +344,7 @@ const dungeonProfitResultRows = {
         type: 'total'
       }, {key: 'expectedChestOutputBreakdown', type: 'section', priceDirection: 'sell'}, {
         key: 'normalChestRevenue',
-        quantity: result.normalQuantity,
+        quantity: null,
         values: values(
           materials.normalChestUnitProfitConservative,
           materials.normalChestUnitProfitOptimistic,
@@ -330,11 +353,25 @@ const dungeonProfitResultRows = {
           custom.normalChestUnitProfit
         ),
         type: 'revenue'
-      }, ...(result.refinementQuantity > 0
+      }, {
+        key: 'normalChestDailyOutput',
+        quantity: result.normalQuantity,
+        values: values(
+          result.normalChestOutputConservative,
+          result.normalChestOutputOptimistic,
+          result.normalChestOutputConservative,
+          result.normalChestOutputOptimistic,
+          result.customScenario?.sellSide === 'bid'
+            ? result.normalChestOutputConservative
+            : result.normalChestOutputOptimistic
+        ),
+        type: 'revenue'
+      },
+      ...(result.refinementQuantity > 0
         ? [
             {
               key: 'refinementChestRevenue',
-              quantity: result.refinementQuantity,
+              quantity: null,
               values: values(
                 materials.refinementChestUnitProfitConservative,
                 materials.refinementChestUnitProfitOptimistic,
@@ -343,10 +380,22 @@ const dungeonProfitResultRows = {
                 custom.refinementChestUnitProfit
               ),
               type: 'revenue'
+            }, {
+              key: 'refinementChestDailyOutput',
+              quantity: result.refinementQuantity,
+              values: values(
+                result.refinementChestOutputConservative,
+                result.refinementChestOutputOptimistic,
+                result.refinementChestOutputConservative,
+                result.refinementChestOutputOptimistic,
+                result.customScenario?.sellSide === 'bid'
+                  ? result.refinementChestOutputConservative
+                  : result.refinementChestOutputOptimistic
+              ),
+              type: 'revenue'
             }
           ]
-        : []),
-      {
+        : []), {
         key: 'profitPerRun',
         quantity: null,
         values: values(
@@ -523,6 +572,7 @@ const dungeonProfitState = {
       useGuzzlingPouch: Boolean(guzzlingPouch),
       guzzlingLevel: String(guzzlingPouch?.enhancementLevel || 0),
       excludeBackEquipmentValue: false,
+      applyMarketTax: true,
       customMode: false,
       customKeySource: 'materials',
       customBuySide: 'ask',
@@ -638,7 +688,7 @@ export class DungeonProfitCalculatorFeature {
     const title = this.popup.querySelector('.swal2-title');
     const {i18n} = this.constructor.ctx;
     if (title) title.textContent = i18n.t('dungeonProfitCalculator');
-    this.helpController?.setContent(i18n.t('dungeonCalculatorHelp'));
+    this.helpController?.setContent(i18n.t('dungeonCalculatorHelp', marketTaxPercent, cowbellTaxPercent));
     this.render();
   }
 
@@ -665,7 +715,7 @@ export class DungeonProfitCalculatorFeature {
           moduleName: 'dungeon',
           title: i18n.t('dungeonCalculatorHelpTitle'),
           heading: i18n.t('dungeonProfitCalculator'),
-          content: i18n.t('dungeonCalculatorHelp')
+          content: i18n.t('dungeonCalculatorHelp', marketTaxPercent, cowbellTaxPercent)
         });
       },
       willClose: () => {

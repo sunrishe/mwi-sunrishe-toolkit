@@ -5,7 +5,6 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
-const {performance} = require('node:perf_hooks');
 const {readVmSource} = require('./helpers/source.js');
 
 const MST_ROOT = path.resolve(__dirname, '..');
@@ -53,10 +52,25 @@ const DataHub = {
 };
 function loadBuildScoreService() {
   return vm.runInNewContext(
-    `${readVmSource('src/modules/character-card/build-score.js')}
+    `${readVmSource(
+      'src/modules/character-card/build-score/legacy.js',
+      'src/modules/character-card/build-score/v26.js',
+      'src/modules/character-card/build-score/index.js'
+    )}
         class BuildScoreServiceWithDataHub extends BuildScoreService {
           constructor(marketService) {
-            super({DataHub, i18n: {t(key) { return key; }}}, marketService);
+            super(
+              {
+                DataHub,
+                i18n: {t(key) { return key; }},
+                utils: {
+                  substrLastSlash(value) {
+                    return String(value).split('/').pop();
+                  }
+                }
+              },
+              marketService
+            );
           }
         }
         BuildScoreServiceWithDataHub;`,
@@ -167,107 +181,7 @@ function loadLifeCardHelpers() {
 
 const lifeCardHelpers = loadLifeCardHelpers();
 
-// 优化前使用普通 Array 构造增广矩阵；保留为结果基准。
-class LegacyBuildScoreService extends BuildScoreService {
-  constructor(marketService) {
-    super(marketService);
-    this.enhancementStrategyCache = new Map();
-  }
-
-  _findBestEnhanceStrategyWithPhiMirror(itemHrid, enhancementLevel, data) {
-    let best = this._findBestEnhanceStrategy(itemHrid, enhancementLevel, data);
-    const mirrorCost = this._getItemMarketPrice('/items/philosophers_mirror');
-    if (!best || mirrorCost <= 0 || enhancementLevel <= 3) return best;
-
-    const refinedHrid = itemHrid;
-    const isRefined = itemHrid.includes('_refined');
-    const baseItemHrid = isRefined ? itemHrid.replace('_refined', '') : itemHrid;
-    const lowerBest = {};
-    for (let level = 9; level < enhancementLevel; level++) {
-      lowerBest[level] = this._findBestEnhanceStrategy(baseItemHrid, level, data);
-    }
-
-    let refinedCost = 0;
-    if (isRefined) {
-      const itemName = data.itemDetailMap[refinedHrid]?.name;
-      const actionHrid = this._getActionHridFromItemName(itemName, data.actionDetailMap);
-      (data.actionDetailMap?.[actionHrid]?.inputItems || []).forEach((item) => {
-        refinedCost += this._getItemMarketPrice(item.itemHrid) * Number(item.count || 0);
-      });
-    }
-
-    const fibonacci = [
-      0, 1, 1, 2, 3,
-      5, 8, 13, 21, 34,
-      55, 89, 144, 233, 377,
-      610, 987, 1597, 2584, 4181
-    ];
-    for (let protectAt = 10; protectAt < enhancementLevel; protectAt++) {
-      if (!lowerBest[protectAt] || !lowerBest[protectAt - 1]) continue;
-      const baseCount = fibonacci[enhancementLevel - protectAt + 1];
-      const inputCount = fibonacci[enhancementLevel - protectAt];
-      if (baseCount == null || inputCount == null) continue;
-      const protectCount = baseCount + inputCount - 1;
-      const totalCost =
-        baseCount * lowerBest[protectAt].totalCost +
-        inputCount * lowerBest[protectAt - 1].totalCost +
-        mirrorCost * protectCount +
-        refinedCost;
-      if (totalCost < best.totalCost) best = {totalCost};
-    }
-    return best;
-  }
-
-  _findBestEnhanceStrategy(itemHrid, enhancementLevel, data) {
-    const cacheKey = [
-      this.marketService.marketTimestamp || '', itemHrid, enhancementLevel
-    ].join('::');
-    const cached = this.enhancementStrategyCache.get(cacheKey);
-    if (cached) return cached;
-    let best = null;
-    for (let protectAt = 2; protectAt <= enhancementLevel; protectAt++) {
-      const simulation = this._calculateEnhancementExpectation(itemHrid, enhancementLevel, protectAt, data);
-      const costs = this._getEnhancementCosts(itemHrid, data);
-      const totalCost =
-        costs.baseCost + costs.protectionCost * simulation.protectCount + costs.perActionCost * simulation.actions;
-      if (!best || totalCost < best.totalCost) best = {totalCost};
-    }
-    if (best) this.enhancementStrategyCache.set(cacheKey, best);
-    return best;
-  }
-
-  _invertMatrix(matrix) {
-    const size = matrix.length;
-    const augmented = matrix.map((row, index) => [
-      ...row, ...Array.from({length: size}, (_, column) => (index === column ? 1 : 0))
-    ]);
-    for (let column = 0; column < size; column++) {
-      let pivotRow = column;
-      for (let row = column + 1; row < size; row++) {
-        if (Math.abs(augmented[row][column]) > Math.abs(augmented[pivotRow][column])) pivotRow = row;
-      }
-      if (Math.abs(augmented[pivotRow][column]) < 1e-12) throw new Error('Enhancement matrix is singular');
-      [
-        augmented[column], augmented[pivotRow]
-      ] = [
-        augmented[pivotRow], augmented[column]
-      ];
-      const pivot = augmented[column][column];
-      for (let index = 0; index < size * 2; index++) augmented[column][index] /= pivot;
-      for (let row = 0; row < size; row++) {
-        if (row === column) continue;
-        const factor = augmented[row][column];
-        if (!factor) continue;
-        for (let index = 0; index < size * 2; index++) {
-          augmented[row][index] -= factor * augmented[column][index];
-        }
-      }
-    }
-    return augmented.map((row) => row.slice(size));
-  }
-}
-
-function createMarketService({withoutPhiMirror = false} = {}) {
+function createMarketService({withoutPhiMirror = false} = {}, marketValues = {}) {
   return {
     marketData: marketPayload.marketData,
     marketTimestamp: marketPayload.timestamp,
@@ -277,6 +191,10 @@ function createMarketService({withoutPhiMirror = false} = {}) {
     getMarketRow(itemHrid, level = 0) {
       if (withoutPhiMirror && itemHrid === '/items/philosophers_mirror') return null;
       return this.marketData?.[itemHrid]?.[String(level)] || null;
+    },
+    getMarketValue(itemHrid, level = 0) {
+      const value = Number(marketValues?.[itemHrid]?.[level] ?? marketValues?.[itemHrid]?.[String(level)] ?? 0);
+      return Number.isFinite(value) && value > 0 ? value : 0;
     }
   };
 }
@@ -302,22 +220,31 @@ function createCardData(mode = 'actual') {
   };
 }
 
-function assertSameScore(actual, expected, label) {
-  for (const key of [
-    'total', 'house', 'ability', 'equipment', 'equipmentHidden'
-  ]) {
-    assert.equal(actual[key], expected[key], `${label} 的 ${key} 与旧版不一致`);
-  }
-}
-
-function findItemAtLevel(itemLevel) {
-  const match = Object.entries(clientData.itemDetailMap).find(
-    ([
-      , detail
-    ]) => detail.itemLevel === itemLevel
+function assertScoreStructure(score, label) {
+  // 新版着装评分按 MWITools 口径返回战斗/生活两套分。
+  assert.equal(typeof score.battle.total, 'number', label + ' 缺少 battle.total');
+  assert.equal(typeof score.battle.house, 'number', label + ' 缺少 battle.house');
+  assert.equal(typeof score.battle.abilities, 'number', label + ' 缺少 battle.abilities');
+  assert.equal(typeof score.battle.equipment, 'number', label + ' 缺少 battle.equipment');
+  assert.equal(typeof score.skilling.total, 'number', label + ' 缺少 skilling.total');
+  assert.equal(typeof score.skilling.house, 'number', label + ' 缺少 skilling.house');
+  assert.equal(typeof score.skilling.tools, 'number', label + ' 缺少 skilling.tools');
+  assert.equal(typeof score.skilling.equipment, 'number', label + ' 缺少 skilling.equipment');
+  assert.equal(score.newVersion, true, label + ' 应标记新版算法');
+  const battleShrine = Number.isFinite(score.battle.shrine) ? score.battle.shrine : 0;
+  const skillingShrine = Number.isFinite(score.skilling.shrine) ? score.skilling.shrine : 0;
+  assert.ok(
+    Math.abs(
+      score.battle.total - (score.battle.house + score.battle.abilities + score.battle.equipment + battleShrine)
+    ) < 1e-9,
+    label + ' 战斗总分不等于分项之和'
   );
-  assert.ok(match, `缺少 itemLevel=${itemLevel} 的测试物品`);
-  return match[0];
+  assert.ok(
+    Math.abs(
+      score.skilling.total - (score.skilling.house + score.skilling.tools + score.skilling.equipment + skillingShrine)
+    ) < 1e-9,
+    label + ' 生活总分不等于分项之和'
+  );
 }
 
 test('战斗配装名片使用当前穿戴的全部工具计算装备分', () => {
@@ -422,147 +349,313 @@ test('生活配装名片使用配装工具并保留角色当前已配置技能',
     );
 });
 
-test('强化期望值在多物品等级、目标等级、保护等级和祝福茶设置下与旧版逐值一致', () => {
-  const optimized = new BuildScoreService(createMarketService());
-  const legacy = new LegacyBuildScoreService(createMarketService());
-  const itemLevels = [
-    1, 35, 60, 80, 90,
-    95, 100
-  ];
-  const targetLevels = [
-    2, 9, 12, 20
-  ];
-
-  for (const teaBlessed of [
-    false, true
-  ]) {
-    optimized.inputDefaults.teaBlessed = teaBlessed;
-    legacy.inputDefaults.teaBlessed = teaBlessed;
-    for (const itemLevel of itemLevels) {
-      const itemHrid = findItemAtLevel(itemLevel);
-      for (const targetLevel of targetLevels) {
-        const protectLevels = [
-          ...new Set([
-            2, Math.ceil(targetLevel / 2), targetLevel
-          ])
-        ];
-        for (const protectAt of protectLevels) {
-          const actual = optimized._calculateEnhancementExpectation(itemHrid, targetLevel, protectAt, clientData);
-          const expected = legacy._calculateEnhancementExpectation(itemHrid, targetLevel, protectAt, clientData);
-          assert.equal(actual.actions, expected.actions);
-          assert.equal(actual.protectCount, expected.protectCount);
-        }
-      }
-    }
-  }
-});
-
-test('普通与精炼装备的强化策略和 Phi Mirror 分支与旧版一致', () => {
-  const cases = [
-    '/items/chrono_gloves', '/items/pathseeker_boots_refined'
-  ];
-  for (const withoutPhiMirror of [
-    false, true
-  ]) {
-    const optimized = new BuildScoreService(createMarketService({withoutPhiMirror}));
-    const legacy = new LegacyBuildScoreService(createMarketService({withoutPhiMirror}));
-    for (const itemHrid of cases) {
-      for (const targetLevel of [
-        2, 9, 12, 20
-      ]) {
-        const actual = optimized._findBestEnhanceStrategyWithPhiMirror(itemHrid, targetLevel, clientData);
-        const expected = legacy._findBestEnhanceStrategyWithPhiMirror(itemHrid, targetLevel, clientData);
-        assert.equal(actual?.totalCost, expected?.totalCost);
-        assert.equal(Math.round(actual?.totalCost || 0), Math.round(expected?.totalCost || 0));
-      }
-    }
-  }
-});
-
-test('同 itemLevel 的不同装备共用强化期望缓存，不缓存单件装备策略', () => {
-  const service = new BuildScoreService(createMarketService());
-  const sameLevelItems = Object.entries(clientData.itemDetailMap)
-    .filter(
-      ([
-        , detail
-      ]) => detail.itemLevel === 80
-    )
-    .slice(0, 2)
-    .map(
-      ([
-        hrid
-      ]) => hrid
-    );
-  assert.equal(sameLevelItems.length, 2);
-
-  let inversionCount = 0;
-  const invertMatrix = service._invertMatrix.bind(service);
-  service._invertMatrix = (matrix) => {
-    inversionCount++;
-    return invertMatrix(matrix);
-  };
-
-  const first = service._calculateEnhancementExpectation(sameLevelItems[0], 20, 12, clientData);
-  const second = service._calculateEnhancementExpectation(sameLevelItems[1], 20, 12, clientData);
-  assert.strictEqual(second, first, '相同强化参数应复用同一个期望结果');
-  assert.equal(inversionCount, 1);
-  assert.equal(service.enhancementExpectationCache.size, 1);
-  assert.equal('enhancementStrategyCache' in service, false, '不应保留按装备缓存的策略结果');
-
-  service._calculateEnhancementExpectation(sameLevelItems[1], 20, 13, clientData);
-  assert.equal(inversionCount, 2, '保护等级改变后应重新计算');
-});
-
-test('一次强化策略只计算一次装备成本', () => {
-  const service = new BuildScoreService(createMarketService());
-  let costCount = 0;
-  const getEnhancementCosts = service._getEnhancementCosts.bind(service);
-  service._getEnhancementCosts = (...args) => {
-    costCount++;
-    return getEnhancementCosts(...args);
-  };
-
-  service._findBestEnhanceStrategyWithPhiMirror('/items/chrono_gloves', 20, clientData);
-  assert.equal(costCount, 1, '普通装备应在整轮 Phi Mirror 策略中共用一份成本');
-
-  costCount = 0;
-  service._findBestEnhanceStrategyWithPhiMirror('/items/pathseeker_boots_refined', 20, clientData);
-  assert.equal(costCount, 2, '精炼装备只应分别计算精炼本体和基础装备成本');
-});
-
-test('隐藏装备、无强化和真实混装的完整战力分与旧版一致', async () => {
+test('新旧版战力分可切换且新版按 MWITools 口径返回战斗/生活两套分', async () => {
   for (const mode of [
     'plain', 'actual'
   ]) {
     const cardData = createCardData(mode);
-    const optimized = await new BuildScoreService(createMarketService()).calculate(cardData);
-    const legacy = await new LegacyBuildScoreService(createMarketService()).calculate(cardData);
-    assertSameScore(optimized, legacy, mode);
+    const service = new BuildScoreService(createMarketService());
+    const score = await service.calculate(cardData, true);
+    assertScoreStructure(score, mode);
+    assert.equal(score.equipmentHidden, false, mode + ' 不应隐藏装备');
+    assert.ok(score.battle.total > 0, mode + ' 战斗总分应大于 0');
+    assert.ok(score.skilling.total > 0, mode + ' 生活总分应大于 0');
+    const legacy = await service.calculate(cardData, false);
+    assert.equal(legacy.newVersion, false, mode + ' 旧版不应标记新版');
+    assert.equal(typeof legacy.total, 'number', mode + ' 旧版缺少 total');
   }
 
   const hiddenCard = {...createCardData('actual'), hideWearableItems: true};
-  const optimizedHidden = await new BuildScoreService(createMarketService()).calculate(hiddenCard);
-  const legacyHidden = await new LegacyBuildScoreService(createMarketService()).calculate(hiddenCard);
-  assertSameScore(optimizedHidden, legacyHidden, 'hidden');
+  const hidden = await new BuildScoreService(createMarketService()).calculate(hiddenCard, true);
+  assertScoreStructure(hidden, 'hidden');
+  assert.equal(hidden.equipmentHidden, true, '隐藏装备应标记 equipmentHidden');
+  // 与 v26 getBuildScoreByProfile 一致：装备隐藏时技能分与装备分归零，房屋与神龛仍计入。
+  assert.equal(hidden.battle.equipment, 0, '隐藏装备时战斗装备分为 0');
+  assert.equal(hidden.skilling.tools, 0, '隐藏装备时生活工具分为 0');
+  assert.equal(hidden.skilling.equipment, 0, '隐藏装备时生活装备分为 0');
+  assert.equal(hidden.battle.abilities, 0, '隐藏装备时技能分应为 0');
+  assert.equal(hidden.skilling.available, false, '隐藏装备时生活分不可用');
+  const hiddenBattleShrine = Number.isFinite(hidden.battle.shrine) ? hidden.battle.shrine : 0;
+  assert.ok(
+    Math.abs(hidden.battle.total - (hidden.battle.house + hiddenBattleShrine)) < 1e-9,
+    '隐藏装备时战斗总分应等于房屋加神龛'
+  );
 });
 
-test('测试服角色全身 +20 冷缓存计算结果不变且低于 0.2 秒', async (t) => {
-  const itemHrid = findItemAtLevel(80);
-  new BuildScoreService(createMarketService())._calculateEnhancementExpectation(itemHrid, 2, 2, clientData);
-  new LegacyBuildScoreService(createMarketService())._calculateEnhancementExpectation(itemHrid, 2, 2, clientData);
+test('公平价值按 MWITools 口径：官方市场价值优先，其次左右报价平均', () => {
+  const service = new BuildScoreService(createMarketService({}, {'/items/acrobatic_hood': {0: 888888}}));
+  // 官方市场价值优先
+  assert.equal(service._fairValue('/items/acrobatic_hood'), 888888);
+  // 无官方价值时取左右报价平均
+  assert.equal(service._fairValue('/items/abyssal_essence'), (220 + 215) / 2);
+  assert.equal(service._fairValue('/items/coin'), 1);
+});
 
-  const cardData = createCardData('max');
-  const legacyService = new LegacyBuildScoreService(createMarketService());
-  const legacyStart = performance.now();
-  const legacyScore = await legacyService.calculate(cardData);
-  const legacyElapsed = performance.now() - legacyStart;
+test('装备按工具/战斗/生活分类分别计入战力分', () => {
+  const service = new BuildScoreService(createMarketService({}, {}));
+  const toolItem = {
+    itemHrid: '/items/abyssal_essence',
+    itemLocationHrid: '/item_locations/foraging_tool',
+    enhancementLevel: 0,
+    count: 1
+  };
+  const combatItem = {
+    itemHrid: '/items/acrobatic_hood',
+    itemLocationHrid: '/item_locations/head',
+    enhancementLevel: 0,
+    count: 1
+  };
+  const skillingItem = {
+    itemHrid: '/items/advanced_alchemy_charm',
+    itemLocationHrid: '/item_locations/necklace',
+    enhancementLevel: 0,
+    count: 1
+  };
 
-  const optimizedService = new BuildScoreService(createMarketService());
-  const optimizedStart = performance.now();
-  const optimizedScore = await optimizedService.calculate(cardData);
-  const optimizedElapsed = performance.now() - optimizedStart;
+  const toolClass = service._classifyEquippedItem(toolItem, clientData);
+  const combatClass = service._classifyEquippedItem(combatItem, clientData);
+  const skillingClass = service._classifyEquippedItem(skillingItem, clientData);
 
-  assertSameScore(optimizedScore, legacyScore, 'all +20');
-  t.diagnostic(`旧数组基准 ${legacyElapsed.toFixed(2)}ms，优化版冷缓存 ${optimizedElapsed.toFixed(2)}ms`);
-  assert.ok(optimizedElapsed < 200, `全身 +20 冷缓存耗时 ${optimizedElapsed.toFixed(2)}ms，超过 200ms`);
+  assert.equal(toolClass.isTool, true);
+  assert.equal(toolClass.isCombat, false);
+  assert.equal(toolClass.isSkilling, true);
+  assert.equal(combatClass.isCombat, true);
+  assert.equal(combatClass.isTool, false);
+  assert.equal(skillingClass.isSkilling, true);
+  assert.equal(skillingClass.isCombat, false);
+
+  const gearScores = service._calculateGearScores(
+    {
+      player: {equipment: [
+          toolItem, combatItem, skillingItem
+        ], characterItems: [
+          toolItem, combatItem, skillingItem
+        ]}
+    },
+    clientData
+  );
+  assert.ok(gearScores.combatEquipment > 0, '战斗装备应计入战斗装备分');
+  assert.ok(gearScores.skillingTools > 0, '工具应计入生活工具分');
+  assert.ok(gearScores.skillingEquipment > 0, '生活装备应计入生活装备分');
+  // 库存位置物品不参与战力分
+  const inventoryItem = {...combatItem, itemLocationHrid: '/item_locations/inventory'};
+  const inventoryScores = service._calculateGearScores(
+    {player: {equipment: [
+          inventoryItem
+        ]}},
+    clientData
+  );
+  assert.equal(inventoryScores.combatEquipment, 0, '库存物品不计入战力分');
+});
+
+test('房屋按战斗/生活可用类型分类计入战力分', () => {
+  const service = new BuildScoreService(createMarketService({}, {}));
+  const houseScores = service._calculateHouseScores(
+    {characterHouseRoomMap: {'/house_rooms/archery_range': 1, '/house_rooms/brewery': 1}},
+    clientData
+  );
+  assert.ok(houseScores.combat > 0, '战斗房屋应计入战斗房屋分');
+  assert.ok(houseScores.skilling > 0, '生活房屋应计入生活房屋分');
+  assert.ok(Math.abs(houseScores.all - (houseScores.combat + houseScores.skilling)) < 1e-9, '总房屋分等于战斗加生活');
+});
+
+test('强化装备估值按 MWITools v26 口径：与公平价值偏差不超过 20% 时用公平价值，否则用强化计划成本', () => {
+  const service = new BuildScoreService(createMarketService({}, {}));
+  const boots = {
+    itemHrid: '/items/pathseeker_boots_refined',
+    itemLocationHrid: '/item_locations/feet',
+    enhancementLevel: 12,
+    count: 1
+  };
+  // +12 真实数据：公平价值 2.725B（左 2.75B / 右 2.7B 平均），v26 强化计划成本约 1.518B，偏差大于 20% → 取强化成本。
+  const fairValue = service._fairValue(boots.itemHrid, 12);
+  assert.equal(fairValue, (2750000000 + 2700000000) / 2);
+  const plan = service._calculateV26EnhancementPlan(boots.itemHrid, 12, clientData, {});
+  assert.equal(plan.status, 'complete');
+  const enhancementCost = plan.totalCost;
+  const deviation = Math.abs(fairValue - enhancementCost) / enhancementCost;
+  assert.ok(deviation > 0.2, '该装备偏差应大于 20%');
+  assert.equal(service._getItemValue(boots, clientData), enhancementCost);
+
+  // 官方市场价值与强化成本一致时偏差为 0 ≤ 20% → 用公平价值（官方市场价值）。
+  const marketValueService = new BuildScoreService(
+    createMarketService({}, {'/items/pathseeker_boots_refined': {12: enhancementCost}})
+  );
+  assert.equal(marketValueService._getItemValue(boots, clientData), enhancementCost);
+
+  // 未强化装备不参与强化成本估值，直接按公平价值。
+  const plainBoots = {...boots, enhancementLevel: 0};
+  assert.equal(service._getItemValue(plainBoots, clientData), service._fairValue(boots.itemHrid, 0));
+});
+
+test('强化成功率表与官方数据一致（防止硬编码漂移）', () => {
+  const service = new BuildScoreService(createMarketService({}, {}));
+  const official = clientData.enhancementLevelSuccessRateTable;
+  assert.ok(Array.isArray(official) && official.length > 0, '官方成功率表应存在');
+  assert.equal(service.enhancementSuccessRates.length, official.length, '成功率表长度应一致');
+  service.enhancementSuccessRates.forEach((rate, index) => {
+    assert.equal(rate, Math.round(official[index] * 100), `第 ${index} 级成功率不一致`);
+  });
+});
+
+test('背部装备（披风）强化估值与 MWITools v26.4.14 一致：强制保护之镜且允许贤者之镜', () => {
+  // 真实市场无披风报价，用官方市场价值构造有价场景验证逻辑（0 级提供底子价、12 级提供强化价）。
+  const capeMarket = {'/items/enchanted_cloak': {0: 50000000, 12: 3000000000}};
+  const withPhiMirror = new BuildScoreService(createMarketService({}, capeMarket));
+  const withoutPhiMirror = new BuildScoreService(createMarketService({withoutPhiMirror: true}, capeMarket));
+  const cape = {
+    itemHrid: '/items/enchanted_cloak',
+    itemLocationHrid: '/item_locations/back',
+    enhancementLevel: 12,
+    count: 1
+  };
+  const withValue = withPhiMirror._getItemValue(cape, clientData);
+  const withoutValue = withoutPhiMirror._getItemValue(cape, clientData);
+  // 与 v26.4.14 getEnhancedEquipmentCost 一致：背部装备 allowPhilosopherMirror: true，
+  // 有贤者之镜价格时可采用更便宜的贤者之镜方案，估值随镜价变化。
+  assert.ok(withValue > 0 && withoutValue > 0, '有市场价值时披风估值应大于 0');
+  assert.ok(withValue < withoutValue, '有镜价时应能采用更便宜的贤者之镜方案');
+  // 无镜价时贤者之镜方案不可用，估值与禁用等价。
+  assert.equal(withoutPhiMirror._getItemValue(cape, clientData), withoutValue);
+  // 背部装备计划强制使用保护之镜（forcedProtectionItemHrid），仍可完成。
+  const plan = withPhiMirror._calculateV26EnhancementPlan(cape.itemHrid, 12, clientData, {
+    forcedProtectionItemHrid: '/items/mirror_of_protection',
+    allowPhilosopherMirror: true
+  });
+  assert.equal(plan.status, 'complete');
+  assert.ok(plan.totalCost > 0, '披风强化计划成本应大于 0');
+  // 无市场价的披风与 v26 acquisitionCostValue 一致：底子按制作/精炼获取成本链估值，
+  // 强化计划仍可完成，估值大于 0。
+  const noPriceCape = new BuildScoreService(createMarketService({}, {}));
+  assert.ok(noPriceCape._getItemValue(cape, clientData) > 0, '无市场价时披风应按获取成本链估值');
+  const noPricePlan = noPriceCape._calculateV26EnhancementPlan(cape.itemHrid, 12, clientData, {
+    forcedProtectionItemHrid: '/items/mirror_of_protection',
+    allowPhilosopherMirror: true
+  });
+  assert.equal(noPricePlan.status, 'complete');
+  // 背部装备识别：位置、命名与装备详情任一命中。
+  assert.equal(withPhiMirror._isBackEquipment('/items/enchanted_cloak', '/item_locations/back', clientData), true);
+  assert.equal(withPhiMirror._isBackEquipment('/items/sinister_cape_refined', '', clientData), true);
+  assert.equal(
+    withPhiMirror._isBackEquipment('/items/pathseeker_boots_refined', '/item_locations/feet', clientData),
+    false
+  );
+});
+
+test('战力打造分（旧版）保持 v2.7.20 算法：强化等级大于 1 按强化成本、否则按市场价加权', () => {
+  const service = new BuildScoreService(createMarketService({}, {}));
+  const enhanced = {
+    itemHrid: '/items/pathseeker_boots_refined',
+    itemLocationHrid: '/item_locations/feet',
+    enhancementLevel: 12,
+    count: 1
+  };
+  const plain = {
+    itemHrid: '/items/pathseeker_boots_refined',
+    itemLocationHrid: '/item_locations/feet',
+    enhancementLevel: 0,
+    count: 1
+  };
+  const enhancedScore = service._calculateEquipmentScore(
+    {player: {equipment: [
+          enhanced
+        ]}},
+    clientData
+  );
+  const best = service._findBestEnhanceStrategyWithPhiMirror(enhanced.itemHrid, 12, clientData);
+  assert.equal(enhancedScore, Math.round(best.totalCost) / 1_000_000, '旧版强化装备应按强化成本估值');
+  const plainScore = service._calculateEquipmentScore(
+    {player: {equipment: [
+          plain
+        ]}},
+    clientData
+  );
+  assert.equal(plainScore, (300000000 * 0.5) / 1_000_000, '旧版未强化装备应按市场价 0.5/0.5 加权');
+});
+
+test('旧版战力分市场单侧缺价（报价填 0 或 -1）时不漏算有效报价', () => {
+  const service = new BuildScoreService(createMarketService({}, {}));
+  // 0 与 -1 都按缺价处理：单侧有效时直接取该侧，不再把有效报价按比例打折成 0。
+  service.marketService.marketData = {
+    '/items/test_ask_missing': {0: {a: 0, b: 100}},
+    '/items/test_bid_missing': {0: {a: 60, b: -1}},
+    '/items/test_both_valid': {0: {a: 80, b: 40}},
+    '/items/test_both_missing': {0: {a: 0, b: -1}}
+  };
+  assert.equal(service._getItemMarketPrice('/items/test_ask_missing'), 100);
+  assert.equal(service._getItemMarketPrice('/items/test_bid_missing'), 60);
+  assert.equal(service._getItemMarketPrice('/items/test_both_valid'), 80);
+  assert.equal(service._getItemMarketPrice('/items/test_both_missing'), 0);
+  // 加权取值同样把 0 当缺价：单侧有效时按该侧完整计价，不再打五折。
+  assert.equal(service._getWeightedMarketPrice('/items/test_ask_missing', 0.5), 100);
+  assert.equal(service._getWeightedMarketPrice('/items/test_both_valid', 0.5), 60);
+});
+
+test('公会神龛分与 MWITools v26.4.14 对齐：代币与信用按完整转换链估值，数据缺失时为 null', async () => {
+  const baseCard = createCardData('plain');
+  const guildBuffs = characterData.characterGuildBuffMap;
+  assert.ok(guildBuffs && Object.keys(guildBuffs).length > 0, '测试角色应有公会 Buff 数据');
+
+  // 无公会数据：神龛两组都为 null，总分不含神龛。
+  const noGuildCard = {...baseCard};
+  delete noGuildCard.characterGuildBuffMap;
+  const noGuildScore = await new BuildScoreService(createMarketService()).calculate(noGuildCard, true);
+  assert.equal(noGuildScore.battle.shrine, null);
+  assert.equal(noGuildScore.skilling.shrine, null);
+
+  // 有公会数据（真实数据）：代币与信用按完整转换链估值（可转换来源物市场价折算），
+  // 战斗神龛 = 21.01（基准值随测试市场数据更新而重新生成）；生活组无生活 Buff 时为 0。
+  const realCard = {...baseCard, characterGuildBuffMap: guildBuffs};
+  const realScore = await new BuildScoreService(createMarketService()).calculate(realCard, true);
+  assert.equal(realScore.battle.shrine, 21.01);
+  assert.equal(realScore.skilling.shrine, 0);
+  assert.ok(
+    Math.abs(
+      realScore.battle.total -
+        (realScore.battle.house + realScore.battle.abilities + realScore.battle.equipment + 21.01)
+    ) < 1e-9,
+    '战斗总分应包含战斗神龛'
+  );
+
+  // 信用价值按可转换来源物市场价折算（min）：注入来源物价格后 blue 信用不高于 5:1 折算价。
+  const conversionService = new BuildScoreService(createMarketService({}, {'/items/abyssal_essence': {0: 1000}}));
+  const blueCredit = conversionService._v26GuildCreditValue('/items/blue_guild_credit', clientData);
+  assert.ok(blueCredit > 0, '真实数据下 blue 信用应有来源物可折算');
+  assert.ok(blueCredit <= 1000 * 5, 'blue 信用应按来源物折算且不高于注入折算价');
+  // 代币价值按可兑换信用的最大折算：1 个 guild_token 可兑 10 个 blue 信用（真实客户端数据）。
+  const tokenValue = conversionService._v26GuildTokenValue(clientData, {cache: new Map(), visited: new Set()});
+  assert.ok(tokenValue >= blueCredit * 10, '代币应不低于可兑换信用的折算价');
+
+  // 装备隐藏时神龛仍计入（与 v26.4.14 一致）：战斗总分 = 战斗房屋 + 神龛。
+  const hiddenCard = {...realCard, hideWearableItems: true};
+  const hiddenScore = await new BuildScoreService(createMarketService()).calculate(hiddenCard, true);
+  assert.equal(hiddenScore.battle.equipment, 0);
+  assert.equal(hiddenScore.battle.abilities, 0);
+  assert.ok(
+    Math.abs(hiddenScore.battle.total - (hiddenScore.battle.house + 21.01)) < 1e-9,
+    '隐藏装备时战斗总分应含房屋与神龛'
+  );
+});
+
+test('公会神龛生效等级按游戏规则取增益等级与神龛等级较小值', () => {
+  const service = new BuildScoreService(createMarketService());
+  // 只保留 force_combat 并提升到 3 级；公会 force 神龛 2 级。
+  const guildBuffs = {
+    '/guild_buffs/force_combat': {guildBuffHrid: '/guild_buffs/force_combat', level: 3}
+  };
+  const baseCard = {player: {}, abilities: [], characterHouseRoomMap: {}, characterGuildBuffMap: guildBuffs};
+  // 基准值由测试市场数据 + 转换链估值确定：force 神龛 1/2/3 级成本
+  // 分别为 4.24M / 10.12M / 25.315M，两级合计 14.36、三级合计 39.675。
+
+  // 有公会神龛等级（2 级低于角色 3 级）：生效等级取 2，只累加前两级。
+  const withShrine = service._v26GuildShrineScores(
+    {...baseCard, guildBuildingLevelMap: {'/guild_shrines/force': 2}},
+    clientData
+  );
+  assert.equal(withShrine.battle, 14.36);
+  assert.equal(withShrine.skilling, 0);
+
+  // 资料场景无公会建筑数据：直接用角色等级，累加三级。
+  const withoutShrine = service._v26GuildShrineScores(baseCard, clientData);
+  assert.equal(withoutShrine.battle, 39.675);
 });

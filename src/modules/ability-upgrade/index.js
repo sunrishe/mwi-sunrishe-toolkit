@@ -813,11 +813,52 @@ const abilityUpgradePageIntegration = {
     }
   },
 
+  // 市场技能书交易详情页：点击技能书图标后，游戏通过 MUI Tooltip 在 body 下
+  // 渲染交互悬浮菜单（MuiTooltip-popperInteractive），入口注入到该菜单的
+  // 按钮区（Item_actionMenu）内，点击后与技能页技能图标菜单的行为一致——
+  // 直接打开计算器并预填该技能。
+  mountMarketDetailButton(feature) {
+    const {DataHub, i18n} = feature.ctx;
+    // 悬浮菜单打开时先挂载空 popper 再填充内容，布局尺寸可能滞后，
+    // 因此按菜单内容（Item_actionMenu）是否存在判断，而不是依赖可见尺寸。
+    const popper = [
+      ...document.querySelectorAll('[class*="MuiTooltip-popper"][class*="popperInteractive"]')
+    ].find((element) => element.querySelector('[class*="Item_actionMenu"]'));
+    if (!popper) return;
+    const actionMenu = popper.querySelector('[class*="Item_actionMenu"]');
+    if (!actionMenu) return;
+    const name = actionMenu.querySelector('[class*="Item_name"]')?.textContent?.trim() || '';
+    if (!name) return;
+    const itemHrid = DataHub.ensureItemHrid(name) || '';
+    const book = DataHub.getClientData()?.itemDetailMap?.[itemHrid]?.abilityBookDetail;
+    if (!book?.abilityHrid) return;
+    // 悬浮菜单随点击的物品切换复用，按钮按技能标识更新而不是简单去重。
+    const existing = popper.querySelector('.mst-ability-tooltip-calculator');
+    if (existing?.dataset.abilityHrid === book.abilityHrid) return;
+    existing?.remove();
+    const reference = actionMenu.querySelector('button');
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = (reference?.className || '') + ' mst-ability-tooltip-calculator';
+    button.dataset.abilityHrid = book.abilityHrid;
+    button.textContent = i18n.t('upgradeCalculator');
+    button.addEventListener('click', (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      feature.open(book.abilityHrid);
+    });
+    actionMenu.appendChild(button);
+  },
+
   refreshLanguage(feature) {
     const {i18n} = feature.ctx;
-    document.querySelectorAll('.mst-ability-calculator-trigger, .mst-ability-action-calculator').forEach((button) => {
-      button.textContent = i18n.t('upgradeCalculator');
-    });
+    document
+      .querySelectorAll(
+        '.mst-ability-calculator-trigger, .mst-ability-action-calculator, .mst-ability-tooltip-calculator'
+      )
+      .forEach((button) => {
+        button.textContent = i18n.t('upgradeCalculator');
+      });
     document.querySelectorAll('.mst-ability-action-market').forEach((button) => {
       button.textContent = i18n.t('openMarket');
     });
@@ -830,6 +871,7 @@ const abilityUpgradePageIntegration = {
     feature.observer = utils.observeBody(() => {
       this.bindLearnedAbilityClicks(feature, this.mountSkillPageButton(feature));
       this.mountAbilityActionMenuButton(feature);
+      this.mountMarketDetailButton(feature);
     });
     LanguageEvents.subscribe(() => this.refreshLanguage(feature));
   }

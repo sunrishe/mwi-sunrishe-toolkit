@@ -1,31 +1,22 @@
 import replace from '@rollup/plugin-replace';
 import {transform} from 'esbuild';
 import fs from 'node:fs';
-import path from 'node:path';
+import {formatDevVersionTimestamp} from './scripts/lib/version.mjs';
 
-const packageJson = JSON.parse(fs.readFileSync('package.json', 'utf8'));
 const buildEnv = process.env.MST_BUILD_ENV === 'production' ? 'production' : 'development';
 const isDev = buildEnv !== 'production';
 
-const headerTemplate = fs.readFileSync('userscript-header.txt', 'utf8');
-
-function formatDevVersionTimestamp(date = new Date()) {
-  const pad = (value, length = 2) => String(value).padStart(length, '0');
-  const year = date.getFullYear();
-  const month = pad(date.getMonth() + 1);
-  const day = pad(date.getDate());
-  const hour = pad(date.getHours());
-  const minute = pad(date.getMinutes());
-  const second = pad(date.getSeconds());
-  return `${year}${month}${day}${hour}${minute}${second}`;
+// 头部与版本在每次构建（含 watch 重建）时实时读取重新计算，
+// 避免 watch 会话内 @version 的 -dev 时间戳与头部文本长期冻结。
+function computeBanner() {
+  const packageJson = JSON.parse(fs.readFileSync('package.json', 'utf8'));
+  const headerTemplate = fs.readFileSync('userscript-header.txt', 'utf8');
+  const version = isDev ? `${packageJson.version}-dev.${formatDevVersionTimestamp()}` : packageJson.version;
+  return headerTemplate
+    .replace('MWI Sunrishe Toolkit', isDev ? 'MWI Sunrishe Toolkit - Dev' : 'MWI Sunrishe Toolkit')
+    .replace('MWI Sunrishe 工具箱', isDev ? 'MWI Sunrishe 工具箱 - 开发版' : 'MWI Sunrishe 工具箱')
+    .replace('__MST_VERSION__', version);
 }
-
-// 开发版脚本使用时间戳后缀，避免油猴缓存同版本构建。
-const version = isDev ? `${packageJson.version}-dev.${formatDevVersionTimestamp()}` : packageJson.version;
-const banner = headerTemplate
-  .replace('MWI Sunrishe Toolkit', isDev ? 'MWI Sunrishe Toolkit - Dev' : 'MWI Sunrishe Toolkit')
-  .replace('MWI Sunrishe 工具箱', isDev ? 'MWI Sunrishe 工具箱 - 开发版' : 'MWI Sunrishe 工具箱')
-  .replace('__MST_VERSION__', version);
 const STRING_ARRAY_MAX_LINE_LENGTH = 112;
 
 function formatCssForBundle(css) {
@@ -103,8 +94,9 @@ function userscriptHeaderPlugin() {
     name: 'mst-userscript-header',
     renderChunk(code) {
       // 生产版头部直接贴入代码；开发版使用 output.banner，方便 watch 输出 dev 脚本。
+      // 头部每次都实时计算，watch 重建时重新读取头部与版本文件。
       if (isDev) return null;
-      return {code: `${banner.trimEnd()}\n${code}`, map: null};
+      return {code: `${computeBanner().trimEnd()}\n${code}`, map: null};
     }
   };
 }
@@ -114,13 +106,13 @@ export default {
   output: {
     file: isDev ? 'dist/mst.script.dev.user.js' : 'dist/mst.script.user.js',
     format: 'iife',
-    banner: isDev ? banner : ''
+    banner: isDev ? () => computeBanner() : ''
   },
   plugins: [
     rawCssPlugin(), replace({preventAssignment: true, values: {__MST_BUILD_ENV__: JSON.stringify(buildEnv), __MST_IS_DEV__: JSON.stringify(isDev)}}), compactStringArraysPlugin(), userscriptHeaderPlugin()
   ],
   watch: {buildDelay: 100, clearScreen: false, include: [
-      'src/**', 'userscript-header.txt', 'rollup.config.mjs'
+      'src/**', 'userscript-header.txt', 'package.json', 'rollup.config.mjs'
     ], exclude: [
       'node_modules/**', 'dist/**'
     ]},
@@ -129,7 +121,3 @@ export default {
     warn(warning);
   }
 };
-
-if (!fs.existsSync('dist')) {
-  fs.mkdirSync(path.resolve('dist'), {recursive: true});
-}

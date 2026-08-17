@@ -60,19 +60,30 @@ export class CombatSimulationService {
   runOnce(worker, player, mstData, seed) {
     const {i18n} = this.ctx;
     return new Promise((resolve, reject) => {
-      const timeout = setTimeout(() => reject(new Error(i18n.t('combatSimulationTimeout'))), 120000);
+      let settled = false;
+      const settle = (callback, value) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timeout);
+        callback(value);
+      };
+      // 超时直接回收 worker，避免它继续在后台空跑最多 120s 并回写已结算的 Promise。
+      const timeout = setTimeout(() => {
+        this.terminateWorker(worker);
+        settle(reject, new Error(i18n.t('combatSimulationTimeout')));
+      }, 120000);
       worker.onmessage = (event) => {
         if (event.data?.type === 'simulation_result') {
-          clearTimeout(timeout);
-          resolve(event.data.simResult);
+          settle(resolve, event.data.simResult);
         } else if (event.data?.type === 'simulation_error') {
-          clearTimeout(timeout);
-          reject(new Error(String(event.data.error?.message || event.data.error || i18n.t('combatSimulationFailed'))));
+          settle(
+            reject,
+            new Error(String(event.data.error?.message || event.data.error || i18n.t('combatSimulationFailed')))
+          );
         }
       };
       worker.onerror = (event) => {
-        clearTimeout(timeout);
-        reject(new Error(event.message || i18n.t('combatSimulationWorkerFailed')));
+        settle(reject, new Error(event.message || i18n.t('combatSimulationWorkerFailed')));
       };
       worker.postMessage({
         type: 'start_simulation',

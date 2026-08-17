@@ -308,14 +308,16 @@ export class ClipboardCartImportFeature {
   }
 
   getMarketMateRoot() {
-    return document.getElementById('mwi-mm2-host')?.shadowRoot || null;
+    // 市场伴侣已整合进 MWITools，购物车面板宿主由 MWITools 创建。
+    return document.getElementById('mwitools-procurement-host')?.shadowRoot || null;
   }
 
   addButton() {
     const {CONFIG, MarketMateBridge, i18n} = this.ctx;
     if (!CONFIG.isGameSite || !MarketMateBridge.isReady() || !this.panelRoot) return;
-    const clearButton = this.panelRoot.querySelector('.mm2-foot button[data-act="clear"]');
-    if (!clearButton) return;
+    const footer = this.panelRoot.querySelector('footer.panel-footer');
+    if (!footer) return;
+    const clearButton = footer.querySelector('button.clear');
 
     // 面板重绘可能重复触发注入，只保留一个 MST 按钮。
     const buttons = [
@@ -326,10 +328,20 @@ export class ClipboardCartImportFeature {
     if (!button) {
       button = document.createElement('button');
       button.id = 'mst-mmm-import-clipboard';
-      button.className = 'fbtn';
       button.type = 'button';
+      // MWITools 购物车面板在 shadowRoot 内，页面样式不可达，用内联样式与面板按钮（清空/清空未收藏）协调。
+      button.style.cssText =
+        'margin-left:auto;padding:9px 18px;border:1px solid rgba(231,231,231,0.18);' +
+        'border-radius:6px;background:rgba(231,231,231,0.08);color:#e7e7e7;' +
+        'font-size:12.5px;font-weight:700;cursor:pointer;white-space:nowrap;';
+      button.addEventListener('mouseenter', () => {
+        button.style.background = 'rgba(231,231,231,0.16)';
+      });
+      button.addEventListener('mouseleave', () => {
+        button.style.background = 'rgba(231,231,231,0.08)';
+      });
       button.addEventListener('click', (event) => {
-        // 阻止市场伴侣脚部的事件委托处理 MST 自定义按钮。
+        // 阻止 MWITools 脚部的事件委托处理 MST 自定义按钮。
         event.stopPropagation();
         this.importFromClipboard();
       });
@@ -338,9 +350,13 @@ export class ClipboardCartImportFeature {
     if (button.textContent !== label) button.textContent = label;
     if (button.title !== label) button.title = label;
 
-    // 两个 fbtn 默认都有自动左边距，清除后让它们在右侧相邻排列。
-    clearButton.style.marginLeft = '0';
-    if (button.nextElementSibling !== clearButton) clearButton.before(button);
+    // 有“清空”按钮时插在它前面并清除自动左边距；空清单时直接追加到脚部。
+    if (clearButton) {
+      clearButton.style.marginLeft = '0';
+      if (button.nextElementSibling !== clearButton) clearButton.before(button);
+    } else if (button.parentElement !== footer) {
+      footer.append(button);
+    }
   }
 
   connectPanelObserver() {
@@ -352,7 +368,7 @@ export class ClipboardCartImportFeature {
     this.panelRoot = root;
     if (!root) return;
 
-    // 市场伴侣会重绘清单脚部，需要在重绘后重新插入按钮。
+    // MWITools 会重绘清单脚部，需要在重绘后重新插入按钮。
     this.panelObserver = new MutationObserver(() => this.addButton());
     this.panelObserver.observe(root, {childList: true, subtree: true});
     this.addButton();

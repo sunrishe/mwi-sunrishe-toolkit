@@ -1,8 +1,3 @@
-#character-switch-dropdown,
-.character-switch-dropdown {
-  /* 工具箱接管切换角色入口，隐藏原脚本残留的下拉层。 */
-  display: none !important;
-}
 [class*='EquipmentPanel_buttonContainer'] {
   /* 装备面板按钮行空间很窄，强制横向排列避免撑开原游戏布局。 */
   display: flex !important;

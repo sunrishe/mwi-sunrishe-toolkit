@@ -87,7 +87,11 @@ function loadGenerateCharacterCard() {
     },
     buildScoreService: {
       calculate() {
-        return Promise.resolve({total: 0, house: 0, ability: 0, equipment: 0});
+        return Promise.resolve({
+          battle: {total: 0, house: 0, abilities: 0, equipment: 0},
+          skilling: {total: 0, house: 0, tools: 0, equipment: 0, available: true},
+          equipmentHidden: false
+        });
       }
     },
     document: {styleSheets: []}

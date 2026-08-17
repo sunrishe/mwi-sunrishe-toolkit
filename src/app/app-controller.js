@@ -227,5 +227,4 @@ export function installRuntimeInstances(ctx) {
   ctx.marketDataService = CONFIG.isGameSite ? new MarketDataService(ctx) : null;
   ctx.buildScoreService = CONFIG.isGameSite ? new BuildScoreService(ctx, ctx.marketDataService) : null;
   ctx.houseCalculator = CONFIG.isGameSite ? new HouseCalculator(ctx, houseDetails) : null;
-  ctx.houseCalculatorUI = null;
 }

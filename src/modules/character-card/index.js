@@ -141,8 +141,27 @@ export class CharacterCardLayoutController {
     this.constants = deps.constants;
     this.refreshTeamCard = deps.refreshTeamCard;
     this.refreshStandaloneCard = deps.refreshStandaloneCard;
+    this.registerBuildScoreSource = deps.registerBuildScoreSource;
+    this.hydrateBuildScores = deps.hydrateBuildScores;
     this.TemplateRenderer = deps.ctx.TemplateRenderer;
     this.i18n = deps.ctx.i18n;
+  }
+
+  // 切换“启用着装评分”时只重算分数区域，避免整体重渲染卡片导致样式闪烁；
+  // 不显示“计算中”中间态，计算完成后一次性替换，避免评分框宽度变化推动 header 抖动。
+  refreshBuildScoreOnly(modal) {
+    if (!this.registerBuildScoreSource || !this.hydrateBuildScores) return;
+    const isTeamModal = modal.classList.contains('mst-team-card-modal');
+    const scoreElements = Array.from(modal.querySelectorAll('.mst-card-build-score[data-build-score-key]'));
+    scoreElements.forEach((scoreElement, index) => {
+      const data = isTeamModal ? this.state.teamCard.members[index]?.data : this.state.activeCard?.data;
+      if (!data) return;
+      scoreElement.dataset.buildScoreKey = this.registerBuildScoreSource(data);
+      scoreElement.dataset.scoreState = 'pending';
+      delete scoreElement.dataset.renderedScoreKey;
+      delete scoreElement.dataset.loadingScoreKey;
+    });
+    this.hydrateBuildScores(modal, {showCalculating: false});
   }
 
   getEffectiveLayoutMode() {
@@ -170,7 +189,27 @@ export class CharacterCardLayoutController {
     <option value="combat">${this.i18n.t('combatLayout')}</option>
     <option value="life">${this.i18n.t('skillingLayout')}</option>
     <option value="all">${this.i18n.t('allCardContent')}</option>
-  </select>`;
+  </select>
+  <label class="mst-card-column-toggle mst-card-new-score-toggle">
+    <input class="mst-card-new-score-checkbox" type="checkbox" .checked=${this.getUseNewBuildScore()}>
+    <span>${this.i18n.t('useNewBuildScore')}</span>
+  </label>`;
+  }
+
+  getUseNewBuildScore() {
+    try {
+      return localStorage.getItem('mst.buildScoreUseNew') !== '0';
+    } catch {
+      return true;
+    }
+  }
+
+  setUseNewBuildScore(enabled) {
+    try {
+      localStorage.setItem('mst.buildScoreUseNew', enabled ? '1' : '0');
+    } catch {
+      // 存储不可用时只影响当前会话，不影响功能。
+    }
   }
 
   updateCardLayoutSelect(root = document) {
@@ -185,6 +224,7 @@ export class CharacterCardLayoutController {
   bindCardLayoutSelect(modal) {
     const select = modal.querySelector('.mst-card-layout-select');
     const columnCheckbox = modal.querySelector('.mst-card-column-checkbox');
+    const newScoreCheckbox = modal.querySelector('.mst-card-new-score-checkbox');
     if (!select || !columnCheckbox) return;
     select.value = this.getCardLayoutValue();
     columnCheckbox.checked = this.getEffectiveLayoutMode() === 'desktop';
@@ -195,6 +235,14 @@ export class CharacterCardLayoutController {
         this.refreshStandaloneCard(modal);
       }
     };
+    if (newScoreCheckbox) {
+      newScoreCheckbox.checked = this.getUseNewBuildScore();
+      newScoreCheckbox.onchange = () => {
+        this.setUseNewBuildScore(newScoreCheckbox.checked);
+        // 只刷新分数区域，不整体重渲染卡片（避免样式闪烁）。
+        this.refreshBuildScoreOnly(modal);
+      };
+    }
     select.onchange = () => {
       this.setCardLayout(this.getEffectiveLayoutMode(), select.value);
       refresh();
@@ -318,11 +366,11 @@ export class CharacterCardMemberBuilder {
   buildPartyCharacterDataList() {
     const wsData = this.DataHub.characterData.raw;
     if (!wsData?.partyInfo) {
-      console.log('[队伍名片] 未检测到 partyInfo，无法构建队伍数据');
+      console.debug('[队伍名片] 未检测到 partyInfo，无法构建队伍数据');
       return [];
     }
     const slotMap = wsData.partyInfo.partySlotMap || {};
-    console.log('[队伍名片] 检测到队伍成员槽位:', Object.keys(slotMap).length);
+    console.debug('[队伍名片] 检测到队伍成员槽位:', Object.keys(slotMap).length);
     return Object.values(slotMap)
       .filter((member) => member?.characterID != null)
       .map((member) => this.buildCharacterCardMember(member.characterID));
@@ -377,7 +425,7 @@ export class CharacterCardTeamStorage {
       });
       const data = {version: 2, teamName, members: compactMembers};
       localStorage.setItem(this.STORAGE_KEYS.TEAM_CARD, JSON.stringify(data));
-      console.log('[队伍名片] 已保存队伍名片数据');
+      console.debug('[队伍名片] 已保存队伍名片数据');
       return true;
     } catch (e) {
       console.warn('保存队伍名片失败', e);
@@ -1517,7 +1565,7 @@ export class CharacterCardTeamController {
       layoutController.setCardLayout('mobile', 'combat');
       const {forceState = false} = options;
       let teamName = memberService.getTeamNameFromPage();
-      console.log(`[队伍名片] 队伍名称: ${teamName}`);
+      console.debug(`[队伍名片] 队伍名称: ${teamName}`);
       let members;
       if (forceState && state.teamCard.members !== undefined) {
         members = state.teamCard.members;
@@ -1527,7 +1575,7 @@ export class CharacterCardTeamController {
         if (cached && cached.members !== undefined) {
           teamName = cached.teamName || teamName;
           members = cached.members;
-          console.log('[队伍名片] 已从缓存加载队伍数据');
+          console.debug('[队伍名片] 已从缓存加载队伍数据');
         } else if (Array.isArray(state.teamCard.members) && state.teamCard.members.length > 0) {
           members = state.teamCard.members;
           teamName = state.teamCard.teamName || teamName;
@@ -1757,7 +1805,7 @@ export class CharacterCardEntryController {
       };
 
       rightButtonsElement.insertBefore(btn, leaveButton || null);
-      console.log('队伍名片按钮已添加');
+      console.debug('队伍名片按钮已添加');
     };
     this.state.partyObserver?.disconnect();
     this.state.partyObserver = this.utils.observeBody(checkParty);
@@ -1989,6 +2037,10 @@ export function createOriginalCharacterCardFeature(ctx) {
     CardDataAdapter,
     getEffectiveLayoutMode: layoutController.getEffectiveLayoutMode.bind(layoutController)
   });
+
+  // rendererApi 创建后才能取得评分渲染能力，补注入到布局控制器。
+  layoutController.registerBuildScoreSource = rendererApi.registerBuildScoreSource;
+  layoutController.hydrateBuildScores = rendererApi.hydrateBuildScores;
 
   const dialogController = new CharacterCardDialogController({
     Notifier,

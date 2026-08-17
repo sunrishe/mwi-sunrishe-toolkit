@@ -1,4 +1,5 @@
 .codex
+.zcode/
 .idea/
 .playwright-cli/
 .playwright-mcp/

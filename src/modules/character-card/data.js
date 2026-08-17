@@ -92,6 +92,9 @@ const characterCardWsDataAdapter = {
       characterSkills,
       houseRooms: parsedData.characterHouseRoomMap || {},
       characterHouseRoomMap: parsedData.characterHouseRoomMap || {},
+      characterGuildBuffMap: parsedData.characterGuildBuffMap || {},
+      // 公会建筑等级（含神龛等级），用于着装评分按游戏规则取增益生效等级较小值。
+      guildBuildingLevelMap: parsedData.guildBuildingLevelMap || {},
       dataTimestamp: DataHub.characterData.updatedAt || Date.now()
     };
   }
@@ -156,6 +159,7 @@ const characterCardProfileDataAdapter = {
         characterSkills,
         houseRooms,
         characterHouseRoomMap: houseMapRaw,
+        characterGuildBuffMap: profile?.guildBuffLevelMap || profile?.characterGuildBuffMap || {},
         hideWearableItems: Boolean(profile?.hideWearableItems),
         dataTimestamp: Number(profileStoredObj.timestamp || 0)
       };

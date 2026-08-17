@@ -3,7 +3,7 @@
 // @name:zh-CN         MWI Sunrishe 工具箱
 // @name:en            MWI Sunrishe Toolkit
 // @namespace          http://tampermonkey.net/
-// @version            2.9.3
+// @version            2.10.1
 // @description        MWI Sunrishe 综合工具箱：提供角色/队伍名片、技能/房屋/战斗升级规划、装备提升计算器、地下城收益、配装同步和市场伴侣增强。
 // @description:zh-CN  MWI Sunrishe 综合工具箱：提供角色/队伍名片、技能/房屋/战斗升级规划、装备提升计算器、地下城收益、配装同步和市场伴侣增强。
 // @description:en     MST toolkit for character/party cards, ability/house/combat upgrade planning, equipment comparison, dungeon profit, loadout sync, and Market Mate enhancements.
@@ -43,12 +43,10 @@
 (function () {
   'use strict';
 
-  // 构建脚本会静态替换这些占位符，业务代码不直接读取 Node 环境变量。
+  // 构建脚本会静态替换这个占位符，业务代码不直接读取 Node 环境变量。
+  // 目前只有语言切换按钮需要区分 dev/prod：正式包不展示该调试入口。
   const BUILD_FLAGS = Object.freeze({
-    isDev: false,
-    showLanguageToggle: false,
-    showDebugInfo: false,
-    enableDevMenu: false
+    showLanguageToggle: false
   });
 
   // 市场卖出收益统一从这里扣税，交易税调整时只改这一处。
@@ -189,10 +187,6 @@
 
     getClientData() {
       return this.clientData.raw;
-    },
-
-    getInitClientData() {
-      return this.getClientData();
     },
 
     getClientDataMap(key) {
@@ -537,8 +531,7 @@
     },
 
     resolveItemName(hrid) {
-      const {i18n} = this.ctx;
-      const utils = new Proxy({}, {get: (_target, key) => this.ctx.utils?.[key]});
+      const {i18n, utils} = this.ctx;
       const fullHrid = utils.normalizeItemHrid(hrid);
       const langMap = {zh: this.clientData.indexes.hridToNameZh, en: this.clientData.indexes.hridToNameEn}[
         i18n.languageKey
@@ -561,7 +554,7 @@
     },
 
     getLocalizedGameName(group, hrid, lang = this.ctx.i18n.languageKey) {
-      const utils = new Proxy({}, {get: (_target, key) => this.ctx.utils?.[key]});
+      const {utils} = this.ctx;
       const resources = this.getGameI18nResources();
       const resource = resources?.[lang]?.translation?.[group]?.[hrid];
       if (resource) return String(resource);
@@ -569,7 +562,7 @@
       let detailMap = {};
       if (group === 'skillNames') detailMap = this.getClientDataMap('skillDetailMap');
       else if (group === 'abilityNames') detailMap = this.getClientDataMap('abilityDetailMap');
-      return detailMap?.[hrid]?.name || utils?.substrLastSlash?.(hrid)?.replace(/_/g, ' ') || String(hrid || '');
+      return detailMap?.[hrid]?.name || utils.substrLastSlash(hrid)?.replace(/_/g, ' ') || String(hrid || '');
     }
   };
 
@@ -866,6 +859,20 @@
           }
         }
       );
+      // 公会增益等级保持官方对象结构（hrid → {guildBuffHrid, level}），只去掉时间戳等无关字段，
+      // 供着装评分公会神龛计算使用。
+      const guildBuffLevelMap = {};
+      Object.entries(profile.guildBuffLevelMap || {}).forEach(
+        ([
+          hrid, record
+        ]) => {
+          if (!record || typeof record !== 'object') return;
+          const compactRecord = pick(record, [
+            'guildBuffHrid', 'level'
+          ]);
+          if (compactRecord.level != null) guildBuffLevelMap[hrid] = compactRecord;
+        }
+      );
       return {
         ...pick(profile, [
           'combatLevel', 'hideWearableItems'
@@ -889,7 +896,8 @@
           pick(profile.sharableCharacter, [
             'name', 'specialChatIconHrid', 'chatIconHrid', 'nameColorHrid', 'gameMode'
           ]) || {},
-        characterHouseRoomMap
+        characterHouseRoomMap,
+        guildBuffLevelMap
       };
     },
 
@@ -990,8 +998,6 @@
       clientDataCacheSource: '',
 
       init() {
-        // Sprite 路径来自当前游戏页面，不保留旧版本曾写入的静态缓存。
-        localStorage.removeItem('MST_CC_spritePaths');
         this.loadStoredProfiles();
         this.initClientDataFromCache();
         this.refreshI18nIndexes();
@@ -1005,9 +1011,14 @@
 
   // character-data-service
   function createCharacterDataService(ctx, DataHub) {
-    const utils = new Proxy({}, {get: (_target, key) => ctx.utils?.[key]});
-
+    // utils 由 installRuntimeHelpers 在 installDataModule 之后才挂到 ctx，
+    // 这里必须延迟到调用时解析：构造时解构会把 utils 冻结为 undefined，
+    // 导致 getLevelExperience 等依赖 clampLevel 的方法在运行时崩溃。
     const CharacterDataService = {
+      get utils() {
+        return ctx.utils;
+      },
+
       get raw() {
         return DataHub.characterData.raw;
       },
@@ -1015,17 +1026,17 @@
       getCharacterItems() {
         const raw = this.raw;
         if (Array.isArray(raw?.characterItems)) return raw.characterItems;
-        return utils.getCollectionValues(DataHub.getGameState().characterItemMap);
+        return this.utils.getCollectionValues(DataHub.getGameState().characterItemMap);
       },
 
       getCharacterSkills() {
         if (Array.isArray(this.raw?.characterSkills)) return this.raw.characterSkills;
-        return utils.getCollectionValues(DataHub.getGameState().characterSkillMap);
+        return this.utils.getCollectionValues(DataHub.getGameState().characterSkillMap);
       },
 
       getCharacterAbilities() {
         if (Array.isArray(this.raw?.characterAbilities)) return this.raw.characterAbilities;
-        return utils.getCollectionValues(DataHub.getGameState().characterAbilityMap);
+        return this.utils.getCollectionValues(DataHub.getGameState().characterAbilityMap);
       },
 
       getCharacterSkill(skillHrid) {
@@ -1038,7 +1049,7 @@
 
       getLevelExperience(level) {
         const table = DataHub.getClientData()?.levelExperienceTable || [];
-        const safeLevel = utils.clampLevel(level, 0, 200);
+        const safeLevel = this.utils.clampLevel(level, 0, 200);
         return Number(table[safeLevel] || 0);
       },
 
@@ -1079,7 +1090,7 @@
       },
 
       getInventoryCount(itemHrid, level = 0) {
-        const fullHrid = utils.normalizeItemHrid(itemHrid);
+        const fullHrid = this.utils.normalizeItemHrid(itemHrid);
         if (!fullHrid) return 0;
         const targetLevel = Math.max(0, Number(level) || 0);
         let count = 0;
@@ -1342,7 +1353,7 @@
 
     async load() {
       this.loadMarketItemValues();
-      // 优先复用 MWI 市场伴侣缓存，减少重复请求并保证购物车价格口径一致。
+      // 优先复用 MWITools 市场缓存，减少重复请求并保证购物车价格口径一致。
       const mwiToolsData = this._readMWIToolsMarketData();
       if (mwiToolsData) {
         this._applyMarketData(mwiToolsData);
@@ -1364,8 +1375,14 @@
     getPrice(itemHrid, level = 0) {
       if (itemHrid === '/items/coin') return 1;
       const row = this.marketData?.[itemHrid]?.[String(level)];
-      // a/p/b 分别对应左一、最近成交、右一；缺侧时按可用价格兜底，全缺时取官方市场价值。
-      const price = Number(row?.a ?? row?.p ?? row?.b ?? 0) || 0;
+      // a/p/b 分别对应左一、最近成交、右一；缺价哨兵（0/-1）透传会导致负数或零价，
+      // 统一取第一个有效正数侧，全缺时回退官方市场价值。
+      const price =
+        [
+          row?.a, row?.p, row?.b
+        ]
+          .map(Number)
+          .find((value) => Number.isFinite(value) && value > 0) || 0;
       return price || this.getMarketValue(itemHrid, level);
     }
 
@@ -1384,12 +1401,19 @@
       const {pageWindow} = this.ctx;
       try {
         // 优先读游戏官方缓存工具，与 initClientData 的读取方式保持一致。
-        const official = pageWindow?.localStorageUtil?.getMarketItemValues;
-        if (typeof official === 'function') {
-          const parsed = official();
-          if (parsed?.marketItemValues) {
-            this.marketItemValues = parsed.marketItemValues;
-            return;
+        // getMarketItemValues 是 localStorageUtil 的实例方法，内部依赖 this.safeGetItem/this.Keys，
+        // 必须按方法调用保留 this；以裸函数方式调用会因 this 丢失抛错并误走本地缓存降级。
+        const localStorageUtil = pageWindow?.localStorageUtil;
+        if (typeof localStorageUtil?.getMarketItemValues === 'function') {
+          try {
+            const parsed = localStorageUtil.getMarketItemValues();
+            if (parsed?.marketItemValues) {
+              this.marketItemValues = parsed.marketItemValues;
+              return;
+            }
+          } catch (error) {
+            // 仍有极小概率在游戏启动早期未就绪时抛错，此时降级读本地缓存，避免着装评分漏掉官方指导价。
+            console.warn('[MST] 官方市场价值接口未就绪，改用本地缓存:', error);
           }
         }
         const raw = localStorage.getItem('marketItemValues');
@@ -1547,7 +1571,7 @@
     title: {zh: '房屋升级材料计算器', en: 'House Upgrade Material Calculator'},
     houseCalculatorHelpTitle: {zh: '查看房屋升级说明', en: 'View house upgrade instructions'},
     houseCalculatorHelp: {
-      zh: '使用：勾选需要升级的房屋，分别设置每个房屋的起始等级和目标等级；也可以用顶部批量等级快速设置。起始等级会优先读取当前角色房屋数据，重置等级会恢复为当前读取到的房屋等级。\n\n计算：未勾选任何房屋时不会计算材料。每个房屋按官方升级配置逐级累加材料，并结合当前背包库存计算缺口；结果会显示升级房屋、市场数据时间、材料种类、缺少数量、总价值、所需金币、已有材料价值和缺口价值。\n\n操作：物品显示格式可在名称和 HRID 之间切换，导出 CSV 会导出当前计算结果。安装并加载 MWI 市场伴侣后，可以把缺失材料加入购物车；只会加入缺口材料，不会自动下单。\n\n限制：房屋数据、库存和市场价格来自当前游戏页面已加载数据；市场缺价时对应价值可能为 0 或不完整。',
+      zh: '使用：勾选需要升级的房屋，分别设置每个房屋的起始等级和目标等级；也可以用顶部批量等级快速设置。起始等级会优先读取当前角色房屋数据，重置等级会恢复为当前读取到的房屋等级。\n\n计算：未勾选任何房屋时不会计算材料。每个房屋按官方升级配置逐级累加材料，并结合当前背包库存计算缺口；结果会显示升级房屋、市场数据时间、材料种类、缺少数量、总价值、所需金币、已有材料价值和缺口价值。\n\n操作：物品显示格式可在名称和 HRID 之间切换，导出 CSV 会导出当前计算结果。MWITools 购物车就绪后，可以把缺失材料加入购物车；只会加入缺口材料，不会自动下单。\n\n限制：房屋数据、库存和市场价格来自当前游戏页面已加载数据；市场缺价时对应价值可能为 0 或不完整。',
       en: "Usage: Select the house rooms to upgrade, then set each room's start and target levels. The batch level controls can quickly set multiple rows. Start levels prefer the current character house data, and Reset Levels restores the levels currently read from the game.\n\nCalculation: No materials are calculated until at least one room is selected. Each selected room sums official upgrade costs level by level, then compares them with current inventory to calculate shortages. Results include selected upgrades, market data time, material types, missing quantity, total value, required coins, owned material value, and shortfall value.\n\nActions: Item display can switch between names and HRIDs, and Export CSV exports the current result. When MWI Market Mate is installed and ready, missing materials can be added to its cart; only shortages are added, and no orders are placed automatically.\n\nLimits: House data, inventory, and market prices come from the data currently loaded on the game page. Missing market prices can make related values 0 or incomplete."
     },
     trigger: {zh: '升级计算器', en: 'Upgrade Calculator'},
@@ -1609,11 +1633,11 @@
     toastImportClipboardFailed: {zh: '导入剪贴板失败：{0}', en: 'Clipboard import failed: {0}'},
     addMissingToCart: {zh: '加入购物车', en: 'Add to Cart'},
     addMissingToCartTitle: {
-      zh: '把缺失材料加入 MWI 市场伴侣购物车',
-      en: 'Add missing materials to the MWI Market Mate cart'
+      zh: '把缺失材料加入 MWITools 购物车',
+      en: 'Add missing materials to the MWITools cart'
     },
     addMissingToCartDone: {zh: '已添加 {0} 种缺失材料，共 {1} 个', en: 'Added {0} missing item types ({1} total)'},
-    marketMateUnavailable: {zh: 'MWI 市场伴侣尚未就绪', en: 'MWI Market Mate is not ready'}
+    marketMateUnavailable: {zh: 'MWITools 购物车尚未就绪', en: 'MWITools cart is not ready'}
   };
 
   // character-switcher-messages
@@ -1708,7 +1732,16 @@
     houseScore: {zh: '房屋分', en: 'House score'},
     abilityScore: {zh: '技能分', en: 'Ability score'},
     equipmentScore: {zh: '装备分', en: 'Equipment score'},
+    toolScore: {zh: '工具分', en: 'Tools score'},
+    battleShrineScore: {zh: '战斗神龛', en: 'Combat shrine'},
+    skillingShrineScore: {zh: '生活神龛', en: 'Skilling shrine'},
+    battleScore: {zh: '战斗评分', en: 'Combat Score'},
+    skillingScore: {zh: '生活评分', en: 'Skilling Score'},
     algorithmSourceMwiTools: {zh: '算法来源：MWITools', en: 'Algorithm source: MWITools'},
+    battleGearScore: {zh: '战斗着装评分', en: 'Combat Gear Score'},
+    skillingGearScore: {zh: '生活着装评分', en: 'Skilling Gear Score'},
+    useNewBuildScore: {zh: '启用着装评分', en: 'Use gear score'},
+    newBuildScoreBadge: {zh: '着装评分（MWITools 口径）', en: 'Gear score (MWITools)'},
     skillingTools: {zh: '生活工具', en: 'Skilling Tools'},
     skillingLevelsAndHouses: {zh: '生活等级与房屋', en: 'Skilling Levels & Houses'},
     combatLevelsAndHouse: {zh: '战斗等级与房屋', en: 'Combat Levels & House'},
@@ -1752,7 +1785,6 @@
       en: 'Error occurred while generating my character card\n\nError: {0}'
     },
     viewCharacterCard: {zh: '查看角色名片', en: 'View Character Card'},
-    cardShort: {zh: '名片', en: 'Card'},
     combat: {zh: '战斗', en: 'Combat'},
     diningRoom: {zh: '餐厅', en: 'Dining Room'},
     library: {zh: '图书馆', en: 'Library'},
@@ -1787,8 +1819,8 @@
   const DUNGEON_CALCULATOR_MESSAGES = {
     dungeonCalculatorHelpTitle: {zh: '查看地下城收益说明', en: 'View dungeon profit instructions'},
     dungeonCalculatorHelp: {
-      zh: '使用：选择地下城、难度、队伍人数和单次耗时；每日固定按 24 小时计算。每日药品/饮料成本可留空，填写时单位为 M。工匠茶和暴饮之囊只影响制作钥匙成本，暴饮之囊需要勾选后才会按所选强化等级生效。\n\n期望：每日轮次 = 1440 ÷ 单次耗时，计算保留完整精度。普通宝箱按官方公式 5 ÷ 队伍人数 × (1 + 29.5% 战斗掉落数量)计算，5 人时每车 1.295 个；T0 不掉精炼宝箱，T1 精炼宝箱为每车普通宝箱 × 0.33，T2 为每车普通宝箱。门票数量等于普通宝箱期望数量，数量显示最多保留两位小数并去掉末尾 0。\n\n成本：默认同时展示制作钥匙和购买钥匙。制作钥匙读取官方配方并受工匠茶、暴饮之囊影响；购买钥匙读取门票和开箱钥匙的成品市场价。材料成本区只显示买入方向，预期产出区只显示卖出方向。自定义模式可选择钥匙来源、买入档位和卖出档位；左侧保留所选来源的区间，右侧显示自定义组合。\n\n收益：宝箱内容按官方掉落率和平均数量递归展开，重复物品会合并，嵌套宝箱会继续展开。卖出收入固定扣除 5% 市场税（牛铃袋按 18% 特殊税率）。勾选“披风不计算收益”后，所有背部装备产物按 0 估值。单个普通宝箱税后收益会扣除单箱分摊的门票和普通开箱钥匙成本；单个精炼宝箱税后收益只扣除精炼开箱钥匙成本。每日期望收益按单箱收益乘每日宝箱数量汇总后，再扣除每日药品/饮料成本；每车期望收益等于每日期望收益除以每日轮次。\n\n限制：通关耗时和队伍人数需要手动填写/选择，当前不会自动读取战斗耗时和队伍组成。结果是当前参数和市场价格下的确定性期望，不预测价格变化。完全缺价的物品按 0 估值并提示。',
-      en: 'Usage: Select a dungeon, tier, party size, and clear time. Every day uses a fixed 24-hour calculation. Daily food/drink cost is optional and entered in millions. Artisan Tea and Guzzling Pouch affect crafted-key costs only; Guzzling Pouch applies only when its checkbox is enabled and uses the selected enhancement level.\n\nExpectation: Daily runs = 1440 ÷ clear time, kept at full precision for calculation. Normal Chests use the official formula 5 ÷ Party Size × (1 + 29.5% Combat Drop Quantity); at Party Size 5 that is 1.295 per run. T0 has no Refinement Chest; T1 uses Normal Chests × 0.33 per run; T2 uses the Normal Chest expectation per run. Entry Ticket quantity equals expected Normal Chest quantity, and displayed quantities use at most two decimals and hide trailing zeros.\n\nCosts: Crafted Keys and Purchased Keys are shown by default. Crafted-key costs use official recipes and are affected by Artisan Tea and Guzzling Pouch; purchased-key costs use finished Entry Ticket and Chest Key market prices. The Material Costs section shows purchase sides only, and Expected Output shows sale sides only. Custom Mode selects the key source, buy side, and sell side; the left columns keep the selected source range, while the right column shows the custom combination.\n\nProfit: Chest contents recursively use official drop rates and average quantities; duplicate items are combined and nested chests are expanded. Sale revenue always deducts a fixed 5% market tax (Cowbell Bags use the special 18% rate). When Exclude Back Equipment Profit is enabled, all back-equipment output is valued at 0. Each Normal Chest After-Tax Profit deducts allocated Entry Ticket and Normal Chest Key costs; each Refinement Chest After-Tax Profit deducts its Refinement Chest Key cost. Daily Expected Profit multiplies per-chest profit by daily chest quantities, then deducts daily food/drink cost; Expected Profit per Run divides it by Daily Runs.\n\nLimits: Clear time is entered manually and party size is selected manually; they are not read from combat automatically. Results are deterministic expectations at current parameters and market prices and do not predict price changes. Items with no valid price are valued at 0 and reported.'
+      zh: '使用：选择地下城、难度、队伍人数和单次耗时；每日固定按 24 小时计算。每日药品/饮料成本可留空，填写时单位为 M。工匠茶和暴饮之囊只影响制作钥匙成本，暴饮之囊需要勾选后才会按所选强化等级生效。\n\n期望：每日轮次 = 1440 ÷ 单次耗时，计算保留完整精度。普通宝箱按官方公式 5 ÷ 队伍人数 × (1 + 29.5% 战斗掉落数量)计算，5 人时每车 1.295 个；T0 不掉精炼宝箱，T1 精炼宝箱为每车普通宝箱 × 0.33，T2 为每车普通宝箱。门票数量等于普通宝箱期望数量，数量显示最多保留两位小数并去掉末尾 0。\n\n成本：默认同时展示制作钥匙和购买钥匙。制作钥匙读取官方配方并受工匠茶、暴饮之囊影响；购买钥匙读取门票和开箱钥匙的成品市场价。材料成本区只显示买入方向，预期产出区只显示卖出方向。自定义模式可选择钥匙来源、买入档位和卖出档位；左侧保留所选来源的区间，右侧显示自定义组合。\n\n收益：宝箱内容按官方掉落率和平均数量递归展开，重复物品会合并，嵌套宝箱会继续展开。每日普通/精炼宝箱产出完全按市场报价税前计算（不扣税）。“收益扣除市场税”默认勾选，卖出收入按市场税扣除（普通物品 {0}%、牛铃/牛铃袋 {1}%）；不勾选时所有物品都按市场报价直接计算，不扣任何税。勾选“披风不计算收益”后，所有背部装备产物按 0 估值。单个普通宝箱收益会扣除单箱分摊的门票和普通开箱钥匙成本；单个精炼宝箱收益只扣除精炼开箱钥匙成本。每日期望收益按单箱收益乘每日宝箱数量汇总后，再扣除每日药品/饮料成本；每车期望收益等于每日期望收益除以每日轮次。\n\n限制：通关耗时和队伍人数需要手动填写/选择，当前不会自动读取战斗耗时和队伍组成。结果是当前参数和市场价格下的确定性期望，不预测价格变化。完全缺价的物品按 0 估值并提示。',
+      en: 'Usage: Select a dungeon, tier, party size, and clear time. Every day uses a fixed 24-hour calculation. Daily food/drink cost is optional and entered in millions. Artisan Tea and Guzzling Pouch affect crafted-key costs only; Guzzling Pouch applies only when its checkbox is enabled and uses the selected enhancement level.\n\nExpectation: Daily runs = 1440 ÷ clear time, kept at full precision for calculation. Normal Chests use the official formula 5 ÷ Party Size × (1 + 29.5% Combat Drop Quantity); at Party Size 5 that is 1.295 per run. T0 has no Refinement Chest; T1 uses Normal Chests × 0.33 per run; T2 uses the Normal Chest expectation per run. Entry Ticket quantity equals expected Normal Chest quantity, and displayed quantities use at most two decimals and hide trailing zeros.\n\nCosts: Crafted Keys and Purchased Keys are shown by default. Crafted-key costs use official recipes and are affected by Artisan Tea and Guzzling Pouch; purchased-key costs use finished Entry Ticket and Chest Key market prices. The Material Costs section shows purchase sides only, and Expected Output shows sale sides only. Custom Mode selects the key source, buy side, and sell side; the left columns keep the selected source range, while the right column shows the custom combination.\n\nProfit: Chest contents recursively use official drop rates and average quantities; duplicate items are combined and nested chests are expanded. Daily Normal/Refinement Chest Output is valued at quoted market prices before tax (no tax deducted). Deduct Market Tax is enabled by default and sale revenue deducts the market tax (regular items {0}%, Cowbells and Cowbell Bags {1}%); when disabled, all items use quoted prices directly with no tax deducted. When Exclude Back Equipment Profit is enabled, all back-equipment output is valued at 0. Each Normal Chest Profit deducts allocated Entry Ticket and Normal Chest Key costs; each Refinement Chest Profit deducts its Refinement Chest Key cost. Daily Expected Profit multiplies per-chest profit by daily chest quantities, then deducts daily food/drink cost; Expected Profit per Run divides it by Daily Runs.\n\nLimits: Clear time is entered manually and party size is selected manually; they are not read from combat automatically. Results are deterministic expectations at current parameters and market prices and do not predict price changes. Items with no valid price are valued at 0 and reported.'
     },
     dungeon: {zh: '地下城', en: 'Dungeon'},
     dungeonNameChimericalDen: {zh: '奇幻洞穴', en: 'Chimerical Den'},
@@ -1803,6 +1835,11 @@
     useGuzzlingPouch: {zh: '使用暴饮之囊', en: 'Use Guzzling Pouch'},
     guzzlingLevel: {zh: '暴饮之囊强化等级', en: 'Guzzling Pouch Enhancement Level'},
     excludeBackEquipmentValue: {zh: '披风不计算收益', en: 'Exclude Back Equipment Profit'},
+    applyMarketTax: {zh: '收益扣除市场税', en: 'Deduct Market Tax'},
+    applyMarketTaxHint: {
+      zh: '勾选时卖出收益按市场税扣除（普通物品 {0}%，牛铃/牛铃袋 {1}%）；不勾选时所有物品都按市场报价直接计算，不扣任何税。',
+      en: 'When enabled, sale revenue deducts the market tax (regular items {0}%, Cowbells and Cowbell Bags {1}%); when disabled, all items use quoted prices directly with no tax deducted.'
+    },
     customMode: {zh: '自定义模式', en: 'Custom Mode'},
     keySource: {zh: '钥匙来源', en: 'Key Source'},
     keyMaterialPurchaseMethod: {zh: '钥匙材料购买方式', en: 'Key Material Purchase Method'},
@@ -1829,8 +1866,10 @@
     materialCostBreakdown: {zh: '材料成本', en: 'Material Costs'},
     totalDailyCost: {zh: '每日总成本', en: 'Daily Total Cost'},
     expectedChestOutputBreakdown: {zh: '预期产出', en: 'Expected Output'},
-    normalChestRevenue: {zh: '单个普通宝箱税后收益', en: 'Normal Chest After-Tax Profit (Each)'},
-    refinementChestRevenue: {zh: '单个精炼宝箱税后收益', en: 'Refinement Chest After-Tax Profit (Each)'},
+    normalChestRevenue: {zh: '单个普通宝箱收益', en: 'Normal Chest Profit (Each)'},
+    refinementChestRevenue: {zh: '单个精炼宝箱收益', en: 'Refinement Chest Profit (Each)'},
+    normalChestDailyOutput: {zh: '每日普通宝箱产出', en: 'Daily Normal Chest Output'},
+    refinementChestDailyOutput: {zh: '每日精炼宝箱产出', en: 'Daily Refinement Chest Output'},
     netProfit: {zh: '每日期望收益', en: 'Daily Expected Profit'},
     profitPerRun: {zh: '每车期望收益', en: 'Expected Profit per Run'},
     ticketUnitPrice: {zh: '门票单位成本', en: 'Entry Unit Cost'},
@@ -1855,9 +1894,9 @@
     presetGroupRanged: {zh: '远程', en: 'Ranged'},
     presetGroupMagic: {zh: '魔法', en: 'Magic'},
     presetMeleeHammer: {zh: '近战 - 锤', en: 'Melee - Hammer'},
-    presetMeleeBulwark: {zh: '近战 - 盾', en: 'Melee - Bulwark'},
+    presetMeleeBulwark: {zh: '近战 - 重盾', en: 'Melee - Bulwark'},
     presetMeleeSword: {zh: '近战 - 剑', en: 'Melee - Sword'},
-    presetMeleeSpear: {zh: '近战 - 枪', en: 'Melee - Spear'},
+    presetMeleeSpear: {zh: '近战 - 长枪', en: 'Melee - Spear'},
     presetRangedBow: {zh: '远程 - 弓', en: 'Ranged - Bow'},
     presetRangedCrossbow: {zh: '远程 - 弩', en: 'Ranged - Crossbow'},
     presetMagicFire: {zh: '魔法 - 火', en: 'Magic - Fire'},
@@ -1868,7 +1907,6 @@
     chooseOwnedEquipment: {zh: '请选择基准装备', en: 'Choose baseline equipment'},
     chooseComparisonEquipment: {zh: '请选择同部位装备', en: 'Choose equipment for the same slot'},
     chooseOwnedEquipmentFirst: {zh: '请先选择基准装备', en: 'Choose baseline equipment first'},
-    noOwnedEquipment: {zh: '未找到可用装备', en: 'No equipment found'},
     noCompatibleEquipment: {zh: '该部位没有可对比装备', en: 'No equipment is available for this slot'},
     searchEquipment: {zh: '搜索装备名称或 HRID', en: 'Search equipment name or HRID'},
     allEquipmentSlots: {zh: '全部部位', en: 'All Slots'},
@@ -1928,7 +1966,6 @@
       en: 'A training plan requires at least one primary profession; secondary professions such as Stamina cannot train on their own.'
     },
     totalHours: {zh: '耗时', en: 'Duration'},
-    totalDays: {zh: '总时间（天）', en: 'Total Time (days)'},
     estimatedUpgradeTime: {zh: '预计升级时间', en: 'Estimated Completion'},
     estimatedStartTime: {zh: '预计开始时间', en: 'Estimated Start'},
     totalRuns: {zh: '总次数', en: 'Total Runs'},
@@ -1940,21 +1977,20 @@
   const ABILITY_CALCULATOR_MESSAGES = {
     abilityCalculatorHelpTitle: {zh: '查看技能升级说明', en: 'View ability calculator instructions'},
     abilityCalculatorHelp: {
-      zh: '使用：选择职业方案会清空列表并加入对应技能；预设等级会按列表顺序设置前五个技能的目标等级。也可以单独添加技能，并按中文、英文或 HRID 搜索。点击技能图标会关闭弹窗并跳转到对应技能书市场；安装并加载 MWI 市场伴侣后，可以把需要购买的技能书加入购物车。\n\n限制：只能添加有对应技能书的技能，同一技能不能重复。起始等级范围为 0-199，目标等级范围为 1-200；目标等级不高于起点时无需购买技能书。缺少某侧市场价格时，只影响该侧总价显示。\n\n计算：默认从角色当前实际等级和经验百分比开始；勾选自定义起始等级后，从该等级 0% 经验开始。0 级技能额外计入 1 本解锁技能书。所需技能书显示到 0.1 本，购物车数量和价格计算按整本向上取整；合计行的技能书数量累加显示值，价格合计累加整本购买成本。',
+      zh: '使用：选择职业方案会清空列表并加入对应技能；预设等级会按列表顺序设置前五个技能的目标等级。也可以单独添加技能，并按中文、英文或 HRID 搜索。点击技能图标会关闭弹窗并跳转到对应技能书市场；MWITools 购物车就绪后，可以把需要购买的技能书加入购物车。\n\n限制：只能添加有对应技能书的技能，同一技能不能重复。起始等级范围为 0-199，目标等级范围为 1-200；目标等级不高于起点时无需购买技能书。缺少某侧市场价格时，只影响该侧总价显示。\n\n计算：默认从角色当前实际等级和经验百分比开始；勾选自定义起始等级后，从该等级 0% 经验开始。0 级技能额外计入 1 本解锁技能书。所需技能书显示到 0.1 本，购物车数量和价格计算按整本向上取整；合计行的技能书数量累加显示值，价格合计累加整本购买成本。',
       en: 'Usage: Choosing a profession preset clears the list and adds its abilities. A level preset sets target levels for the first five abilities in list order. You can also add individual abilities and search by Chinese, English, or HRID. Clicking an ability icon closes the dialog and opens that ability book in the marketplace. When MWI Market Mate is installed and ready, required books can be added to its cart.\n\nLimits: Only abilities with a corresponding book can be added, and duplicates are not allowed. Start levels range from 0 to 199 and target levels from 1 to 200. No books are needed when the target does not exceed the start. Missing market prices only affect the total for that side.\n\nCalculation: By default, actual character level and XP percentage are used. With a custom start level, calculation begins at 0% XP of that level. A level-0 ability includes one extra unlock book. Required books display to 0.1, while cart quantity and price calculation round up to whole books. The total book row sums displayed quantities, and price totals sum whole-book purchase costs.'
     },
-    chooseAbility: {zh: '选择技能', en: 'Choose Ability'},
     searchAbility: {zh: '搜索中文、英文或 HRID', en: 'Search Chinese, English, or HRID'},
     experiencePerBook: {zh: '每本书技能经验', en: 'Ability Exp Per Book'},
     customStartLevel: {zh: '自行设置起始等级', en: 'Custom Start Level'},
     resetActualLevel: {zh: '重置实际等级', en: 'Reset Actual Level'},
     requiredBooks: {zh: '所需技能书', en: 'Books Required'},
     openMarket: {zh: '前往市场', en: 'View Marketplace'},
-    addAbilityBooksToCart: {zh: '加入市场伴侣购物车', en: 'Add to Market Mate Cart'},
-    abilityBooksAddedToCart: {zh: '已将 {0} 本「{1}」加入市场伴侣购物车', en: 'Added {0} × {1} to the Market Mate cart'},
+    addAbilityBooksToCart: {zh: '加入 MWITools 购物车', en: 'Add to MWITools Cart'},
+    abilityBooksAddedToCart: {zh: '已将 {0} 本「{1}」加入 MWITools 购物车', en: 'Added {0} × {1} to the MWITools cart'},
     abilityBooksCartFailed: {
-      zh: '技能书未能加入市场伴侣购物车',
-      en: 'The ability books could not be added to the Market Mate cart'
+      zh: '技能书未能加入 MWITools 购物车',
+      en: 'The ability books could not be added to the MWITools cart'
     },
     noAbilityBooksNeeded: {zh: '当前技能无需购买技能书', en: 'No ability books are required'},
     noAbilityMatch: {zh: '没有匹配的技能', en: 'No matching abilities'},
@@ -1980,7 +2016,6 @@
     askPriceAndTotal: {zh: '左一 / 总价', en: 'Best Ask Price / Total'},
     bidPriceAndTotal: {zh: '右一 / 总价', en: 'Best Bid Price / Total'},
     total: {zh: '合计', en: 'Total'},
-    totalBooks: {zh: '技能书合计', en: 'Total Books'},
     noAbilitiesSelected: {
       zh: '暂无技能，请添加技能或选择预置方案',
       en: 'No abilities. Add an ability or choose a preset.'
@@ -2043,7 +2078,6 @@
         loadoutMetadata: '[class*="LoadoutsPanel_metadata__"], [class*="metadata"]',
         characterName: '[class*="CharacterName_characterName__"]',
         header: '[class*="Header_header__"]',
-        headerAvatar: '[class*="Header_avatar"]',
         headerCharacterInfo: '[class*="Header_characterInfo"]',
         headerNameData: '[class*="Header_name"] [data-name]',
         gameButton: 'button[class*="Button_button__"]'
@@ -2701,7 +2735,7 @@
         } catch (error) {
           hostReadError = error?.message || String(error);
         }
-        const marketMate = read(() => pageWindow.MWIMM, null);
+        const marketMate = read(() => pageWindow.MWITools?.shopping, null);
         return {
           action,
           characterId: DataHub.characterData?.raw?.character?.id ?? null,
@@ -2779,7 +2813,7 @@
         }
         let marketMate = null;
         try {
-          marketMate = pageWindow.MWIMM;
+          marketMate = pageWindow.MWITools?.shopping;
           if (marketMate?.ready === true && typeof marketMate.openMarketplace === 'function') {
             return marketMate.openMarketplace(fullHrid) === true;
           }
@@ -2810,7 +2844,8 @@
       attempts: 0,
 
       getApi() {
-        const api = pageWindow.MWIMM;
+        // 市场伴侣已整合进 MWITools，通过 window.MWITools.shopping 提供购物车 API。
+        const api = pageWindow.MWITools?.shopping;
         return api && typeof api.addToCart === 'function' ? api : null;
       },
 
@@ -3187,14 +3222,16 @@
     }
 
     getMarketMateRoot() {
-      return document.getElementById('mwi-mm2-host')?.shadowRoot || null;
+      // 市场伴侣已整合进 MWITools，购物车面板宿主由 MWITools 创建。
+      return document.getElementById('mwitools-procurement-host')?.shadowRoot || null;
     }
 
     addButton() {
       const {CONFIG, MarketMateBridge, i18n} = this.ctx;
       if (!CONFIG.isGameSite || !MarketMateBridge.isReady() || !this.panelRoot) return;
-      const clearButton = this.panelRoot.querySelector('.mm2-foot button[data-act="clear"]');
-      if (!clearButton) return;
+      const footer = this.panelRoot.querySelector('footer.panel-footer');
+      if (!footer) return;
+      const clearButton = footer.querySelector('button.clear');
 
       // 面板重绘可能重复触发注入，只保留一个 MST 按钮。
       const buttons = [
@@ -3205,10 +3242,20 @@
       if (!button) {
         button = document.createElement('button');
         button.id = 'mst-mmm-import-clipboard';
-        button.className = 'fbtn';
         button.type = 'button';
+        // MWITools 购物车面板在 shadowRoot 内，页面样式不可达，用内联样式与面板按钮（清空/清空未收藏）协调。
+        button.style.cssText =
+          'margin-left:auto;padding:9px 18px;border:1px solid rgba(231,231,231,0.18);' +
+          'border-radius:6px;background:rgba(231,231,231,0.08);color:#e7e7e7;' +
+          'font-size:12.5px;font-weight:700;cursor:pointer;white-space:nowrap;';
+        button.addEventListener('mouseenter', () => {
+          button.style.background = 'rgba(231,231,231,0.16)';
+        });
+        button.addEventListener('mouseleave', () => {
+          button.style.background = 'rgba(231,231,231,0.08)';
+        });
         button.addEventListener('click', (event) => {
-          // 阻止市场伴侣脚部的事件委托处理 MST 自定义按钮。
+          // 阻止 MWITools 脚部的事件委托处理 MST 自定义按钮。
           event.stopPropagation();
           this.importFromClipboard();
         });
@@ -3217,9 +3264,13 @@
       if (button.textContent !== label) button.textContent = label;
       if (button.title !== label) button.title = label;
 
-      // 两个 fbtn 默认都有自动左边距，清除后让它们在右侧相邻排列。
-      clearButton.style.marginLeft = '0';
-      if (button.nextElementSibling !== clearButton) clearButton.before(button);
+      // 有“清空”按钮时插在它前面并清除自动左边距；空清单时直接追加到脚部。
+      if (clearButton) {
+        clearButton.style.marginLeft = '0';
+        if (button.nextElementSibling !== clearButton) clearButton.before(button);
+      } else if (button.parentElement !== footer) {
+        footer.append(button);
+      }
     }
 
     connectPanelObserver() {
@@ -3231,7 +3282,7 @@
       this.panelRoot = root;
       if (!root) return;
 
-      // 市场伴侣会重绘清单脚部，需要在重绘后重新插入按钮。
+      // MWITools 会重绘清单脚部，需要在重绘后重新插入按钮。
       this.panelObserver = new MutationObserver(() => this.addButton());
       this.panelObserver.observe(root, {childList: true, subtree: true});
       this.addButton();
@@ -4386,11 +4437,52 @@
       }
     },
 
+    // 市场技能书交易详情页：点击技能书图标后，游戏通过 MUI Tooltip 在 body 下
+    // 渲染交互悬浮菜单（MuiTooltip-popperInteractive），入口注入到该菜单的
+    // 按钮区（Item_actionMenu）内，点击后与技能页技能图标菜单的行为一致——
+    // 直接打开计算器并预填该技能。
+    mountMarketDetailButton(feature) {
+      const {DataHub, i18n} = feature.ctx;
+      // 悬浮菜单打开时先挂载空 popper 再填充内容，布局尺寸可能滞后，
+      // 因此按菜单内容（Item_actionMenu）是否存在判断，而不是依赖可见尺寸。
+      const popper = [
+        ...document.querySelectorAll('[class*="MuiTooltip-popper"][class*="popperInteractive"]')
+      ].find((element) => element.querySelector('[class*="Item_actionMenu"]'));
+      if (!popper) return;
+      const actionMenu = popper.querySelector('[class*="Item_actionMenu"]');
+      if (!actionMenu) return;
+      const name = actionMenu.querySelector('[class*="Item_name"]')?.textContent?.trim() || '';
+      if (!name) return;
+      const itemHrid = DataHub.ensureItemHrid(name) || '';
+      const book = DataHub.getClientData()?.itemDetailMap?.[itemHrid]?.abilityBookDetail;
+      if (!book?.abilityHrid) return;
+      // 悬浮菜单随点击的物品切换复用，按钮按技能标识更新而不是简单去重。
+      const existing = popper.querySelector('.mst-ability-tooltip-calculator');
+      if (existing?.dataset.abilityHrid === book.abilityHrid) return;
+      existing?.remove();
+      const reference = actionMenu.querySelector('button');
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = (reference?.className || '') + ' mst-ability-tooltip-calculator';
+      button.dataset.abilityHrid = book.abilityHrid;
+      button.textContent = i18n.t('upgradeCalculator');
+      button.addEventListener('click', (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        feature.open(book.abilityHrid);
+      });
+      actionMenu.appendChild(button);
+    },
+
     refreshLanguage(feature) {
       const {i18n} = feature.ctx;
-      document.querySelectorAll('.mst-ability-calculator-trigger, .mst-ability-action-calculator').forEach((button) => {
-        button.textContent = i18n.t('upgradeCalculator');
-      });
+      document
+        .querySelectorAll(
+          '.mst-ability-calculator-trigger, .mst-ability-action-calculator, .mst-ability-tooltip-calculator'
+        )
+        .forEach((button) => {
+          button.textContent = i18n.t('upgradeCalculator');
+        });
       document.querySelectorAll('.mst-ability-action-market').forEach((button) => {
         button.textContent = i18n.t('openMarket');
       });
@@ -4403,6 +4495,7 @@
       feature.observer = utils.observeBody(() => {
         this.bindLearnedAbilityClicks(feature, this.mountSkillPageButton(feature));
         this.mountAbilityActionMenuButton(feature);
+        this.mountMarketDetailButton(feature);
       });
       LanguageEvents.subscribe(() => this.refreshLanguage(feature));
     }
@@ -4596,8 +4689,9 @@
     }
   }
 
-  // build-score-score-calculators
-  const buildScoreScoreCalculators = {
+  // build-score-legacy（MWITools v25 及以下的“战力打造分”算法，与 v26.js 着装评分并行可选）
+  // 对应参考：references/legacy-scripts/MWITools/MWITools_v25.14.js（Ratatatata 算法）
+  const buildScoreLegacyCalculators = {
     _calculateHouseScore(cardData, clientData) {
       const battleHouseIds = new Set([
         'dining_room', 'library', 'dojo', 'gym', 'armory',
@@ -4609,7 +4703,7 @@
           key, room
         ]) => {
           const houseRoomHrid = room?.houseRoomHrid || (key.startsWith('/house_rooms/') ? key : '');
-          const houseId = houseRoomHrid.split('/').pop();
+          const houseId = this.ctx.utils.substrLastSlash(houseRoomHrid);
           if (!battleHouseIds.has(houseId)) return;
           const level = Number(typeof room === 'object' ? room?.level : room) || 0;
           const upgradeCostsMap = clientData.houseRoomDetailMap[houseRoomHrid]?.upgradeCostsMap || {};
@@ -4663,19 +4757,17 @@
         networthBid += count * (Number(marketRow.b) > 0 ? Number(marketRow.b) : 0);
       }
       return (networthAsk * 0.5 + networthBid * 0.5) / 1_000_000;
-    }
-  };
+    },
 
-  // build-score-market-methods
-  const buildScoreMarketMethods = {
     _getWeightedMarketPrice(itemHrid, ratio = 0.5) {
       if (itemHrid === '/items/coin') return 1;
       const row = this.marketService.getMarketRow(itemHrid, 0);
       if (!row) return 0;
       let ask = Number(row.a);
       let bid = Number(row.b);
-      if (ask > 0 && bid < 0) bid = ask;
-      if (bid > 0 && ask < 0) ask = bid;
+      // 缺价哨兵统一按 <= 0 判断（游戏缺价可能填 0 或 -1），避免把有效单侧价按比例打折成 0。
+      if (ask > 0 && bid <= 0) bid = ask;
+      if (bid > 0 && ask <= 0) ask = bid;
       if (!Number.isFinite(ask) || !Number.isFinite(bid)) return 0;
       return ask * ratio + bid * (1 - ratio);
     },
@@ -4683,11 +4775,11 @@
     _getItemMarketPrice(itemHrid, ratio = this.inputDefaults.priceAskBidRatio) {
       if (itemHrid === '/items/coin') return 1;
       const row = this.marketService.getMarketRow(itemHrid, 0);
-      if (!row || (Number(row.a) < 0 && Number(row.b) < 0)) return 0;
+      if (!row || (Number(row.a) <= 0 && Number(row.b) <= 0)) return 0;
       const ask = Number(row.a);
       const bid = Number(row.b);
-      if (ask > 0 && bid < 0) return ask;
-      if (bid > 0 && ask < 0) return bid;
+      if (ask > 0 && bid <= 0) return ask;
+      if (bid > 0 && ask <= 0) return bid;
       return ask * ratio + bid * (1 - ratio);
     },
 
@@ -4733,7 +4825,7 @@
     }
   };
 
-  // build-score-enhancement-methods
+  // build-score-enhancement-methods（强化期望成本，供旧版装备分与新版强化装备估值共用）
   const buildScoreEnhancementMethods = {
     _findBestEnhanceStrategyWithPhiMirror(itemHrid, enhancementLevel, clientData) {
       const itemCosts = this._getEnhancementCosts(itemHrid, clientData);
@@ -4889,6 +4981,999 @@
     }
   };
 
+  // build-score-v26（MWITools v26 起的“着装评分”算法，与 legacy.js 战力打造分并行可选）
+  // 对应参考：references/legacy-scripts/MWITools/MWITools_v26.4.12.js（src/features/build-score.js + calculateEnhancementPlan）
+  const buildScoreV26EnhancementMethods = {
+    // v26 ENHANCEMENT_PROFILE：强化模拟按顶配预设（140 级、房屋 8 级、星辰强化工具 +14、三件套 +10、幸运披风 +5、超强化茶 8 级）。
+    v26EnhancementProfile: Object.freeze({
+      playerLevel: 140,
+      houseLevel: 8,
+      tool: {hrid: '/items/celestial_enhancer', enhancementLevel: 14},
+      top: {hrid: '/items/enhancers_top', enhancementLevel: 10},
+      bottoms: {hrid: '/items/enhancers_bottoms', enhancementLevel: 10},
+      gloves: {hrid: '/items/enchanted_gloves', enhancementLevel: 10},
+      cape: {hrid: '/items/chance_cape_refined', enhancementLevel: 5},
+      ultraTeaLevel: 8,
+      ultraTeaSpeed: 0.06,
+      blessedChance: 0.01,
+      houseSpeedPerLevel: 0.01,
+      houseSuccessPerLevel: 5e-4,
+      baseActionSeconds: 12,
+      teaDurationSeconds: 300
+    }),
+    v26DefaultBonusMultipliers: Object.freeze([
+      0, 1, 2.1, 3.3, 4.6,
+      6, 7.5, 9.1, 10.8, 12.6,
+      14.5, 16.7, 19.2, 22, 25.1,
+      28.5, 32.2, 36.2, 40.5, 45.1,
+      50
+    ]),
+    // v26 保护物品允许候选：基础物品、官方保护物品、保护之镜中取最便宜。
+    _v26ProtectionCandidates(itemHrid, clientData) {
+      const itemDetail = clientData.itemDetailMap?.[itemHrid];
+      return itemDetail?.protectionItemHrids == null ? [
+            itemHrid, '/items/mirror_of_protection'
+          ] : [
+            itemHrid, '/items/mirror_of_protection', ...itemDetail.protectionItemHrids
+          ];
+    },
+
+    // 官方强化成功率表（v26 用 initData_enhancementLevelSuccessRateTable，缺失时回退内置表）。
+    _v26SuccessRates(clientData) {
+      const official = clientData.enhancementLevelSuccessRateTable;
+      if (Array.isArray(official) && official.length) return official.map(Number);
+      return this.enhancementSuccessRates.map((rate) => rate / 100);
+    },
+
+    _v26SuccessRateAt(table, level) {
+      const value = Number(table[level] ?? table.at(-1));
+      if (!Number.isFinite(value)) return 0;
+      return value > 1 ? value / 100 : value;
+    },
+
+    _v26NormalizedTable(source, fallback) {
+      if (!source) return fallback;
+      const values = Array.isArray(source)
+        ? source
+        : Object.keys(source)
+            .sort((left, right) => Number(left) - Number(right))
+            .map((key) => source[key]);
+      return values.length ? values.map(Number) : fallback;
+    },
+
+    // v26 getEnhancementProfileStats：按官方强化加成表与顶配装备的非战斗统计计算成功/速度加成。
+    _v26EnhancementProfileStats(itemLevel, clientData) {
+      const profile = this.v26EnhancementProfile;
+      const bonusTable = this._v26NormalizedTable(
+        clientData.enhancementLevelTotalBonusMultiplierTable,
+        this.v26DefaultBonusMultipliers
+      );
+      const itemMap = clientData.itemDetailMap;
+      const stat = (equipment, key) => {
+        const detail = itemMap?.[equipment.hrid]?.equipmentDetail;
+        const base = Number(detail?.noncombatStats?.[key]);
+        const perMultiplier = Number(detail?.noncombatEnhancementBonuses?.[key] ?? 0);
+        const multiplier = Number(bonusTable[equipment.enhancementLevel]);
+        if (!Number.isFinite(base) || !Number.isFinite(multiplier)) return null;
+        return base + perMultiplier * multiplier;
+      };
+      const toolSuccess = stat(profile.tool, 'enhancingSuccess');
+      const gloveSpeed = stat(profile.gloves, 'enhancingSpeed');
+      const topSpeed = stat(profile.top, 'enhancingSpeed');
+      const bottomsSpeed = stat(profile.bottoms, 'enhancingSpeed');
+      const capeSpeed = stat(profile.cape, 'enhancingSpeed');
+      const targetItemLevel = Number(itemLevel);
+      if (
+        toolSuccess === null ||
+        topSpeed === null ||
+        bottomsSpeed === null ||
+        gloveSpeed === null ||
+        capeSpeed === null ||
+        !Number.isFinite(targetItemLevel) ||
+        targetItemLevel <= 0
+      ) {
+        return null;
+      }
+      const effectiveLevel = profile.playerLevel + profile.ultraTeaLevel;
+      const levelSuccess =
+        effectiveLevel >= targetItemLevel
+          ? (effectiveLevel - targetItemLevel) * 5e-4
+          : -0.5 * (1 - effectiveLevel / targetItemLevel);
+      const speedBonus =
+        gloveSpeed +
+        topSpeed +
+        bottomsSpeed +
+        capeSpeed +
+        profile.houseLevel * profile.houseSpeedPerLevel +
+        profile.ultraTeaSpeed +
+        Math.max(0, effectiveLevel - targetItemLevel) * 0.01;
+      return {
+        effectiveLevel,
+        successBonus: levelSuccess + toolSuccess + profile.houseLevel * profile.houseSuccessPerLevel,
+        speedBonus,
+        blessedChance: profile.blessedChance,
+        secondsPerAction: profile.baseActionSeconds / (1 + speedBonus)
+      };
+    },
+
+    _v26AddTransition(matrix, from, to, rate, targetLevel) {
+      if (rate <= 0 || to >= targetLevel) return;
+      matrix[to][from] -= rate;
+    },
+
+    // 与 v26 solveLinearSystem 相同的高斯消元（连续数组实现，返回各等级期望访问次数）。
+    _v26SolveLinearSystem(matrix, vector) {
+      const size = matrix.length;
+      const width = size + 1;
+      const augmented = matrix.map((row, rowIndex) => {
+        const nextRow = new Float64Array(width);
+        for (let column = 0; column < size; column++) nextRow[column] = Number(row[column]);
+        nextRow[size] = Number(vector[rowIndex]);
+        return nextRow;
+      });
+      for (let column = 0; column < size; column++) {
+        let pivot = column;
+        for (let row = column + 1; row < size; row++) {
+          if (Math.abs(augmented[row][column]) > Math.abs(augmented[pivot][column])) pivot = row;
+        }
+        if (Math.abs(augmented[pivot][column]) < 1e-12) return null;
+        if (pivot !== column) [
+            augmented[pivot], augmented[column]
+          ] = [
+            augmented[column], augmented[pivot]
+          ];
+        const divisor = augmented[column][column];
+        for (let index = column; index < width; index++) augmented[column][index] /= divisor;
+        for (let row = 0; row < size; row++) {
+          if (row === column) continue;
+          const factor = augmented[row][column];
+          if (Math.abs(factor) < 1e-15) continue;
+          for (let index = column; index < width; index++) {
+            augmented[row][index] -= factor * augmented[column][index];
+          }
+        }
+      }
+      const result = augmented.map((row) => row[size]);
+      return result.every(Number.isFinite) ? result : null;
+    },
+
+    // v26 calculateNormalEnhancementFlowUncached：普通强化流（含祝福茶双升概率）。
+    _v26NormalFlowUncached({targetLevel, protectLevel, successRates, successBonus, blessedChance}) {
+      if (targetLevel < 1) return null;
+      const matrix = Array.from({length: targetLevel}, (_, row) =>
+        Array.from({length: targetLevel}, (_2, column) => (row === column ? 1 : 0))
+      );
+      const source = Array(targetLevel).fill(0);
+      source[0] = 1;
+      const failRates = [];
+      for (let level = 0; level < targetLevel; level++) {
+        const success = Math.min(1, this._v26SuccessRateAt(successRates, level) * (1 + successBonus));
+        const fail = Math.max(0, 1 - success);
+        failRates[level] = fail;
+        this._v26AddTransition(matrix, level, level + 1, success * (1 - blessedChance), targetLevel);
+        this._v26AddTransition(matrix, level, level + 2, success * blessedChance, targetLevel);
+        const failLevel = level >= protectLevel ? Math.max(0, level - 1) : 0;
+        this._v26AddTransition(matrix, level, failLevel, fail, targetLevel);
+      }
+      const actionsByLevel = this._v26SolveLinearSystem(matrix, source);
+      if (!actionsByLevel || actionsByLevel.some((value) => value < -1e-9 || !Number.isFinite(value))) {
+        return null;
+      }
+      const normalizedActions = actionsByLevel.map((value) => (Math.abs(value) < 1e-9 ? 0 : value));
+      const protectionCount = normalizedActions.reduce(
+        (sum, actions, level) => sum + (level >= protectLevel ? actions * failRates[level] : 0),
+        0
+      );
+      return {
+        actionsByLevel: normalizedActions,
+        totalActions: normalizedActions.reduce((sum, value) => sum + value, 0),
+        protectionCount
+      };
+    },
+
+    // v26 calculateMirrorRequirements：贤者之镜方案需要的底子/输入/镜子数量。
+    _v26MirrorRequirements(targetLevel, philosopherStartLevel) {
+      const requirements = Array(targetLevel + 1).fill(0);
+      const actionsByLevel = Array(targetLevel).fill(0);
+      requirements[targetLevel] = 1;
+      for (let level = targetLevel - 1; level >= philosopherStartLevel; level--) {
+        const actions = requirements[level + 1];
+        actionsByLevel[level] = actions;
+        requirements[level] += actions;
+        requirements[level - 1] += actions;
+      }
+      const aCount = requirements[philosopherStartLevel];
+      const bCount = requirements[philosopherStartLevel - 1];
+      return {actionsByLevel, aCount, bCount, mirrorCount: aCount + bCount - 1};
+    },
+
+    // v26 calculatePhilosopherEnhancementFlowUncached：贤者之镜方案的精确流。
+    _v26PhilosopherFlowUncached(
+      {targetLevel, protectLevel, philosopherStartLevel, successRates, successBonus, blessedChance},
+      resolveNormalFlow
+    ) {
+      if (targetLevel <= 1 || philosopherStartLevel < 1 || philosopherStartLevel >= targetLevel) {
+        return null;
+      }
+      const mirror = this._v26MirrorRequirements(targetLevel, philosopherStartLevel);
+      const aFlow = resolveNormalFlow({
+        targetLevel: philosopherStartLevel,
+        protectLevel,
+        successRates,
+        successBonus,
+        blessedChance
+      });
+      const bFlow =
+        philosopherStartLevel > 1
+          ? resolveNormalFlow({
+              targetLevel: philosopherStartLevel - 1,
+              protectLevel,
+              successRates,
+              successBonus,
+              blessedChance
+            })
+          : {actionsByLevel: [], totalActions: 0, protectionCount: 0};
+      if (!aFlow || !bFlow) return null;
+      const actionsByLevel = [
+        ...mirror.actionsByLevel
+      ];
+      for (let level = 0; level < philosopherStartLevel; level++) {
+        actionsByLevel[level] =
+          mirror.aCount * (aFlow.actionsByLevel[level] ?? 0) + mirror.bCount * (bFlow.actionsByLevel[level] ?? 0);
+      }
+      const normalActions = mirror.aCount * aFlow.totalActions + mirror.bCount * bFlow.totalActions;
+      const protectionCount = mirror.aCount * aFlow.protectionCount + mirror.bCount * bFlow.protectionCount;
+      return {
+        actionsByLevel,
+        baseItemCount: mirror.aCount + mirror.bCount,
+        mirrorCount: mirror.mirrorCount,
+        protectionCount,
+        totalActions: normalActions + mirror.mirrorCount,
+        aCount: mirror.aCount,
+        bCount: mirror.bCount
+      };
+    },
+
+    // 目标等级+成功加成唯一确定全部流，按表缓存供同等级装备共用。
+    // 目标等级+成功加成唯一确定全部流，按表缓存供同等级装备共用；普通流在表内二次缓存避免贤者之镜流重复求解。
+    _v26FlowTable(targetLevel, successRates, successBonus, blessedChance) {
+      const cacheKey = `${targetLevel}|${Number(blessedChance)}|${Number(successBonus).toFixed(9)}`;
+      const cached = this.v26FlowTableCache.get(cacheKey);
+      if (cached) return cached;
+      const localNormalFlows = Array.from({length: targetLevel + 1}, () => []);
+      const resolveNormalFlow = (options) => {
+        const flowTarget = Math.max(0, Math.floor(Number(options.targetLevel) || 0));
+        const protectLevel = Math.max(0, Math.floor(Number(options.protectLevel) || 0));
+        if (localNormalFlows[flowTarget][protectLevel] === undefined) {
+          localNormalFlows[flowTarget][protectLevel] = this._v26NormalFlowUncached(options);
+        }
+        return localNormalFlows[flowTarget][protectLevel];
+      };
+      const normal = Array(targetLevel + 1).fill(null);
+      for (let protectLevel = 1; protectLevel <= targetLevel; protectLevel++) {
+        normal[protectLevel] = resolveNormalFlow({
+          targetLevel,
+          protectLevel,
+          successRates,
+          successBonus,
+          blessedChance
+        });
+      }
+      const philosopher = Array.from({length: targetLevel}, () => []);
+      for (let philosopherStartLevel = 1; philosopherStartLevel < targetLevel; philosopherStartLevel++) {
+        for (let protectLevel = 1; protectLevel <= philosopherStartLevel; protectLevel++) {
+          philosopher[philosopherStartLevel][protectLevel] = this._v26PhilosopherFlowUncached(
+            {
+              targetLevel,
+              protectLevel,
+              philosopherStartLevel,
+              successRates,
+              successBonus,
+              blessedChance
+            },
+            resolveNormalFlow
+          );
+        }
+      }
+      const table = {normal, philosopher};
+      this.v26FlowTableCache.set(cacheKey, table);
+      return table;
+    },
+
+    _v26RefinementRecipe(itemHrid, baseItemHrid, clientData) {
+      if (itemHrid === baseItemHrid) return {actionHrid: '', inputItems: []};
+      const match = Object.entries(clientData.actionDetailMap || {}).find(
+        ([
+          , detail
+        ]) =>
+          detail?.upgradeItemHrid === baseItemHrid && detail?.outputItems?.some((output) => output.itemHrid === itemHrid)
+      );
+      if (!match) return null;
+      return {actionHrid: match[1].hrid, inputItems: match[1].inputItems ?? []};
+    },
+
+    // 不可交易物品的商店金币价（v26 nonTradableCoinShopPrice）。
+    _v26NonTradableCoinShopPrice(itemHrid, clientData) {
+      if (clientData.itemDetailMap?.[itemHrid]?.isTradable === true) return 0;
+      let best = Number.POSITIVE_INFINITY;
+      for (const detail of Object.values(clientData.shopItemDetailMap || {})) {
+        if (detail?.itemHrid !== itemHrid) continue;
+        const costs = Array.isArray(detail.costs) ? detail.costs : [];
+        if (costs.length !== 1 || costs[0]?.itemHrid !== '/items/coin' || !(Number(costs[0]?.count) > 0)) {
+          continue;
+        }
+        best = Math.min(best, Number(costs[0].count));
+      }
+      return Number.isFinite(best) ? best : 0;
+    },
+
+    // 与 MWITools assetItemKey 一致：物品 + 强化等级作为产出/奖励索引键。
+    _v26AssetItemKey(itemHrid, enhancementLevel = 0) {
+      return `${itemHrid}#${Number(enhancementLevel) || 0}`;
+    },
+
+    // 与 MWITools normalizeCostRecords 一致：商店条目成本支持数组、单对象与映射三种形态。
+    _v26NormalizeCostRecords(detail) {
+      const raw = detail?.costs ?? detail?.costItems ?? detail?.cost;
+      if (Array.isArray(raw)) return raw;
+      if (raw?.itemHrid || raw?.hrid) return [
+          raw
+        ];
+      return Object.entries(raw ?? {}).map(
+        ([
+          itemHrid, value
+        ]) => ({
+          itemHrid,
+          count: value?.count ?? value
+        })
+      );
+    },
+
+    // 与 MWITools normalizeRewardRecords 一致：商店条目奖励支持数组、单对象与映射形态。
+    _v26NormalizeRewardRecords(detail) {
+      const raw = detail?.itemRewards ?? detail?.rewards ?? detail?.rewardItems;
+      if (Array.isArray(raw)) return raw;
+      if (raw?.itemHrid || raw?.hrid) return [
+          raw
+        ];
+      const itemHrid = detail?.itemHrid ?? detail?.rewardItemHrid ?? detail?.item?.itemHrid;
+      return itemHrid
+        ? [
+            {
+              itemHrid,
+              count: detail?.outputCount ?? detail?.itemCount ?? detail?.rewardCount ?? 1,
+              enhancementLevel: detail?.enhancementLevel ?? 0
+            }
+          ]
+        : [];
+    },
+
+    // 与 MWITools getShopDetails 一致：普通商店、任务商店与迷宫商店合并为候选来源。
+    _v26ShopDetails(clientData) {
+      return [
+        clientData.shopItemDetailMap, clientData.taskShopItemDetailMap, clientData.labyrinthShopItemDetailMap
+      ].flatMap((map) => Object.values(map || {}));
+    },
+
+    // 与 MWITools getActionOutputIndexes 一致：动作产出按 物品#等级 与 升级目标 两种索引。
+    _v26ActionOutputIndexes(clientData) {
+      const source = clientData.actionDetailMap;
+      if (source === this.v26ActionOutputIndexSource && this.v26ActionOutputIndexes) {
+        return this.v26ActionOutputIndexes;
+      }
+      const byItemAndLevel = new Map();
+      const upgradesByItem = new Map();
+      for (const action of Object.values(source || {})) {
+        const countsByKey = new Map();
+        const countsByItem = new Map();
+        for (const output of action?.outputItems ?? []) {
+          const itemHrid = output?.itemHrid ?? output?.hrid;
+          if (!itemHrid) continue;
+          const count = Number(output.count ?? 1);
+          if (!Number.isFinite(count) || count <= 0) continue;
+          const key = this._v26AssetItemKey(itemHrid, output.enhancementLevel);
+          countsByKey.set(key, (countsByKey.get(key) ?? 0) + count);
+          countsByItem.set(itemHrid, (countsByItem.get(itemHrid) ?? 0) + count);
+        }
+        for (const [
+          key, outputCount
+        ] of countsByKey) {
+          const candidates = byItemAndLevel.get(key) ?? [];
+          candidates.push({action, outputCount});
+          byItemAndLevel.set(key, candidates);
+        }
+        if (action?.upgradeItemHrid) {
+          for (const [
+            itemHrid, outputCount
+          ] of countsByItem) {
+            const candidates = upgradesByItem.get(itemHrid) ?? [];
+            candidates.push({action, outputCount});
+            upgradesByItem.set(itemHrid, candidates);
+          }
+        }
+      }
+      this.v26ActionOutputIndexSource = source;
+      this.v26ActionOutputIndexes = {byItemAndLevel, upgradesByItem};
+      return this.v26ActionOutputIndexes;
+    },
+
+    // 与 MWITools getShopRewardIndex 一致：商店条目按 奖励物品#等级 建立索引。
+    _v26ShopRewardIndex(clientData) {
+      const sources = [
+        clientData.shopItemDetailMap, clientData.taskShopItemDetailMap, clientData.labyrinthShopItemDetailMap
+      ];
+      if (this.v26ShopRewardIndex && this.v26ShopRewardIndexSource?.every((source, index) => source === sources[index])) {
+        return this.v26ShopRewardIndex;
+      }
+      const index = new Map();
+      for (const detail of this._v26ShopDetails(clientData)) {
+        const countsByKey = new Map();
+        for (const reward of this._v26NormalizeRewardRecords(detail)) {
+          const itemHrid = reward?.itemHrid ?? reward?.hrid;
+          if (!itemHrid) continue;
+          const count = Number(reward.count ?? 1);
+          if (!Number.isFinite(count) || count <= 0) continue;
+          const key = this._v26AssetItemKey(itemHrid, reward.enhancementLevel);
+          countsByKey.set(key, (countsByKey.get(key) ?? 0) + count);
+        }
+        for (const [
+          key, rewardCount
+        ] of countsByKey) {
+          const candidates = index.get(key) ?? [];
+          candidates.push({detail, rewardCount});
+          index.set(key, candidates);
+        }
+      }
+      this.v26ShopRewardIndexSource = sources;
+      this.v26ShopRewardIndex = index;
+      return index;
+    },
+
+    // 与 MWITools getShopAcquisitionValue 一致：商店购买成本（成本按获取成本链递归计价）。
+    _v26ShopAcquisitionValue(itemHrid, enhancementLevel, clientData, context) {
+      let bestValue = Number.POSITIVE_INFINITY;
+      const candidates =
+        this._v26ShopRewardIndex(clientData).get(this._v26AssetItemKey(itemHrid, enhancementLevel)) ?? [];
+      for (const {detail, rewardCount} of candidates) {
+        let totalCost = 0;
+        let complete = true;
+        for (const cost of this._v26NormalizeCostRecords(detail)) {
+          const costHrid = cost?.itemHrid ?? cost?.hrid;
+          const count = Number(cost?.count);
+          if (!costHrid || !(count > 0)) continue;
+          const unitValue = this._v26AcquisitionCostValue(
+            costHrid,
+            Number(cost?.enhancementLevel ?? 0) || 0,
+            clientData,
+            context
+          );
+          if (!(unitValue > 0)) {
+            complete = false;
+            break;
+          }
+          totalCost += count * unitValue;
+        }
+        if (complete && totalCost > 0) {
+          bestValue = Math.min(bestValue, totalCost / rewardCount);
+        }
+      }
+      return Number.isFinite(bestValue) ? bestValue : 0;
+    },
+
+    // 与 MWITools getCraftedAcquisitionValue 一致：制作成本（输入与升级底子按获取成本链递归计价）。
+    _v26CraftedAcquisitionValue(itemHrid, enhancementLevel, clientData, context) {
+      let bestValue = Number.POSITIVE_INFINITY;
+      const candidates =
+        this._v26ActionOutputIndexes(clientData).byItemAndLevel.get(this._v26AssetItemKey(itemHrid, enhancementLevel)) ??
+        [];
+      for (const {action, outputCount} of candidates) {
+        let totalCost = 0;
+        let complete = true;
+        const inputItems = action?.inputItems ?? [];
+        const upgradeItemHrid = action?.upgradeItemHrid;
+        if (upgradeItemHrid) {
+          const retainedLevel = action.retainAllEnhancement ? enhancementLevel : 0;
+          const upgradeValue = this._v26AcquisitionCostValue(upgradeItemHrid, retainedLevel, clientData, context);
+          if (!(upgradeValue > 0)) complete = false;
+          else totalCost += upgradeValue;
+        }
+        for (const input of inputItems) {
+          const inputHrid = input?.itemHrid ?? input?.hrid;
+          const count = Number(input?.count);
+          if (!inputHrid || !(count > 0)) continue;
+          const inputValue = this._v26AcquisitionCostValue(
+            inputHrid,
+            Number(input?.enhancementLevel ?? 0) || 0,
+            clientData,
+            context
+          );
+          if (!(inputValue > 0)) {
+            complete = false;
+            break;
+          }
+          totalCost += count * inputValue;
+        }
+        if (complete && totalCost > 0) {
+          bestValue = Math.min(bestValue, totalCost / outputCount);
+        }
+      }
+      return Number.isFinite(bestValue) ? bestValue : 0;
+    },
+
+    // 与 MWITools getRefinedAcquisitionValue 一致：精炼成本（底子与材料按获取成本链递归计价）。
+    _v26RefinedAcquisitionValue(itemHrid, enhancementLevel, clientData, context) {
+      if (!String(itemHrid).endsWith('_refined')) return 0;
+      let bestValue = Number.POSITIVE_INFINITY;
+      const candidates = this._v26ActionOutputIndexes(clientData).upgradesByItem.get(itemHrid) ?? [];
+      for (const {action, outputCount} of candidates) {
+        const baseItemHrid = action?.upgradeItemHrid;
+        if (!baseItemHrid) continue;
+        const retainedLevel = action.retainAllEnhancement ? enhancementLevel : 0;
+        let totalCost = this._v26AcquisitionCostValue(baseItemHrid, retainedLevel, clientData, context);
+        let complete = totalCost > 0;
+        for (const cost of action.inputItems ?? []) {
+          const costHrid = cost?.itemHrid ?? cost?.hrid;
+          const count = Number(cost?.count);
+          if (!costHrid || !(count > 0)) continue;
+          const unitValue = this._v26AcquisitionCostValue(
+            costHrid,
+            Number(cost?.enhancementLevel ?? 0) || 0,
+            clientData,
+            context
+          );
+          if (!(unitValue > 0)) {
+            complete = false;
+            break;
+          }
+          totalCost += count * unitValue;
+        }
+        if (complete && totalCost > 0) {
+          bestValue = Math.min(bestValue, totalCost / outputCount);
+        }
+      }
+      return Number.isFinite(bestValue) ? bestValue : 0;
+    },
+
+    // 与 MWITools getGuildCreditHrids 一致：收集所有公会信用转换的目标物品。
+    _v26GuildCreditHrids(clientData) {
+      if (clientData === this.v26GuildCreditHridsSource && this.v26GuildCreditHridsCache) {
+        return this.v26GuildCreditHridsCache;
+      }
+      const result = new Set();
+      for (const detail of Object.values(clientData.itemDetailMap || {})) {
+        for (const conversion of detail?.guildCreditConversions ?? []) {
+          if (conversion?.creditItemHrid) result.add(conversion.creditItemHrid);
+        }
+      }
+      this.v26GuildCreditHridsSource = clientData;
+      this.v26GuildCreditHridsCache = result;
+      return result;
+    },
+
+    // 与 MWITools getGuildCreditValue 一致：公会信用价值按可转换来源物品的市场公平价值折算（取最小）。
+    _v26GuildCreditValue(creditItemHrid, clientData) {
+      let bestValue = Number.POSITIVE_INFINITY;
+      for (const detail of Object.values(clientData.itemDetailMap || {})) {
+        const itemHrid = detail?.hrid ?? detail?.itemHrid;
+        if (!itemHrid || itemHrid === '/items/guild_token') continue;
+        const materialValue = this._fairValue(itemHrid, 0);
+        if (!(materialValue > 0)) continue;
+        for (const conversion of detail?.guildCreditConversions ?? []) {
+          if (conversion?.creditItemHrid !== creditItemHrid) continue;
+          const itemCount = Number(conversion.itemCount);
+          const creditCount = Number(conversion.creditCount);
+          if (!(itemCount > 0) || !(creditCount > 0)) continue;
+          bestValue = Math.min(bestValue, (materialValue * itemCount) / creditCount);
+        }
+      }
+      return Number.isFinite(bestValue) ? bestValue : 0;
+    },
+
+    // 与 MWITools getGuildTokenValue 一致：公会代币价值按可兑换信用价值的最大值折算。
+    _v26GuildTokenValue(clientData, context) {
+      const detail = clientData.itemDetailMap?.['/items/guild_token'];
+      let bestValue = 0;
+      for (const conversion of detail?.guildCreditConversions ?? []) {
+        const creditItemHrid = conversion?.creditItemHrid;
+        const tokenCount = Number(conversion?.guildTokenCount ?? conversion?.itemCount);
+        const creditCount = Number(conversion?.creditCount);
+        if (!creditItemHrid || !(tokenCount > 0) || !(creditCount > 0)) continue;
+        const creditValue = this._v26AcquisitionCostValue(creditItemHrid, 0, clientData, context);
+        if (!(creditValue > 0)) continue;
+        bestValue = Math.max(bestValue, (creditValue * creditCount) / tokenCount);
+      }
+      return bestValue;
+    },
+
+    // 与 MWITools charmRecipe 一致：第一个产出该 charm 的动作即其配方。
+    _v26CharmRecipe(itemHrid, clientData) {
+      return (
+        Object.values(clientData.actionDetailMap || {}).find((action) =>
+          action?.outputItems?.some((output) => output.itemHrid === itemHrid)
+        ) || null
+      );
+    },
+
+    // 与 MWITools getDirectInputs 一致：配方输入合并升级底子（upgradeItemHrid 计入输入并 +1）。
+    _v26CharmInputs(recipe) {
+      const inputs = (recipe.inputItems || []).map((item) => ({
+        itemHrid: item.itemHrid,
+        count: Number(item.count) || 0
+      }));
+      if (recipe.upgradeItemHrid) {
+        const matchingIndex = inputs.findIndex((input) => input.itemHrid === recipe.upgradeItemHrid);
+        if (matchingIndex >= 0) inputs[matchingIndex].count += 1;
+        else inputs.push({itemHrid: recipe.upgradeItemHrid, count: 1});
+      }
+      return inputs;
+    },
+
+    // 与 MWITools resolveCharmLeafPrice 一致：charm 底子叶子价 = 市场公平价值或商店金币价。
+    _v26CharmLeafPrice(itemHrid, clientData) {
+      return this._fairValue(itemHrid, 0) || this._v26NonTradableCoinShopPrice(itemHrid, clientData);
+    },
+
+    // 与 MWITools charmBaseCost 一致：charm 底子成本按配方递归累加（charm 输入递归、其余按叶子价），
+    // 除以单次产出数量；茶消耗投影依赖玩家实时状态，此处按配方原样（与精炼成本同一降级口径）。
+    _v26CharmBaseCost(itemHrid, clientData, visited = new Set()) {
+      if (!itemHrid || visited.has(itemHrid)) return 0;
+      const recipe = this._v26CharmRecipe(itemHrid, clientData);
+      if (!recipe) return this._v26CharmLeafPrice(itemHrid, clientData);
+      const outputCount = (recipe.outputItems || [])
+        .filter((output) => output.itemHrid === itemHrid)
+        .reduce((sum, output) => sum + (Number(output.count) > 0 ? Number(output.count) : 0), 0);
+      if (!(outputCount > 0)) return 0;
+      const nextVisited = new Set(visited).add(itemHrid);
+      let totalCost = 0;
+      for (const input of this._v26CharmInputs(recipe)) {
+        if (!input.itemHrid || !(input.count > 0)) continue;
+        const unitPrice = input.itemHrid.endsWith('_charm')
+          ? this._v26CharmBaseCost(input.itemHrid, clientData, nextVisited)
+          : this._v26CharmLeafPrice(input.itemHrid, clientData);
+        if (!(unitPrice > 0)) return 0;
+        totalCost += input.count * unitPrice;
+      }
+      return totalCost > 0 ? totalCost / outputCount : 0;
+    },
+
+    // 与 MWITools acquisitionCostValue / getAssetValueInternal（forceAcquisitionValue）一致：
+    // 获取成本取市场公平价值、商店购买、制作、精炼四者最小，递归计价并带循环检测与结果缓存；
+    // 公会代币与信用走官方兑换折算分支；全链无价时退回公平价值、再退回官方出售价。
+    _v26AcquisitionCostValue(itemHrid, enhancementLevel, clientData, context) {
+      if (itemHrid === '/items/coin') return 1;
+      const level = Number(enhancementLevel) || 0;
+      const key = this._v26AssetItemKey(itemHrid, level);
+      const cached = context.cache.get(key);
+      if (cached !== undefined) return cached;
+      if (context.visited.has(key)) return 0;
+      context.visited.add(key);
+      const directFairValue = this._fairValue(itemHrid, level);
+      let value = 0;
+      if (itemHrid === '/items/cowbell') {
+        value = this._v26AcquisitionCostValue('/items/bag_of_10_cowbells', 0, clientData, context) / 10;
+      } else if (this._v26GuildCreditHrids(clientData).has(itemHrid)) {
+        value = this._v26GuildCreditValue(itemHrid, clientData);
+      } else if (itemHrid === '/items/guild_token') {
+        value = this._v26GuildTokenValue(clientData, context);
+      } else {
+        const candidates = [
+          directFairValue, this._v26ShopAcquisitionValue(itemHrid, level, clientData, context), this._v26CraftedAcquisitionValue(itemHrid, level, clientData, context), this._v26RefinedAcquisitionValue(itemHrid, level, clientData, context)
+        ].filter((candidate) => candidate > 0);
+        value = candidates.length ? Math.min(...candidates) : 0;
+      }
+      context.visited.delete(key);
+      if (!(value > 0)) value = directFairValue;
+      if (!(value > 0)) value = Number(clientData.itemDetailMap?.[itemHrid]?.sellPrice) || 0;
+      const normalizedValue = Number.isFinite(value) && value > 0 ? value : 0;
+      context.cache.set(key, normalizedValue);
+      return normalizedValue;
+    },
+
+    // 与 v26 getEnhancedEquipmentCost 对齐的强化计划；projectAction 依赖降级：
+    // 精炼与 charm 配方按配方原样计价（不含茶消耗投影），其余环节与 MWITools 同构。
+    _calculateV26EnhancementPlan(
+      itemHrid,
+      targetLevel,
+      clientData,
+      {forcedProtectionItemHrid = null, allowPhilosopherMirror = true} = {},
+      context = {cache: new Map(), visited: new Set()}
+    ) {
+      const target = Math.max(0, Math.floor(Number(targetLevel) || 0));
+      const baseItemHrid = itemHrid.endsWith('_refined') ? itemHrid.replace('_refined', '') : itemHrid;
+      const item = clientData.itemDetailMap?.[baseItemHrid];
+      const refiningRecipe = this._v26RefinementRecipe(itemHrid, baseItemHrid, clientData);
+      if (refiningRecipe === null || !item?.enhancementCosts?.length || target < 1) return null;
+      const stats = this._v26EnhancementProfileStats(item.itemLevel, clientData);
+      if (!stats) return null;
+      // 与 v26 calculateEnhancementPlan 一致：charm 底子按递归配方成本，其余底子按完整获取成本链。
+      const basePrice = baseItemHrid.endsWith('_charm')
+        ? this._v26CharmBaseCost(baseItemHrid, clientData)
+        : this._v26AcquisitionCostValue(baseItemHrid, 0, clientData, context);
+      let materialCostPerAction = 0;
+      let hasMissingRequiredPrice = !basePrice;
+      for (const cost of item.enhancementCosts) {
+        const unitPrice =
+          this._fairValue(cost.itemHrid, 0) || this._v26NonTradableCoinShopPrice(cost.itemHrid, clientData);
+        if (!unitPrice) hasMissingRequiredPrice = true;
+        materialCostPerAction += unitPrice * Number(cost.count || 0);
+      }
+      let refinementCost = 0;
+      for (const cost of refiningRecipe.inputItems ?? []) {
+        const unitPrice = this._v26AcquisitionCostValue(cost.itemHrid, 0, clientData, context);
+        if (!unitPrice) hasMissingRequiredPrice = true;
+        refinementCost += unitPrice * Number(cost.count || 0);
+      }
+      const ultraTeaPrice = this._fairValue('/items/ultra_enhancing_tea', 0);
+      const blessedTeaPrice = this._fairValue('/items/blessed_tea', 0);
+      if (!ultraTeaPrice || !blessedTeaPrice) hasMissingRequiredPrice = true;
+      if (hasMissingRequiredPrice) return null;
+      let protectionChoice = null;
+      const considerProtection = (hrid, value) => {
+        if (hrid && value > 0 && (!protectionChoice || value < protectionChoice.value)) {
+          protectionChoice = {hrid, value};
+        }
+      };
+      if (forcedProtectionItemHrid) {
+        considerProtection(forcedProtectionItemHrid, this._fairValue(forcedProtectionItemHrid, 0));
+      } else {
+        for (const candidate of this._v26ProtectionCandidates(baseItemHrid, clientData)) {
+          considerProtection(candidate, this._fairValue(candidate, 0));
+        }
+      }
+      const protectionPrice = protectionChoice?.value ?? 0;
+      const philosopherMirrorPrice = this._fairValue('/items/philosophers_mirror', 0);
+      const ultraTeaCostPerAction =
+        (stats.secondsPerAction / this.v26EnhancementProfile.teaDurationSeconds) * ultraTeaPrice;
+      const blessedTeaCostPerNormalAction =
+        (stats.secondsPerAction / this.v26EnhancementProfile.teaDurationSeconds) * blessedTeaPrice;
+      const normalActionCost = materialCostPerAction + ultraTeaCostPerAction + blessedTeaCostPerNormalAction;
+      const successRates = this._v26SuccessRates(clientData);
+      const flowTable = this._v26FlowTable(target, successRates, stats.successBonus, stats.blessedChance);
+      let best = null;
+      for (let protectLevel = 1; protectLevel <= target; protectLevel++) {
+        const flow = flowTable.normal[protectLevel];
+        if (!flow) continue;
+        if (flow.protectionCount > 1e-9 && !protectionPrice) continue;
+        const totalCost = basePrice + flow.totalActions * normalActionCost + flow.protectionCount * protectionPrice;
+        if (!best || totalCost < best.totalCost) {
+          best = {mode: 'normal', totalCost};
+        }
+      }
+      if (allowPhilosopherMirror && philosopherMirrorPrice > 0) {
+        for (let philosopherStartLevel = 1; philosopherStartLevel < target; philosopherStartLevel++) {
+          for (let protectLevel = 1; protectLevel <= philosopherStartLevel; protectLevel++) {
+            const flow = flowTable.philosopher[philosopherStartLevel][protectLevel];
+            if (!flow || flow.baseItemCount < -1e-9) continue;
+            if (flow.protectionCount > 1e-9 && !protectionPrice) continue;
+            const totalCost =
+              flow.baseItemCount * basePrice +
+              flow.totalActions * (materialCostPerAction + ultraTeaCostPerAction) +
+              (flow.totalActions - flow.mirrorCount) * blessedTeaCostPerNormalAction +
+              flow.protectionCount * protectionPrice +
+              flow.mirrorCount * philosopherMirrorPrice;
+            if (!best || totalCost < best.totalCost) {
+              best = {mode: 'philosopher', totalCost};
+            }
+          }
+        }
+      }
+      if (!best) return null;
+      return {status: 'complete', totalCost: best.totalCost + refinementCost};
+    },
+
+    // v26 isBackEquipment：按位置、披风命名与装备详情识别背部装备。
+    _isBackEquipment(itemHrid, itemLocationHrid = '', clientData) {
+      if (itemLocationHrid === '/item_locations/back') return true;
+      if (/(?:^|_)cape(?:_refined)?$/.test(this.ctx.utils.substrLastSlash(itemHrid))) return true;
+      const detail = clientData?.itemDetailMap?.[itemHrid];
+      const equipment = detail?.equipmentDetail;
+      return [
+        detail?.itemLocationHrid, detail?.equipmentSlotHrid, detail?.slotHrid, equipment?.itemLocationHrid, equipment?.equipmentSlotHrid,
+        equipment?.slotHrid, equipment?.equipmentTypeHrid, equipment?.typeHrid, equipment?.type
+      ].some((value) => /(?:^|[/_])back(?:$|[/_])/.test(String(value ?? '')));
+    }
+  };
+
+  // build-score-new-calculators（新版算法：MWITools 口径）
+  const buildScoreNewCalculators = {
+    // 公平价值与 MWITools 一致：官方市场价值（marketItemValues）优先，其次左右报价平均，最后单侧报价。
+    _fairValue(itemHrid, enhancementLevel = 0) {
+      if (itemHrid === '/items/coin') return 1;
+      const serverValue = this.marketService.getMarketValue?.(itemHrid, enhancementLevel) || 0;
+      if (serverValue > 0) return serverValue;
+      const row = this.marketService.getMarketRow(itemHrid, enhancementLevel);
+      const ask = Number(row?.a) > 0 ? Number(row.a) : 0;
+      const bid = Number(row?.b) > 0 ? Number(row.b) : 0;
+      if (ask > 0 && bid > 0) return (ask + bid) / 2;
+      return ask || bid || 0;
+    },
+
+    _classifyEquippedItem(item, clientData) {
+      const locationDetail = clientData.itemLocationDetailMap?.[item.itemLocationHrid];
+      const equipmentDetail = clientData.itemDetailMap?.[item.itemHrid]?.equipmentDetail;
+      const isTool = locationDetail?.isTool === true;
+      const hasStats = (stats) => Boolean(stats && Object.keys(stats).length);
+      return {
+        isTool,
+        isCombat:
+          !isTool && (hasStats(equipmentDetail?.combatStats) || hasStats(equipmentDetail?.combatEnhancementBonuses)),
+        isSkilling:
+          isTool || hasStats(equipmentDetail?.noncombatStats) || hasStats(equipmentDetail?.noncombatEnhancementBonuses)
+      };
+    },
+
+    // 单件装备估值：强化装备按 v26 强化计划成本，与公平价值偏差不超过 20% 时仍用公平价值；
+    // 背部装备与 v26.4.14 getEnhancedEquipmentCost 一致：强制保护之镜但允许贤者之镜方案。
+    _getItemValue(item, clientData, context = {cache: new Map(), visited: new Set()}) {
+      const enhancementLevel = Number(item.enhancementLevel || 0);
+      const fairValue = this._fairValue(item.itemHrid, enhancementLevel);
+      if (enhancementLevel <= 0 || !clientData.itemDetailMap?.[item.itemHrid]?.equipmentDetail) {
+        return fairValue;
+      }
+      const backEquipment = this._isBackEquipment(item.itemHrid, item.itemLocationHrid, clientData);
+      const plan = this._calculateV26EnhancementPlan(
+        item.itemHrid,
+        enhancementLevel,
+        clientData,
+        {
+          forcedProtectionItemHrid: backEquipment ? '/items/mirror_of_protection' : null,
+          allowPhilosopherMirror: true
+        },
+        context
+      );
+      const enhancementCost = plan?.status === 'complete' && plan.totalCost > 0 ? plan.totalCost : 0;
+      if (enhancementCost <= 0) return fairValue;
+      const deviation =
+        fairValue > 0 ? Math.abs(fairValue - enhancementCost) / enhancementCost : Number.POSITIVE_INFINITY;
+      return fairValue > 0 && deviation <= 0.2 ? fairValue : enhancementCost;
+    },
+
+    // 装备分按战斗装备、生活工具、生活装备三类分别汇总，口径与 MWITools 一致。
+    _calculateGearScores(cardData, clientData, context = {cache: new Map(), visited: new Set()}) {
+      const scores = {combatEquipment: 0, skillingTools: 0, skillingEquipment: 0};
+      const equipment = cardData.player?.equipment || cardData.player?.characterItems || [];
+      for (const item of equipment) {
+        if (item.itemLocationHrid === '/item_locations/inventory') continue;
+        const classification = this._classifyEquippedItem(item, clientData);
+        if (!classification.isTool && !classification.isCombat && !classification.isSkilling) continue;
+        const value = Number(item.count ?? 1) * this._getItemValue(item, clientData, context);
+        if (!(value > 0)) continue;
+        if (classification.isCombat) scores.combatEquipment += value;
+        if (classification.isTool) scores.skillingTools += value;
+        else if (classification.isSkilling) scores.skillingEquipment += value;
+      }
+      for (const key of Object.keys(scores)) scores[key] /= 1_000_000;
+      return scores;
+    },
+
+    // 房屋分按房间可用动作类型分为战斗/生活两类，造价逐级按公平价值累加，口径与 MWITools 一致。
+    _calculateHouseScores(cardData, clientData) {
+      let combat = 0;
+      let skilling = 0;
+      let all = 0;
+      Object.entries(cardData.characterHouseRoomMap || cardData.houseRooms || {}).forEach(
+        ([
+          key, room
+        ]) => {
+          const houseRoomHrid = room?.houseRoomHrid || (key.startsWith('/house_rooms/') ? key : '');
+          const level = Number(typeof room === 'object' ? room?.level : room) || 0;
+          if (!houseRoomHrid || level <= 0) return;
+          const houseDetail = clientData.houseRoomDetailMap[houseRoomHrid];
+          if (!houseDetail) return;
+          const usableInActionTypeMap = houseDetail.usableInActionTypeMap || {};
+          const isCombat = Boolean(usableInActionTypeMap['/action_types/combat']);
+          const isSkilling = Object.entries(usableInActionTypeMap).some(
+            ([
+              actionTypeHrid, isUsable
+            ]) => actionTypeHrid !== '/action_types/combat' && Boolean(isUsable)
+          );
+          let cost = 0;
+          const upgradeCostsMap = houseDetail.upgradeCostsMap || {};
+          for (let currentLevel = 1; currentLevel <= level; currentLevel++) {
+            (upgradeCostsMap[currentLevel] || []).forEach((item) => {
+              cost += Number(item.count || 0) * this._fairValue(item.itemHrid);
+            });
+          }
+          const value = cost / 1_000_000;
+          all += value;
+          if (isCombat) combat += value;
+          if (isSkilling) skilling += value;
+        }
+      );
+      return {combat, skilling, all};
+    },
+
+    // 技能分按等级所需经验折算技能书数量（8 个基础技能每本 50 经验，其余 500），再按公平价值计价。
+    _calculateNewAbilityScore(abilities, clientData) {
+      const basicAbilityIds = [
+        'poke', 'scratch', 'smack', 'quick_shot', 'water_strike',
+        'fireball', 'entangle', 'minor_heal'
+      ];
+      let cost = 0;
+      abilities.forEach((ability) => {
+        const targetLevel = Number(ability.level || 0);
+        const experience = Number(clientData.levelExperienceTable[targetLevel] || 0);
+        const experiencePerBook = basicAbilityIds.some((id) => ability.abilityHrid?.includes(id)) ? 50 : 500;
+        const bookCount = Number((experience / experiencePerBook + 1).toFixed(1));
+        const itemHrid = String(ability.abilityHrid || '').replace('/abilities/', '/items/');
+        const fairValue = this._fairValue(itemHrid, 0);
+        if (fairValue > 0) cost += bookCount * fairValue;
+      });
+      return cost / 1_000_000;
+    },
+
+    // 公会 Buff 当前等级（MWITools getGuildBuffLevel）：支持数组或按 hrid 索引的对象。
+    _v26GuildBuffLevel(guildBuffHrid, levels) {
+      const record = Array.isArray(levels)
+        ? levels.find((value) => (value?.guildBuffHrid ?? value?.hrid) === guildBuffHrid)
+        : levels?.[guildBuffHrid];
+      const level = Number(typeof record === 'object' ? (record?.level ?? record?.currentLevel) : record);
+      return Number.isSafeInteger(level) && level > 0 ? level : 0;
+    },
+
+    // 公会神龛分数（MWITools v26.4.14 起计入着装评分）：按公会 Buff 等级累加每级
+    // 代币与信用成本，战斗/生活按 Buff 类型分组；任一组数据不可估值时该组为 null 不计入。
+    // 生效等级按游戏规则（renderGuildBuffModal 的 Math.min(o, r)）取角色已升级等级与
+    // 公会神龛等级（guildBuildingLevelMap 中对应神龛建筑）的较小值；资料场景无公会建筑
+    // 数据时直接用角色等级。代币与信用按 MWITools getGuildShrineValues 的完整折算链估值。
+    _v26GuildShrineScores(cardData, clientData, context = {cache: new Map(), visited: new Set()}) {
+      const levels = cardData.characterGuildBuffMap;
+      if (!levels || typeof levels !== 'object') return {battle: null, skilling: null};
+      const details = Object.values(clientData.guildBuffDetailMap || {});
+      if (!details.length) return {battle: null, skilling: null};
+      const buildingLevels = cardData.guildBuildingLevelMap || {};
+      const values = {battle: 0, skilling: 0};
+      const valid = {battle: true, skilling: true};
+      for (const detail of details) {
+        const guildBuffHrid = detail?.guildBuffHrid ?? detail?.hrid;
+        if (!guildBuffHrid) continue;
+        const buffLevel = this._v26GuildBuffLevel(guildBuffHrid, levels);
+        if (!buffLevel) continue;
+        const shrineLevel = Number(buildingLevels?.[detail?.shrineHrid]) || 0;
+        const currentLevel = shrineLevel > 0 ? Math.min(buffLevel, shrineLevel) : buffLevel;
+        if (typeof detail?.isCombat !== 'boolean') return {battle: null, skilling: null};
+        const group = detail.isCombat ? 'battle' : 'skilling';
+        if (!valid[group]) continue;
+        const levelCosts = detail.levelCosts;
+        if (!levelCosts) {
+          valid[group] = false;
+          continue;
+        }
+        for (let level = 1; level <= currentLevel; level++) {
+          const cost = levelCosts[level] ?? levelCosts[String(level)];
+          if (!cost) {
+            valid[group] = false;
+            break;
+          }
+          const guildTokenCount = Number(cost.guildTokenCost);
+          if (guildTokenCount) {
+            const tokenValue = this._v26GuildTokenValue(clientData, context);
+            if (!(tokenValue > 0)) {
+              valid[group] = false;
+              break;
+            }
+            values[group] += guildTokenCount * tokenValue;
+          }
+          for (const creditCost of cost.creditCosts ?? []) {
+            const count = Number(creditCost?.count);
+            if (!count) continue;
+            const creditValue = this._v26GuildCreditValue(creditCost.itemHrid, clientData);
+            if (!(creditValue > 0)) {
+              valid[group] = false;
+              break;
+            }
+            values[group] += count * creditValue;
+          }
+          if (!valid[group]) break;
+        }
+      }
+      return {
+        battle: valid.battle ? values.battle / 1_000_000 : null,
+        skilling: valid.skilling ? values.skilling / 1_000_000 : null
+      };
+    }
+  };
+
   // build-score-service
   class BuildScoreService {
     constructor(ctx, marketService) {
@@ -4898,6 +5983,15 @@
       this.scoreCache = new WeakMap();
       // 仅缓存与装备 HRID、市场价格无关的强化期望值，供相同强化参数的装备共用。
       this.enhancementExpectationCache = new Map();
+      // v26 强化流表缓存：同一目标等级与成功加成只构建一次，供多件装备共用。
+      this.v26FlowTableCache = new Map();
+      // v26 获取成本链索引缓存：同一客户端数据只构建一次动作产出索引与商店奖励索引。
+      this.v26ActionOutputIndexSource = null;
+      this.v26ActionOutputIndexes = null;
+      this.v26ShopRewardIndexSource = null;
+      this.v26ShopRewardIndex = null;
+      this.v26GuildCreditHridsSource = null;
+      this.v26GuildCreditHridsCache = null;
       this.enhancementSuccessRates = Object.freeze([
         50, 45, 45, 40, 40,
         40, 35, 35, 35, 35,
@@ -4921,20 +6015,27 @@
         teaBlessed: true,
         priceAskBidRatio: 1
       };
-      Object.assign(this, buildScoreScoreCalculators, buildScoreEnhancementMethods, buildScoreMarketMethods);
+      Object.assign(
+        this,
+        buildScoreLegacyCalculators,
+        buildScoreEnhancementMethods,
+        buildScoreV26EnhancementMethods,
+        buildScoreNewCalculators
+      );
     }
 
-    calculate(cardData) {
+    calculate(cardData, useNewBuildScore = true) {
       const {i18n} = this.ctx;
       if (!cardData || typeof cardData !== 'object') return Promise.reject(new Error(i18n.t('invalidCharacterCardData')));
+      const mode = Boolean(useNewBuildScore);
       const cached = this.scoreCache.get(cardData);
-      if (cached) return cached;
-      const promise = this._calculate(cardData);
-      this.scoreCache.set(cardData, promise);
+      if (cached && cached.mode === mode) return cached.promise;
+      const promise = this._calculate(cardData, mode);
+      this.scoreCache.set(cardData, {mode, promise});
       return promise;
     }
 
-    async _calculate(cardData) {
+    async _calculate(cardData, useNewBuildScore) {
       const {DataHub, i18n} = this.ctx;
       DataHub.initClientDataFromCache();
       const clientData = DataHub.clientData.raw;
@@ -4949,19 +6050,69 @@
       }
       await this.marketPromise;
 
-      const houseScore = this._calculateHouseScore(cardData, clientData);
       const equipmentHidden = cardData.hideWearableItems || cardData.dataAvailability?.equipment === false;
+      if (useNewBuildScore) {
+        return this._calculateNew(cardData, clientData, equipmentHidden);
+      }
+      return this._calculateLegacy(cardData, clientData, equipmentHidden);
+    }
+
+    _calculateLegacy(cardData, clientData, equipmentHidden) {
+      const houseScore = this._calculateHouseScore(cardData, clientData);
       if (equipmentHidden) {
-        return {total: houseScore, house: houseScore, ability: 0, equipment: 0, equipmentHidden: true};
+        return {total: houseScore, house: houseScore, ability: 0, equipment: 0, equipmentHidden: true, newVersion: false};
       }
       const abilityScore = this._calculateAbilityScore(cardData, clientData);
-      const equipmentScore = await this._calculateEquipmentScore(cardData, clientData);
+      const equipmentScore = this._calculateEquipmentScore(cardData, clientData);
       return {
         total: houseScore + abilityScore + equipmentScore,
         house: houseScore,
         ability: abilityScore,
         equipment: equipmentScore,
-        equipmentHidden: false
+        equipmentHidden: false,
+        newVersion: false
+      };
+    }
+
+    // 与 MWITools createScoreResult 一致：返回战斗/生活两套分数。
+    // 战斗分 = 战斗房屋 + 技能 + 战斗装备 + 战斗神龛；生活分 = 生活房屋 + 工具 + 生活装备 + 生活神龛。
+    _calculateNew(cardData, clientData, equipmentHidden) {
+      // 获取成本链上下文：单次评分内共享结果缓存并做循环检测，与 MWITools 的 context 语义一致。
+      const valuationContext = {cache: new Map(), visited: new Set()};
+      const houseScores = this._calculateHouseScores(cardData, clientData);
+      // 公会神龛分（MWITools v26.4.14 起计入）：战斗/生活各自有效时累加，不可估值组不计入。
+      const shrineScores = this._v26GuildShrineScores(cardData, clientData, valuationContext);
+      const allAbilities = cardData.abilities || [];
+      const equippedAbilities = allAbilities.filter((ability) => Number(ability.slotNumber) > 0);
+      // 装备隐藏时与 v26 一致：技能分与装备分都归零，房屋与神龛仍计入。
+      const abilityScore = equipmentHidden
+        ? 0
+        : this._calculateNewAbilityScore(equippedAbilities.length ? equippedAbilities : allAbilities, clientData);
+      const gearScores = equipmentHidden
+        ? {combatEquipment: 0, skillingTools: 0, skillingEquipment: 0}
+        : this._calculateGearScores(cardData, clientData, valuationContext);
+      const battle = {
+        house: houseScores.combat,
+        abilities: abilityScore,
+        equipment: gearScores.combatEquipment,
+        shrine: shrineScores.battle
+      };
+      battle.total =
+        battle.house + battle.abilities + battle.equipment + (Number.isFinite(battle.shrine) ? battle.shrine : 0);
+      const skilling = {
+        house: houseScores.skilling,
+        tools: gearScores.skillingTools,
+        equipment: gearScores.skillingEquipment,
+        shrine: shrineScores.skilling,
+        available: !equipmentHidden
+      };
+      skilling.total =
+        skilling.house + skilling.tools + skilling.equipment + (Number.isFinite(skilling.shrine) ? skilling.shrine : 0);
+      return {
+        battle,
+        skilling,
+        equipmentHidden,
+        newVersion: true
       };
     }
   }
@@ -5060,6 +6211,9 @@
         characterSkills,
         houseRooms: parsedData.characterHouseRoomMap || {},
         characterHouseRoomMap: parsedData.characterHouseRoomMap || {},
+        characterGuildBuffMap: parsedData.characterGuildBuffMap || {},
+        // 公会建筑等级（含神龛等级），用于着装评分按游戏规则取增益生效等级较小值。
+        guildBuildingLevelMap: parsedData.guildBuildingLevelMap || {},
         dataTimestamp: DataHub.characterData.updatedAt || Date.now()
       };
     }
@@ -5124,6 +6278,7 @@
           characterSkills,
           houseRooms,
           characterHouseRoomMap: houseMapRaw,
+          characterGuildBuffMap: profile?.guildBuffLevelMap || profile?.characterGuildBuffMap || {},
           hideWearableItems: Boolean(profile?.hideWearableItems),
           dataTimestamp: Number(profileStoredObj.timestamp || 0)
         };
@@ -5385,7 +6540,7 @@
 
     generateChatIcon(chatIconHrid) {
       if (!chatIconHrid) return '';
-      const iconId = String(chatIconHrid).split('/').pop();
+      const iconId = this.utils.substrLastSlash(chatIconHrid);
       const spritePath = this.state.svgTool.getChatIconsSpritePath();
       const gameClass = this.getGameCharacterNameClass('chatIcon');
       return `
@@ -5405,9 +6560,7 @@
 
       const wrapperClass = this.getGameCharacterNameClass('characterName');
       const nameClass = this.getGameCharacterNameClass('name');
-      const colorId = String(player.nameColorHrid || '')
-        .split('/')
-        .pop();
+      const colorId = this.utils.substrLastSlash(player.nameColorHrid);
       const colorClass = this.getGameCharacterNameClass(colorId);
       const gameModeClass = this.getGameCharacterNameClass('gameMode');
       let gameModeTag = '';
@@ -5438,14 +6591,68 @@
       return key;
     }
 
-    renderBuildScore(scoreElement, value) {
-      const label = scoreElement.querySelector('.mst-card-build-score-label');
-      const score = scoreElement.querySelector('.mst-card-build-score-value');
-      if (label) label.textContent = this.i18n.t('buildScore');
-      if (score) score.textContent = value;
+    // 着装评分分战斗/生活两行展示（✦ 在文案前，标签后跟分数）；战力打造分保持
+    // 单块布局（标签在上、数值在下）。
+    renderBuildScore(scoreElement, score) {
+      const battleRow = scoreElement.querySelector('[data-score-row="battle"]');
+      const skillingRow = scoreElement.querySelector('[data-score-row="skilling"]');
+      const battleLabel = battleRow?.querySelector('.mst-card-build-score-label');
+      const battleValue = battleRow?.querySelector('.mst-card-build-score-value');
+      const skillingLabel = skillingRow?.querySelector('.mst-card-build-score-label');
+      const skillingValue = skillingRow?.querySelector('.mst-card-build-score-value');
+      const setMarker = (hidden) => {
+        scoreElement.querySelectorAll('.mst-card-build-score-new').forEach((marker) => {
+          marker.hidden = hidden;
+        });
+      };
+      const setLegacyLayout = (legacy) => {
+        if (battleRow) battleRow.classList.toggle('mst-card-build-score-legacy', legacy);
+      };
+      if (typeof score === 'string') {
+        // 计算中或错误提示：两个分数块同显，不显示新版本标识。
+        if (battleLabel) battleLabel.textContent = this.i18n.t('battleScore');
+        if (battleValue) battleValue.textContent = score;
+        if (skillingLabel) skillingLabel.textContent = this.i18n.t('skillingScore');
+        if (skillingValue) skillingValue.textContent = score;
+        if (skillingRow) skillingRow.hidden = false;
+        setLegacyLayout(false);
+        setMarker(true);
+        return;
+      }
+      const hiddenText = score.equipmentHidden ? ` (${this.i18n.t('equipmentHidden')})` : '';
+      if (score.newVersion) {
+        // 卡片两行：战斗评分 / 生活评分，完整口径与分项在悬浮提示中。
+        if (battleLabel) battleLabel.textContent = this.i18n.t('battleScore');
+        if (battleValue) battleValue.textContent = `${score.battle.total.toFixed(1)}${hiddenText}`;
+        if (skillingLabel) skillingLabel.textContent = this.i18n.t('skillingScore');
+        if (skillingValue) {
+          skillingValue.textContent = score.skilling.available ? `${score.skilling.total.toFixed(1)}${hiddenText}` : '-';
+        }
+        if (skillingRow) skillingRow.hidden = false;
+        setLegacyLayout(false);
+        setMarker(false);
+      } else {
+        // 战力打造分：标签在上、数值在下，生活行隐藏。
+        if (battleLabel) battleLabel.textContent = this.i18n.t('buildScore');
+        if (battleValue) battleValue.textContent = `${score.total.toFixed(1)}${hiddenText}`;
+        if (skillingRow) skillingRow.hidden = true;
+        setLegacyLayout(true);
+        setMarker(true);
+      }
     }
 
-    hydrateBuildScores(root = document) {
+    // 新版战力分开关：默认启用，仅在用户明确关闭时使用旧版算法。
+    getUseNewBuildScore() {
+      try {
+        return localStorage.getItem('mst.buildScoreUseNew') !== '0';
+      } catch {
+        return true;
+      }
+    }
+
+    // showCalculating 为 false 时（切换评分模式），保留旧分数作为占位，计算完成
+    // 后一次性替换，避免"计算中"中间态让评分框宽度变化、推动 header 布局抖动。
+    hydrateBuildScores(root = document, {showCalculating = true} = {}) {
       const scoreElements = Array.from(root.querySelectorAll('.mst-card-build-score[data-build-score-key]'));
       return Promise.all(
         scoreElements.map(async (scoreElement) => {
@@ -5456,15 +6663,14 @@
           if (scoreElement.dataset.scoreState === 'loading' && scoreElement.dataset.loadingScoreKey === key) return;
           scoreElement.dataset.scoreState = 'loading';
           scoreElement.dataset.loadingScoreKey = key;
-          this.renderBuildScore(scoreElement, this.i18n.t('calculating'));
+          if (showCalculating) {
+            this.renderBuildScore(scoreElement, this.i18n.t('calculating'));
+          }
           try {
-            const score = await this.ctx.buildScoreService.calculate(data);
+            const score = await this.ctx.buildScoreService.calculate(data, this.getUseNewBuildScore());
             if (scoreElement.dataset.buildScoreKey !== key) return;
-            const hiddenText = score.equipmentHidden ? ` (${this.i18n.t('equipmentHidden')})` : '';
-            this.renderBuildScore(scoreElement, `${score.total.toFixed(1)}${hiddenText}`);
-            scoreElement.title = [
-              `${this.i18n.t('houseScore')}: ${score.house.toFixed(1)}`, `${this.i18n.t('abilityScore')}: ${score.ability.toFixed(1)}`, `${this.i18n.t('equipmentScore')}: ${score.equipment.toFixed(1)}`, this.i18n.t('algorithmSourceMwiTools')
-            ].join('\n');
+            this.renderBuildScore(scoreElement, score);
+            scoreElement.title = this.buildScoreTooltip(score);
             scoreElement.dataset.scoreState = 'complete';
             scoreElement.dataset.renderedScoreKey = key;
           } catch (error) {
@@ -5480,6 +6686,26 @@
           }
         })
       );
+    }
+
+    // 悬浮提示参考 MWITools：战斗分（房屋/技能/装备/战斗神龛）与生活分（房屋/工具/装备/生活神龛）。
+    buildScoreTooltip(score) {
+      if (!score.newVersion) {
+        return [
+          `${this.i18n.t('houseScore')}: ${score.house.toFixed(1)}`, `${this.i18n.t('abilityScore')}: ${score.ability.toFixed(1)}`, `${this.i18n.t('equipmentScore')}: ${score.equipment.toFixed(1)}`, this.i18n.t('algorithmSourceMwiTools')
+        ].join('\n');
+      }
+      const {battle, skilling} = score;
+      const hiddenText = score.equipmentHidden ? ` (${this.i18n.t('equipmentHidden')})` : '';
+      return [
+        `${this.i18n.t('battleGearScore')}: ${battle.total.toFixed(1)}${hiddenText}`, `  ${this.i18n.t('houseScore')}: ${battle.house.toFixed(1)}`, `  ${this.i18n.t('abilityScore')}: ${battle.abilities.toFixed(1)}`, `  ${this.i18n.t('equipmentScore')}: ${battle.equipment.toFixed(1)}`, ...(Number.isFinite(battle.shrine) ? [
+              `  ${this.i18n.t('battleShrineScore')}: ${battle.shrine.toFixed(1)}`
+            ] : []),
+        `${this.i18n.t('skillingGearScore')}: ${skilling.available ? skilling.total.toFixed(1) : '-'}${hiddenText}`, `  ${this.i18n.t('houseScore')}: ${skilling.house.toFixed(1)}`, `  ${this.i18n.t('toolScore')}: ${skilling.tools.toFixed(1)}`, `  ${this.i18n.t('equipmentScore')}: ${skilling.equipment.toFixed(1)}`, ...(Number.isFinite(skilling.shrine) ? [
+              `  ${this.i18n.t('skillingShrineScore')}: ${skilling.shrine.toFixed(1)}`
+            ] : []),
+        this.i18n.t('algorithmSourceMwiTools')
+      ].join('\n');
     }
 
     formatCardTime(timestamp) {
@@ -5882,7 +7108,7 @@
         const maxAllCombat = Math.max(attack, defense, melee, ranged, magic);
         return Math.floor(0.1 * (stamina + intelligence + attack + defense + maxCombatSkill) + 0.5 * maxAllCombat);
       } catch (error) {
-        console.log('计算战斗等级失败:', error);
+        console.warn('计算战斗等级失败:', error);
         return 0;
       }
     }
@@ -6090,8 +7316,20 @@
     <div class="mst-card-header">
       <div class="mst-card-header-identity">${TemplateRenderer.raw(headerContent)}</div>
       <span class="mst-card-build-score" data-build-score-key=${buildScoreKey} data-score-state="pending">
-        <span class="mst-card-build-score-label">${i18n.t('buildScore')}</span>
-        <span class="mst-card-build-score-value">${i18n.t('calculating')}</span>
+        <span class="mst-card-build-score-row" data-score-row="battle">
+          <span class="mst-card-build-score-heading">
+            <span class="mst-card-build-score-new" title=${i18n.t('newBuildScoreBadge')} hidden>✦</span>
+            <span class="mst-card-build-score-label">${i18n.t('battleScore')}</span>
+          </span>
+          <span class="mst-card-build-score-value">${i18n.t('calculating')}</span>
+        </span>
+        <span class="mst-card-build-score-row" data-score-row="skilling">
+          <span class="mst-card-build-score-heading">
+            <span class="mst-card-build-score-new" title=${i18n.t('newBuildScoreBadge')} hidden>✦</span>
+            <span class="mst-card-build-score-label">${i18n.t('skillingScore')}</span>
+          </span>
+          <span class="mst-card-build-score-value">${i18n.t('calculating')}</span>
+        </span>
       </span>
     </div>
     <div class="mst-card-content">
@@ -6118,6 +7356,7 @@
       CardRenderer,
       createSvgIcon,
       getAbilityDisplayNames,
+      registerBuildScoreSource: buildScoreRenderer.registerBuildScoreSource.bind(buildScoreRenderer),
       hydrateBuildScores: buildScoreRenderer.hydrateBuildScores.bind(buildScoreRenderer),
       formatCardTime: buildScoreRenderer.formatCardTime.bind(buildScoreRenderer),
       getCharacterCardContentSignature: buildScoreRenderer.getCharacterCardContentSignature.bind(buildScoreRenderer),
@@ -6527,7 +7766,7 @@
         } finally {
           this.canvasApi.releaseCanvas(canvas);
         }
-        console.log('名片图片已生成并下载');
+        console.debug('名片图片已生成并下载');
       } catch (error) {
         console.error('下载名片失败:', error);
         Notifier.alert(`${i18n.t('downloadCharacterCardFailed')}\n\n${error.message || ''}`.trim());
@@ -6587,7 +7826,7 @@
         } finally {
           this.canvasApi.releaseCanvas(canvas);
         }
-        console.log('队伍名片图片已生成并下载');
+        console.debug('队伍名片图片已生成并下载');
       } catch (error) {
         console.error('下载队伍名片失败:', error);
         Notifier.alert(i18n.t('downloadPartyCardFailed'));
@@ -6680,9 +7919,16 @@
 .mst-card-header .mst-card-name{min-width:0;margin:0;padding:1px 0 2px;font-size:14px;font-weight:700;line-height:20px;vertical-align:middle;transform:none}
 .mst-card-header .mst-card-name span{display:inline-flex;align-items:center;height:auto;min-height:20px;line-height:20px;font-size:inherit;font-weight:inherit;vertical-align:middle}
 .mst-card-game-mode{font-size:9px;opacity:.8}
-.mst-card-build-score{flex:0 0 auto;display:flex;flex-direction:column;align-items:flex-end;color:orange;font-weight:700;line-height:1.15;white-space:nowrap;cursor:help}
+.mst-card-build-score{flex:0 0 auto;min-width:88px;min-height:25px;display:flex;flex-direction:column;align-items:flex-end;color:orange;font-weight:700;line-height:1.15;white-space:nowrap;cursor:help;gap:.1rem}
+.mst-card-build-score-row{display:inline-flex;align-items:center;gap:.3rem}
+.mst-card-build-score-row.mst-card-build-score-legacy{flex-direction:column;align-items:flex-end;gap:.1rem}
+.mst-card-build-score-row[hidden]{display:none}
 .mst-card-build-score-label{font-size:8px;font-weight:500}
+.mst-card-build-score-heading{display:inline-flex;align-items:center;gap:.2rem}
 .mst-card-build-score-value{font-size:10px}
+.mst-card-build-score-new{color:#ffd76a;font-size:9px;line-height:1}
+.mst-card-build-score-new[hidden]{display:none}
+.mst-card-new-score-toggle{min-width:max-content}
 .mst-card-content{display:grid;gap:var(--mst-card-column-gap)}
 .mst-character-card.mst-layout-desktop .mst-card-content{grid-template-columns:repeat(2,var(--mst-card-content-width));align-items:start}
 .mst-character-card.mst-card-content-all.mst-layout-desktop .mst-card-content{grid-template-areas:"equipment progression" "life-equipment life-progression";grid-template-rows:var(--mst-card-main-panel-height) var(--mst-card-life-panel-height)}
@@ -6762,10 +8008,10 @@
 .mst-download-card-btn,.mst-download-team-card-btn,.mst-copy-card-btn,.mst-copy-team-card-btn,.mst-reset-team-card-btn,.mst-reset-character-card-btn{display:inline-flex;align-items:center;justify-content:center;box-sizing:border-box;min-width:var(--button-min-width-normal, 5.25rem);height:var(--button-height-normal, 1.875rem);background:var(--color-primary, #4357af);color:var(--color-text-dark-mode, #e7e7e7);border:none;padding:0 var(--button-padding-x-normal, .625rem);border-radius:var(--radius-sm, .25rem);font-family:Roboto,Helvetica,Arial,sans-serif;font-size:var(--font-size-base, .875rem);font-weight:var(--font-weight-semibold, 600);line-height:1;cursor:pointer;transition:background-color .15s ease}
 .mst-download-card-btn:hover:not(:disabled),.mst-download-team-card-btn:hover:not(:disabled),.mst-copy-card-btn:hover:not(:disabled),.mst-copy-team-card-btn:hover:not(:disabled),.mst-reset-team-card-btn:hover:not(:disabled),.mst-reset-character-card-btn:hover:not(:disabled){background:var(--color-primary-hover, #344386)}
 .mst-download-card-btn:disabled,.mst-download-team-card-btn:disabled,.mst-copy-card-btn:disabled,.mst-copy-team-card-btn:disabled,.mst-reset-team-card-btn:disabled,.mst-reset-character-card-btn:disabled{background:var(--color-disabled, #56576b);cursor:not-allowed}
-.mst-card-layout-select{box-sizing:border-box;min-width:8.5rem;height:var(--button-height-normal, 1.875rem);padding:0 1.75rem 0 .625rem;border:1px solid var(--color-space-400, #7184d8);border-radius:var(--radius-sm, .25rem);background-color:var(--color-midnight-500, #2c2e45);color:var(--color-text-dark-mode, #e7e7e7);font:var(--font-weight-semibold, 600) var(--font-size-base, .875rem)/1 Roboto,Helvetica,Arial,sans-serif;cursor:pointer}
+.mst-card-layout-select{box-sizing:border-box;min-width:8.5rem;height:var(--button-height-normal, 1.875rem);padding:0 1.75rem 0 .625rem;border:1px solid var(--color-midnight-100, #454771);border-radius:var(--radius-sm, .25rem);background-color:var(--color-midnight-500, #2c2e45);color:var(--color-text-dark-mode, #e7e7e7);font:var(--font-weight-semibold, 600) var(--font-size-base, .875rem)/1 Roboto,Helvetica,Arial,sans-serif;cursor:pointer}
 .mst-card-layout-select:hover,.mst-card-layout-select:focus{border-color:var(--color-space-300, #98a7e9);outline:none}
 .mst-card-layout-select option{background:var(--color-midnight-500, #2c2e45);color:var(--color-text-dark-mode, #e7e7e7)}
-.mst-card-column-toggle{display:inline-flex;height:var(--button-height-normal, 1.875rem);box-sizing:border-box;align-items:center;gap:.3rem;padding:0 .5rem;border:1px solid var(--color-space-400, #7184d8);border-radius:var(--radius-sm, .25rem);background:var(--color-midnight-500, #2c2e45);color:var(--color-text-dark-mode, #e7e7e7);font:var(--font-weight-semibold, 600) var(--font-size-base, .875rem)/1 Roboto,Helvetica,Arial,sans-serif;cursor:pointer}
+.mst-card-column-toggle{display:inline-flex;height:var(--button-height-normal, 1.875rem);box-sizing:border-box;align-items:center;gap:.3rem;padding:0 .5rem;border:1px solid var(--color-midnight-100, #454771);border-radius:var(--radius-sm, .25rem);background:var(--color-midnight-500, #2c2e45);color:var(--color-text-dark-mode, #e7e7e7);font:var(--font-weight-semibold, 600) var(--font-size-base, .875rem)/1 Roboto,Helvetica,Arial,sans-serif;cursor:pointer}
 .mst-card-column-toggle:hover{border-color:var(--color-space-300, #98a7e9)}
 .mst-card-column-checkbox{width:1rem;height:1rem;margin:0;cursor:pointer}
 .mst-skill-hint{margin-top:var(--spacing-sm, .5rem);text-align:center}
@@ -6832,11 +8078,6 @@
 .mst-team-card-wrap:hover .mst-team-card-delete,.mst-team-card-delete:focus-visible{opacity:1;pointer-events:auto}
 .mst-team-card-delete:hover{background:var(--color-scarlet-500, #d0333d)}
 .mst-team-hint{margin:0 0 var(--spacing-sm, .5rem);padding-top:var(--spacing-xxs, .125rem);color:var(--color-neutral-300, #bdbdbd);font-size:var(--font-size-sm, .75rem);line-height:1.4;text-align:center}
-.mst-character-card-toast-notice{position:fixed;top:16px;right:16px;padding:8px 12px;border-radius:4px;color:#fff;font-size:12px;z-index:20001;box-shadow:0 2px 8px #0003;opacity:0;transform:translateY(-6px);transition:opacity .2s ease,transform .2s ease}
-.mst-character-card-toast-notice.mst-character-card-toast-visible{opacity:1;transform:translateY(0)}
-.mst-character-card-toast-success{background:#344386}
-.mst-character-card-toast-error{background:#4f171f}
-.mst-character-card-toast-info{background:#344386}
 .mst-empty-team-placeholder{display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:200px;border:2px dashed #4a90e2;border-radius:15px;background:#4a90e21a;color:#4a90e2;text-align:center;padding:20px;margin:10px 0}
 .mst-empty-team-placeholder .mst-empty-icon{font-size:48px;margin-bottom:15px;opacity:.7}
 .mst-empty-team-placeholder .mst-empty-title{font-size:18px;font-weight:700;margin-bottom:10px}
@@ -6966,8 +8207,27 @@
       this.constants = deps.constants;
       this.refreshTeamCard = deps.refreshTeamCard;
       this.refreshStandaloneCard = deps.refreshStandaloneCard;
+      this.registerBuildScoreSource = deps.registerBuildScoreSource;
+      this.hydrateBuildScores = deps.hydrateBuildScores;
       this.TemplateRenderer = deps.ctx.TemplateRenderer;
       this.i18n = deps.ctx.i18n;
+    }
+
+    // 切换“启用着装评分”时只重算分数区域，避免整体重渲染卡片导致样式闪烁；
+    // 不显示“计算中”中间态，计算完成后一次性替换，避免评分框宽度变化推动 header 抖动。
+    refreshBuildScoreOnly(modal) {
+      if (!this.registerBuildScoreSource || !this.hydrateBuildScores) return;
+      const isTeamModal = modal.classList.contains('mst-team-card-modal');
+      const scoreElements = Array.from(modal.querySelectorAll('.mst-card-build-score[data-build-score-key]'));
+      scoreElements.forEach((scoreElement, index) => {
+        const data = isTeamModal ? this.state.teamCard.members[index]?.data : this.state.activeCard?.data;
+        if (!data) return;
+        scoreElement.dataset.buildScoreKey = this.registerBuildScoreSource(data);
+        scoreElement.dataset.scoreState = 'pending';
+        delete scoreElement.dataset.renderedScoreKey;
+        delete scoreElement.dataset.loadingScoreKey;
+      });
+      this.hydrateBuildScores(modal, {showCalculating: false});
     }
 
     getEffectiveLayoutMode() {
@@ -6995,7 +8255,27 @@
     <option value="combat">${this.i18n.t('combatLayout')}</option>
     <option value="life">${this.i18n.t('skillingLayout')}</option>
     <option value="all">${this.i18n.t('allCardContent')}</option>
-  </select>`;
+  </select>
+  <label class="mst-card-column-toggle mst-card-new-score-toggle">
+    <input class="mst-card-new-score-checkbox" type="checkbox" .checked=${this.getUseNewBuildScore()}>
+    <span>${this.i18n.t('useNewBuildScore')}</span>
+  </label>`;
+    }
+
+    getUseNewBuildScore() {
+      try {
+        return localStorage.getItem('mst.buildScoreUseNew') !== '0';
+      } catch {
+        return true;
+      }
+    }
+
+    setUseNewBuildScore(enabled) {
+      try {
+        localStorage.setItem('mst.buildScoreUseNew', enabled ? '1' : '0');
+      } catch {
+        // 存储不可用时只影响当前会话，不影响功能。
+      }
     }
 
     updateCardLayoutSelect(root = document) {
@@ -7010,6 +8290,7 @@
     bindCardLayoutSelect(modal) {
       const select = modal.querySelector('.mst-card-layout-select');
       const columnCheckbox = modal.querySelector('.mst-card-column-checkbox');
+      const newScoreCheckbox = modal.querySelector('.mst-card-new-score-checkbox');
       if (!select || !columnCheckbox) return;
       select.value = this.getCardLayoutValue();
       columnCheckbox.checked = this.getEffectiveLayoutMode() === 'desktop';
@@ -7020,6 +8301,14 @@
           this.refreshStandaloneCard(modal);
         }
       };
+      if (newScoreCheckbox) {
+        newScoreCheckbox.checked = this.getUseNewBuildScore();
+        newScoreCheckbox.onchange = () => {
+          this.setUseNewBuildScore(newScoreCheckbox.checked);
+          // 只刷新分数区域，不整体重渲染卡片（避免样式闪烁）。
+          this.refreshBuildScoreOnly(modal);
+        };
+      }
       select.onchange = () => {
         this.setCardLayout(this.getEffectiveLayoutMode(), select.value);
         refresh();
@@ -7143,11 +8432,11 @@
     buildPartyCharacterDataList() {
       const wsData = this.DataHub.characterData.raw;
       if (!wsData?.partyInfo) {
-        console.log('[队伍名片] 未检测到 partyInfo，无法构建队伍数据');
+        console.debug('[队伍名片] 未检测到 partyInfo，无法构建队伍数据');
         return [];
       }
       const slotMap = wsData.partyInfo.partySlotMap || {};
-      console.log('[队伍名片] 检测到队伍成员槽位:', Object.keys(slotMap).length);
+      console.debug('[队伍名片] 检测到队伍成员槽位:', Object.keys(slotMap).length);
       return Object.values(slotMap)
         .filter((member) => member?.characterID != null)
         .map((member) => this.buildCharacterCardMember(member.characterID));
@@ -7202,7 +8491,7 @@
         });
         const data = {version: 2, teamName, members: compactMembers};
         localStorage.setItem(this.STORAGE_KEYS.TEAM_CARD, JSON.stringify(data));
-        console.log('[队伍名片] 已保存队伍名片数据');
+        console.debug('[队伍名片] 已保存队伍名片数据');
         return true;
       } catch (e) {
         console.warn('保存队伍名片失败', e);
@@ -8342,7 +9631,7 @@
         layoutController.setCardLayout('mobile', 'combat');
         const {forceState = false} = options;
         let teamName = memberService.getTeamNameFromPage();
-        console.log(`[队伍名片] 队伍名称: ${teamName}`);
+        console.debug(`[队伍名片] 队伍名称: ${teamName}`);
         let members;
         if (forceState && state.teamCard.members !== undefined) {
           members = state.teamCard.members;
@@ -8352,7 +9641,7 @@
           if (cached && cached.members !== undefined) {
             teamName = cached.teamName || teamName;
             members = cached.members;
-            console.log('[队伍名片] 已从缓存加载队伍数据');
+            console.debug('[队伍名片] 已从缓存加载队伍数据');
           } else if (Array.isArray(state.teamCard.members) && state.teamCard.members.length > 0) {
             members = state.teamCard.members;
             teamName = state.teamCard.teamName || teamName;
@@ -8582,7 +9871,7 @@
         };
 
         rightButtonsElement.insertBefore(btn, leaveButton || null);
-        console.log('队伍名片按钮已添加');
+        console.debug('队伍名片按钮已添加');
       };
       this.state.partyObserver?.disconnect();
       this.state.partyObserver = this.utils.observeBody(checkParty);
@@ -8814,6 +10103,10 @@
       CardDataAdapter,
       getEffectiveLayoutMode: layoutController.getEffectiveLayoutMode.bind(layoutController)
     });
+
+    // rendererApi 创建后才能取得评分渲染能力，补注入到布局控制器。
+    layoutController.registerBuildScoreSource = rendererApi.registerBuildScoreSource;
+    layoutController.hydrateBuildScores = rendererApi.hydrateBuildScores;
 
     const dialogController = new CharacterCardDialogController({
       Notifier,
@@ -10202,6 +11495,7 @@
       useGuzzlingPouch = true,
       guzzlingLevel = 0,
       excludeBackEquipmentValue = false,
+      applyMarketTax = true,
       customMode = false,
       customKeySource = 'materials',
       customBuySide = 'ask',
@@ -10240,19 +11534,19 @@
       const ticketHrid = dungeonInfo.keyItemHrid;
       const materialSettings = this.getMaterialSettings(useArtisanTea, useGuzzlingPouch, guzzlingLevel);
       const missingPrices = new Set();
-      const tokenValues = this.getTokenValues(true);
+      const tokenValues = this.getTokenValues(applyMarketTax);
       const outputOptions = {excludeBackEquipmentValue};
       const normalOutput = this.valueExpectedDrops(
         expectation.normalDrops,
         tokenValues,
-        true,
+        applyMarketTax,
         missingPrices,
         outputOptions
       );
       const refinementOutput = this.valueExpectedDrops(
         expectation.refinementDrops,
         tokenValues,
-        true,
+        applyMarketTax,
         missingPrices,
         outputOptions
       );
@@ -10260,7 +11554,23 @@
       expectation.refinementDrops.forEach((quantity, itemHrid) => {
         allDrops.set(itemHrid, Number(allDrops.get(itemHrid) || 0) + quantity);
       });
-      const totalOutput = this.valueExpectedDrops(allDrops, tokenValues, true, missingPrices, outputOptions);
+      const totalOutput = this.valueExpectedDrops(allDrops, tokenValues, applyMarketTax, missingPrices, outputOptions);
+      // 每日宝箱产出完全按市场 bid/ask 报价税前估值：不扣任何税（牛铃/牛铃袋也不扣），也不使用官方市场价值。
+      const pretaxTokenValues = this.getTokenValues(undefined);
+      const normalPretaxOutput = this.valueExpectedDrops(
+        expectation.normalDrops,
+        pretaxTokenValues,
+        undefined,
+        missingPrices,
+        outputOptions
+      );
+      const refinementPretaxOutput = this.valueExpectedDrops(
+        expectation.refinementDrops,
+        pretaxTokenValues,
+        undefined,
+        missingPrices,
+        outputOptions
+      );
       const createOpeningKeyQuantities = (dailyKeys, perRunKeys) =>
         [
           ...new Set([
@@ -10418,6 +11728,10 @@
         normalRevenueOptimistic: normalOutput.askTotal,
         refinementRevenueConservative: refinementOutput.bidTotal,
         refinementRevenueOptimistic: refinementOutput.askTotal,
+        normalChestOutputConservative: normalPretaxOutput.bidTotal,
+        normalChestOutputOptimistic: normalPretaxOutput.askTotal,
+        refinementChestOutputConservative: refinementPretaxOutput.bidTotal,
+        refinementChestOutputOptimistic: refinementPretaxOutput.askTotal,
         totalRevenueConservative,
         totalRevenueOptimistic,
         dailyConsumablesCost: dailyConsumablesCostCoins,
@@ -10459,12 +11773,21 @@
 
   // dungeon-profit-pricing-methods
   const dungeonProfitPricingMethods = {
-    getDirectPrice(itemHrid, side, applyMarketTax = false) {
+    getDirectPrice(itemHrid, side, applyMarketTax) {
       if (itemHrid === '/items/coin') return 1;
       const special = this.specialPriceSources[itemHrid];
       const marketHrid = special?.itemHrid || itemHrid;
-      // 牛铃袋按 18% 特殊税率折算，其余物品统一按普通市场税。
-      const taxMultiplier = marketHrid === '/items/bag_of_10_cowbells' ? COWBELL_TAX_MULTIPLIER : MARKET_TAX_MULTIPLIER;
+      // 市场税率倍率：普通物品按 MARKET_TAX_MULTIPLIER，牛铃袋按 COWBELL_TAX_MULTIPLIER。
+      // 挂单价缺失时按 bid 反推 ask 挂单价恒用该倍率还原，与“收益扣除市场税”选项无关。
+      const marketTaxMultiplier =
+        marketHrid === '/items/bag_of_10_cowbells' ? COWBELL_TAX_MULTIPLIER : MARKET_TAX_MULTIPLIER;
+      // 开启市场税时普通物品按 5%、牛铃袋按 18% 分别扣税；
+      // 未开启（或第三参缺省的成本/产出估值）时所有物品都按报价不扣税，牛铃袋也不例外。
+      const taxMultiplier = applyMarketTax
+        ? marketHrid === '/items/bag_of_10_cowbells'
+          ? COWBELL_TAX_MULTIPLIER
+          : MARKET_TAX_MULTIPLIER
+        : 1;
       const row = this.marketService.getMarketRow(marketHrid, 0);
       const getPositivePrice = (rawValue) => {
         const value = Number(rawValue);
@@ -10473,16 +11796,15 @@
       let value = getPositivePrice(side === 'ask' ? row?.a : row?.b);
       if (!value && side === 'ask') {
         const bid = getPositivePrice(row?.b);
-        if (bid) value = Math.ceil(bid / taxMultiplier);
+        if (bid) value = Math.ceil(bid / marketTaxMultiplier);
       }
       if (!value) value = getPositivePrice(row?.p);
-      // 挂单与最近成交都缺失时取官方市场价值（市场指导价），比参考价更贴近官方口径。
-      if (!value) value = getPositivePrice(this.marketService?.getMarketValue?.(marketHrid, 0));
-      // 牛铃袋连市场价值也缺失时按参考兜底价估值，牛铃经 divisor 同步继承，避免宝箱牛铃收益算成 0。
+      // 牛铃袋连挂单与最近成交也缺失时按参考兜底价估值，牛铃经 divisor 同步继承，避免宝箱牛铃收益算成 0；
+      // 其余物品不使用官方市场价值（marketItemValues），缺价按 0 处理并在界面提示。
       if (!value && marketHrid === '/items/bag_of_10_cowbells') {
         value = COWBELL_BAG_FALLBACK_PRICE;
       }
-      if (applyMarketTax && value > 0) {
+      if (value > 0 && taxMultiplier < 1) {
         value = Math.floor(value * taxMultiplier);
       }
       return value / (special?.divisor || 1);
@@ -10606,7 +11928,7 @@
       return {normalDrops, refinementDrops, openingKeys, normalOpeningKeys, refinementOpeningKeys};
     },
 
-    getTokenValues(applyMarketTax = true) {
+    getTokenValues(applyMarketTax) {
       const {DataHub} = this.ctx;
       const clientData = DataHub.getClientData() || {};
       const marketData = this.marketService.marketData;
@@ -10704,6 +12026,10 @@
     '/actions/combat/pirate_cove': 'dungeonNamePirateCove'
   });
 
+  // 税率显示从公共常量动态生成，市场税调整后提示与帮助文案自动跟随，不手工维护百分比。
+  const marketTaxPercent = Math.round(MARKET_TAX_RATE * 100);
+  const cowbellTaxPercent = Math.round(COWBELL_TAX_RATE * 100);
+
   // dungeon-profit-form-view
   const dungeonProfitFormView = {
     renderCalculator(feature) {
@@ -10720,6 +12046,7 @@
         useGuzzlingPouch: feature.state.useGuzzlingPouch,
         guzzlingLevel: feature.state.guzzlingLevel,
         excludeBackEquipmentValue: feature.state.excludeBackEquipmentValue,
+        applyMarketTax: feature.state.applyMarketTax,
         customMode: feature.state.customMode,
         customKeySource: feature.state.customKeySource,
         customBuySide: feature.state.customBuySide,
@@ -10794,7 +12121,7 @@
         <input
           type="number"
           min="0.1"
-          step="0.1"
+          step="1"
           .value=${feature.state.clearMinutes}
           @input=${(event) => feature.updateNumber('clearMinutes', event.target.value)}
         >
@@ -10804,7 +12131,7 @@
         <input
           type="number"
           min="0"
-          step="0.1"
+          step="1"
           placeholder="0"
           .value=${feature.state.dailyConsumablesCost}
           @input=${(event) => feature.updateNumber('dailyConsumablesCost', event.target.value)}
@@ -10848,6 +12175,22 @@
           </select>
         </span>
       </label>
+      <div class="mst-dungeon-field mst-dungeon-toggle-field">
+        <label
+          class="mst-dungeon-auto-buff"
+          title=${i18n.t('applyMarketTaxHint', marketTaxPercent, cowbellTaxPercent)}
+        >
+          <input
+            type="checkbox"
+            .checked=${feature.state.applyMarketTax}
+            @change=${(event) => {
+              feature.state.applyMarketTax = event.target.checked;
+              feature.render();
+            }}
+          >
+          <span>${i18n.t('applyMarketTax')}</span>
+        </label>
+      </div>
       <div class="mst-dungeon-field mst-dungeon-toggle-field">
         <label class="mst-dungeon-auto-buff">
           <input
@@ -11020,7 +12363,7 @@
           type: 'total'
         }, {key: 'expectedChestOutputBreakdown', type: 'section', priceDirection: 'sell'}, {
           key: 'normalChestRevenue',
-          quantity: result.normalQuantity,
+          quantity: null,
           values: values(
             materials.normalChestUnitProfitConservative,
             materials.normalChestUnitProfitOptimistic,
@@ -11029,11 +12372,25 @@
             custom.normalChestUnitProfit
           ),
           type: 'revenue'
-        }, ...(result.refinementQuantity > 0
+        }, {
+          key: 'normalChestDailyOutput',
+          quantity: result.normalQuantity,
+          values: values(
+            result.normalChestOutputConservative,
+            result.normalChestOutputOptimistic,
+            result.normalChestOutputConservative,
+            result.normalChestOutputOptimistic,
+            result.customScenario?.sellSide === 'bid'
+              ? result.normalChestOutputConservative
+              : result.normalChestOutputOptimistic
+          ),
+          type: 'revenue'
+        },
+        ...(result.refinementQuantity > 0
           ? [
               {
                 key: 'refinementChestRevenue',
-                quantity: result.refinementQuantity,
+                quantity: null,
                 values: values(
                   materials.refinementChestUnitProfitConservative,
                   materials.refinementChestUnitProfitOptimistic,
@@ -11042,10 +12399,22 @@
                   custom.refinementChestUnitProfit
                 ),
                 type: 'revenue'
+              }, {
+                key: 'refinementChestDailyOutput',
+                quantity: result.refinementQuantity,
+                values: values(
+                  result.refinementChestOutputConservative,
+                  result.refinementChestOutputOptimistic,
+                  result.refinementChestOutputConservative,
+                  result.refinementChestOutputOptimistic,
+                  result.customScenario?.sellSide === 'bid'
+                    ? result.refinementChestOutputConservative
+                    : result.refinementChestOutputOptimistic
+                ),
+                type: 'revenue'
               }
             ]
-          : []),
-        {
+          : []), {
           key: 'profitPerRun',
           quantity: null,
           values: values(
@@ -11222,6 +12591,7 @@
         useGuzzlingPouch: Boolean(guzzlingPouch),
         guzzlingLevel: String(guzzlingPouch?.enhancementLevel || 0),
         excludeBackEquipmentValue: false,
+        applyMarketTax: true,
         customMode: false,
         customKeySource: 'materials',
         customBuySide: 'ask',
@@ -11337,7 +12707,7 @@
       const title = this.popup.querySelector('.swal2-title');
       const {i18n} = this.constructor.ctx;
       if (title) title.textContent = i18n.t('dungeonProfitCalculator');
-      this.helpController?.setContent(i18n.t('dungeonCalculatorHelp'));
+      this.helpController?.setContent(i18n.t('dungeonCalculatorHelp', marketTaxPercent, cowbellTaxPercent));
       this.render();
     }
 
@@ -11364,7 +12734,7 @@
             moduleName: 'dungeon',
             title: i18n.t('dungeonCalculatorHelpTitle'),
             heading: i18n.t('dungeonProfitCalculator'),
-            content: i18n.t('dungeonCalculatorHelp')
+            content: i18n.t('dungeonCalculatorHelp', marketTaxPercent, cowbellTaxPercent)
           });
         },
         willClose: () => {
@@ -16840,19 +18210,30 @@
     runOnce(worker, player, mstData, seed) {
       const {i18n} = this.ctx;
       return new Promise((resolve, reject) => {
-        const timeout = setTimeout(() => reject(new Error(i18n.t('combatSimulationTimeout'))), 120000);
+        let settled = false;
+        const settle = (callback, value) => {
+          if (settled) return;
+          settled = true;
+          clearTimeout(timeout);
+          callback(value);
+        };
+        // 超时直接回收 worker，避免它继续在后台空跑最多 120s 并回写已结算的 Promise。
+        const timeout = setTimeout(() => {
+          this.terminateWorker(worker);
+          settle(reject, new Error(i18n.t('combatSimulationTimeout')));
+        }, 120000);
         worker.onmessage = (event) => {
           if (event.data?.type === 'simulation_result') {
-            clearTimeout(timeout);
-            resolve(event.data.simResult);
+            settle(resolve, event.data.simResult);
           } else if (event.data?.type === 'simulation_error') {
-            clearTimeout(timeout);
-            reject(new Error(String(event.data.error?.message || event.data.error || i18n.t('combatSimulationFailed'))));
+            settle(
+              reject,
+              new Error(String(event.data.error?.message || event.data.error || i18n.t('combatSimulationFailed')))
+            );
           }
         };
         worker.onerror = (event) => {
-          clearTimeout(timeout);
-          reject(new Error(event.message || i18n.t('combatSimulationWorkerFailed')));
+          settle(reject, new Error(event.message || i18n.t('combatSimulationWorkerFailed')));
         };
         worker.postMessage({
           type: 'start_simulation',
@@ -20205,14 +21586,10 @@
     ctx.EquipmentComparisonService = EquipmentComparisonService;
     ctx.HouseCalculator = HouseCalculator;
     ctx.HouseCalculatorUI = HouseCalculatorUI;
-    ctx.HouseCalculatorLauncher = HouseCalculatorLauncher;
-    ctx.OriginalCharacterCardFeature = OriginalCharacterCardFeature;
     ctx.ToolkitMenuFeature = ToolkitMenuFeature;
-    ctx.mstCombatWorkerRuntime = mstCombatWorkerRuntime;
   }
 
-  var MST_APP_BASE_CSS = String.raw`#character-switch-dropdown,.character-switch-dropdown{display:none!important}
-[class*=EquipmentPanel_buttonContainer]{display:flex!important;align-items:center;justify-content:center;flex-wrap:nowrap;gap:.25rem;width:max-content;max-width:100%}
+  var MST_APP_BASE_CSS = String.raw`[class*=EquipmentPanel_buttonContainer]{display:flex!important;align-items:center;justify-content:center;flex-wrap:nowrap;gap:.25rem;width:max-content;max-width:100%}
 .mst-eds-profit-menu{position:relative;display:inline-flex}
 .mst-eds-profit-submenu{position:absolute;top:calc(100% + .25rem);left:50%;z-index:2147483000;display:flex;min-width:max-content;transform:translate(-50%);flex-direction:column;gap:.25rem;padding:.35rem;border:1px solid var(--color-midnight-100, #454771);border-radius:var(--radius-sm, .25rem);background:var(--color-midnight-600, #27283b);box-shadow:var(--shadow-md, 0 4px 10px rgba(0, 0, 0, .35))}
 .mst-eds-profit-submenu[hidden]{display:none}
@@ -20305,11 +21682,6 @@
 .mst-calculator-toolbar{display:grid;grid-template-columns:repeat(3,minmax(8rem,1fr)) auto;align-items:end;gap:.5rem;margin-bottom:.5rem}
 .mst-calculator-toolbar label{display:flex;min-width:0;flex-direction:column;gap:.2rem;color:var(--color-neutral-300, #b9bbca);font-size:var(--font-size-small, .75rem)}
 .mst-calculator-toolbar input{width:100%}
-.mst-calculator-summary{display:grid;grid-template-columns:repeat(auto-fit,minmax(10rem,1fr));gap:.4rem;margin-bottom:.55rem}
-.mst-calculator-summary>span{display:flex;min-width:0;min-height:3.1rem;box-sizing:border-box;flex-direction:column;justify-content:center;padding:.35rem .5rem;border:1px solid var(--color-midnight-100, #454771);border-radius:var(--radius-sm, .25rem);background:var(--color-midnight-600, #27283b);text-align:center}
-.mst-calculator-summary>[hidden]{display:none!important}
-.mst-calculator-summary small{color:var(--color-neutral-300, #b9bbca);font-size:var(--font-size-small, .75rem)}
-.mst-calculator-summary strong{overflow-wrap:anywhere;color:var(--color-cowbell, #f6c95c);font-size:var(--font-size-large, 1rem);font-weight:600}
 .mst-calculator-table-wrap{max-height:min(30rem,calc(100svh - 18rem));overflow:auto;border:1px solid var(--color-midnight-100, #454771);border-radius:var(--radius-sm, .25rem)}
 .mst-calculator-table{width:100%;min-width:68rem;border-collapse:collapse;background:var(--color-midnight-700, #20212f);font-size:var(--font-size-small, .75rem)}
 .mst-calculator-table th{position:sticky;top:0;z-index:1;padding:.4rem .35rem;background:var(--color-midnight-500, #2c2e45);color:var(--color-neutral-200, #d2d3dc);font-weight:600;white-space:nowrap}
@@ -20322,16 +21694,19 @@
 .mst-ability-calculator-button-container{display:flex;align-items:center;justify-content:center;flex-wrap:wrap;gap:.625rem;margin:.5rem 0 .25rem}
 .mst-ability-calculator-trigger{display:inline-flex;margin:0}
 .mst-ability-action-market,.mst-ability-action-calculator{margin-top:.25rem}
-.mst-ability-picker{position:fixed;inset:max(.5rem,env(safe-area-inset-top)) max(.5rem,env(safe-area-inset-right)) max(.5rem,env(safe-area-inset-bottom)) max(.5rem,env(safe-area-inset-left));z-index:2147483300;display:flex;align-items:center;justify-content:center;padding:0;background:#0e0f18eb}
+.mst-ability-tooltip-calculator:not([class*=Button_button]){display:block;width:100%;margin-top:.375rem;padding:.25rem .5rem;box-sizing:border-box;border:1px solid var(--color-midnight-100, #454771);border-radius:var(--radius-sm, .25rem);background:var(--color-midnight-500, #2c2e45);color:var(--color-text-dark-mode, #e7e7e7);font:inherit;font-size:var(--font-size-sm, .8125rem);cursor:pointer}
+.mst-ability-tooltip-calculator:not([class*=Button_button]):hover{border-color:var(--color-space-300, #98a7e9);background:var(--color-midnight-400, #323450)}
+.mst-ability-picker{position:absolute;inset:0;z-index:5;display:flex;align-items:flex-start;justify-content:center;padding:0;background:#0e0f18eb}
 .mst-ability-picker[hidden]{display:none}
-.mst-ability-picker-panel{display:flex;width:min(48.5rem,calc(100vw - 1rem));width:min(48.5rem,calc(100dvw - 1rem));max-height:calc(100vh - 1rem);max-height:calc(100dvh - 1rem);max-height:calc(100svh - 1rem);box-sizing:border-box;flex-direction:column;gap:.4rem;padding:.5rem;border:1px solid var(--color-midnight-100, #454771);border-radius:var(--radius-sm, .25rem);background:var(--color-midnight-600, #27283b);box-shadow:var(--shadow-md, 0 .35rem 1rem rgba(0, 0, 0, .4))}
-.mst-ability-upgrade-calculator.mst-ability-picker-open{min-height:0}
+.mst-ability-picker-panel{display:flex;width:100%;height:100%;min-height:0;box-sizing:border-box;flex-direction:column;gap:.4rem;padding:.5rem;border:1px solid var(--color-midnight-100, #454771);border-radius:var(--radius-sm, .25rem);background:var(--color-midnight-600, #27283b);box-shadow:var(--shadow-md, 0 .35rem 1rem rgba(0, 0, 0, .4))}
+.mst-ability-upgrade-calculator.mst-ability-picker-open{min-height:min(36rem,calc(100vh - 10rem));min-height:min(36rem,calc(100dvh - 10rem));min-height:min(36rem,calc(100svh - 10rem));max-height:calc(100vh - 10rem);max-height:calc(100dvh - 10rem);max-height:calc(100svh - 10rem);overflow:hidden}
 .mst-ability-search{width:100%}
-.mst-ability-options{display:grid;grid-template-columns:repeat(auto-fill,5.25rem);grid-auto-rows:5.25rem;align-content:start;justify-content:center;gap:.3rem;overflow:auto}
-.mst-ability-option{position:relative;display:flex!important;min-width:0;min-height:0!important;flex-direction:column;align-items:center;justify-content:center;gap:.25rem;padding:.35rem!important;text-align:center}
-.mst-ability-option svg{width:2.5rem;height:2.5rem;flex:0 0 auto}
-.mst-ability-option strong{display:-webkit-box;max-width:100%;overflow:hidden;-webkit-box-orient:vertical;-webkit-line-clamp:2;text-overflow:ellipsis;white-space:normal;font-size:var(--font-size-small, .75rem);line-height:1.15}
-.mst-ability-level-badge{position:absolute;top:.25rem;left:.3rem;z-index:1;color:var(--color-cowbell, #f6c95c);font-size:var(--font-size-small, .75rem);font-weight:600;line-height:1;text-shadow:0 1px 2px #000}
+.mst-ability-options{display:grid;min-height:0;flex:1;grid-template-columns:repeat(auto-fill,6rem);grid-auto-rows:6rem;align-content:start;justify-content:center;gap:.3rem;overflow:auto}
+.mst-ability-option{position:relative;display:flex!important;min-width:0;min-height:0!important;box-sizing:border-box;flex-direction:column;align-items:center;justify-content:center;gap:.2rem;padding:.35rem!important;border:1px solid var(--color-midnight-100, #454771)!important;border-radius:var(--radius-sm, .25rem);background:var(--color-midnight-500, #2c2e45)!important;color:var(--color-text-dark-mode, #e7e7e7)!important;font:inherit!important;text-align:center!important;cursor:pointer!important}
+.mst-ability-option:hover:not(:disabled){border-color:var(--color-space-300, #98a7e9)!important;background:var(--color-midnight-400, #323450)!important}
+.mst-ability-option svg{width:2.75rem;height:2.75rem;flex:0 0 auto}
+.mst-ability-option strong{display:-webkit-box;max-width:100%;overflow:hidden;-webkit-box-orient:vertical;-webkit-line-clamp:2;text-overflow:ellipsis;white-space:normal;font-size:var(--font-size-small, .75rem);line-height:1.1}
+.mst-ability-level-badge{position:absolute;top:.25rem;left:.3rem;z-index:1;color:var(--color-cowbell, #f6c95c);font-size:var(--font-size-tiny, .6875rem);font-weight:600;line-height:1;text-shadow:0 1px 2px #000}
 .mst-ability-picker-close{align-self:center}
 .mst-upgrade-calculator{white-space:normal}
 .mst-combat-upgrade-calculator .mst-calculator-toolbar{grid-template-columns:repeat(3,minmax(7rem,1fr)) auto auto;gap:.4rem;margin-bottom:.4rem}
@@ -20394,7 +21769,7 @@
 .mst-combat-start-control>input[data-row-field=customStart]{width:1rem!important;height:1rem;flex:0 0 1rem}
 .mst-combat-start-control .mst-target-level-control{min-width:0;flex:1}
 .mst-combat-training-type{display:flex;min-height:2.6rem;flex-direction:column;align-items:center;justify-content:center;gap:.1rem;font-size:var(--font-size-small, .75rem);line-height:1}
-.mst-combat-training-line,.mst-concurrent-training,.mst-concurrent-training-placeholder{display:flex;min-height:1.2rem;align-items:center;justify-content:center}
+.mst-combat-training-line,.mst-concurrent-training{display:flex;min-height:1.2rem;align-items:center;justify-content:center}
 .mst-combat-training-type .mst-training-checkbox{min-width:0;justify-content:center;gap:.25rem;font-size:inherit;line-height:1}
 .mst-combat-training-type .mst-training-checkbox span,.mst-fixed-training{white-space:nowrap}
 .mst-combat-training-type .mst-training-checkbox input{box-sizing:border-box;width:.875rem!important;height:.875rem!important;min-width:.875rem;margin:0}
@@ -20454,14 +21829,13 @@
 .mst-dungeon-toolbar{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(11rem,100%),1fr));gap:.45rem;align-items:end}
 .mst-dungeon-field{display:flex;min-width:0;flex-direction:column;gap:.2rem;color:var(--color-neutral-300, #b9bbca);font-size:var(--font-size-small, .75rem);line-height:1.2}
 .mst-dungeon-field[hidden],.mst-dungeon-table [hidden]{display:none}
-.mst-dungeon-row-start{grid-column:1}
 .mst-dungeon-field>input,.mst-dungeon-field>select{width:100%;min-width:0}
 .mst-dungeon-guzzling-control{display:flex;width:100%;min-width:0;align-items:center;gap:.35rem}
-.mst-dungeon-guzzling-toggle{display:inline-flex;width:var(--button-height-normal, 1.875rem);height:var(--button-height-normal, 1.875rem);box-sizing:border-box;flex:0 0 var(--button-height-normal, 1.875rem);align-items:center;justify-content:center;border:1px solid var(--color-space-400, #7184d8);border-radius:var(--radius-sm, .25rem);background:var(--color-midnight-500, #2c2e45);cursor:pointer}
+.mst-dungeon-guzzling-toggle{display:inline-flex;width:var(--button-height-normal, 1.875rem);height:var(--button-height-normal, 1.875rem);box-sizing:border-box;flex:0 0 var(--button-height-normal, 1.875rem);align-items:center;justify-content:center;border:1px solid var(--color-midnight-100, #454771);border-radius:var(--radius-sm, .25rem);background:var(--color-midnight-500, #2c2e45);cursor:pointer}
 .mst-dungeon-guzzling-toggle:hover{border-color:var(--color-space-300, #98a7e9)}
 .mst-dungeon-guzzling-toggle input{width:1rem!important;height:1rem!important;margin:0;flex:0 0 1rem;accent-color:var(--color-space-300, #98a7e9);cursor:pointer}
 .mst-dungeon-guzzling-control select{min-width:0;flex:1}
-.mst-dungeon-auto-buff{display:inline-flex;width:100%;min-width:0;height:var(--button-height-normal, 1.875rem);box-sizing:border-box;align-items:center;justify-content:center;gap:.3rem;padding:0 .5rem;border:1px solid var(--color-space-400, #7184d8);border-radius:var(--radius-sm, .25rem);background:var(--color-midnight-500, #2c2e45);color:var(--color-text-dark-mode, #e7e7e7);font:var(--font-weight-semibold, 600) var(--font-size-base, .875rem)/1 Roboto,Helvetica,Arial,sans-serif;cursor:pointer}
+.mst-dungeon-auto-buff{display:inline-flex;width:100%;min-width:0;height:var(--button-height-normal, 1.875rem);box-sizing:border-box;align-items:center;justify-content:center;gap:.3rem;padding:0 .5rem;border:1px solid var(--color-midnight-100, #454771);border-radius:var(--radius-sm, .25rem);background:var(--color-midnight-500, #2c2e45);color:var(--color-text-dark-mode, #e7e7e7);font:var(--font-weight-semibold, 600) var(--font-size-base, .875rem)/1 Roboto,Helvetica,Arial,sans-serif;cursor:pointer}
 .mst-dungeon-auto-buff:hover{border-color:var(--color-space-300, #98a7e9)}
 .mst-dungeon-auto-buff:has(input:disabled){opacity:.55;cursor:not-allowed}
 .mst-dungeon-auto-buff input{width:1rem!important;height:1rem!important;margin:0;flex:0 0 1rem;cursor:inherit}
@@ -20502,7 +21876,6 @@
 .mst-equipment-compare-table-wrap{max-height:calc(100svh - 24rem)}
 .mst-calculator-toolbar{grid-template-columns:repeat(2,minmax(0,1fr))}
 .mst-calculator-toolbar .mst-calculator-reset{grid-column:1/-1}
-.mst-calculator-summary{grid-template-columns:repeat(2,minmax(0,1fr))}
 .mst-combat-profession-picker{grid-template-columns:repeat(4,minmax(0,1fr))}
 .mst-calculator-table-wrap{max-height:calc(100svh - 20rem)}
 .mst-dungeon-table-wrap{max-height:calc(100svh - 25rem)}
@@ -20522,7 +21895,7 @@
 .mst-swal2-theme .swal2-title{margin:0;padding-right:calc(1.375rem + var(--spacing-md, .75rem));padding-bottom:var(--spacing-sm, .5rem);color:var(--color-text-dark-mode, #e7e7e7);font-size:var(--font-size-md, 1rem);font-weight:var(--font-weight-semibold, 600);line-height:var(--line-height-normal, 1.375);letter-spacing:0;text-align:left}
 .mst-swal2-theme .swal2-html-container{margin:var(--spacing-xs, .25rem) var(--spacing-md, .75rem);color:var(--color-text-dark-mode, #e7e7e7);font-size:var(--font-size-base, .875rem);font-weight:var(--font-weight-normal, 400);line-height:var(--line-height-normal, 1.375);letter-spacing:0;text-align:left;white-space:pre-line}
 .mst-swal2-theme .swal2-icon{display:none!important}
-.mst-swal2-theme .swal2-input,.mst-swal2-theme .swal2-file,.mst-swal2-theme .swal2-textarea,.mst-swal2-theme .swal2-select{min-height:var(--input-height-normal, 1.875rem);margin:var(--spacing-sm, .5rem) 0 0;padding:var(--input-padding-y, .25rem) var(--input-padding-x, .625rem);box-sizing:border-box;color:var(--color-text-dark-mode, #e7e7e7);font-family:Roboto,Helvetica,Arial,sans-serif;font-size:var(--font-size-base, .875rem);font-weight:var(--font-weight-medium, 500);line-height:var(--line-height-normal, 1.375)}
+.mst-swal2-theme .swal2-input,.mst-swal2-theme .swal2-file,.mst-swal2-theme .swal2-textarea,.mst-swal2-theme .swal2-select{min-height:var(--input-height-normal, 1.875rem);margin:var(--spacing-sm, .5rem) 0 0;padding:var(--input-padding-y, .25rem) var(--input-padding-x, .625rem);box-sizing:border-box;border:var(--swal2-input-border);border-radius:var(--radius-xs, .125rem);color:var(--color-text-dark-mode, #e7e7e7);font-family:Roboto,Helvetica,Arial,sans-serif;font-size:var(--font-size-base, .875rem);font-weight:var(--font-weight-medium, 500);line-height:var(--line-height-normal, 1.375)}
 .mst-swal2-theme .swal2-textarea{min-height:6rem;resize:none;white-space:pre-wrap}
 .mst-swal2-theme .swal2-validation-message{margin:var(--spacing-sm, .5rem) 0 0;padding:var(--spacing-sm, .5rem);border-left:var(--border-width-thick, 3px) solid var(--color-scarlet-500, #d0333d);border-radius:var(--radius-xs, .125rem);font-size:var(--font-size-sm, .8125rem)}
 .mst-swal2-theme .swal2-actions{gap:var(--spacing-sm, .5rem)}
@@ -20779,7 +22152,6 @@ to{transform:translateY(0);opacity:1}
     ctx.marketDataService = CONFIG.isGameSite ? new MarketDataService(ctx) : null;
     ctx.buildScoreService = CONFIG.isGameSite ? new BuildScoreService(ctx, ctx.marketDataService) : null;
     ctx.houseCalculator = CONFIG.isGameSite ? new HouseCalculator(ctx, houseDetails) : null;
-    ctx.houseCalculatorUI = null;
   }
 
   function runMst() {
@@ -20787,6 +22159,13 @@ to{transform:translateY(0);opacity:1}
     const hostname = window.location.hostname;
     // 通过二级域判断中英文游戏站，保证 www 与子域名都能复用同一套配置。
     const domainname = hostname.substring(hostname.lastIndexOf('.', hostname.lastIndexOf('.') - 1) + 1);
+    // 市场数据源按当前站点环境分支（与 MWITools getMarketApiUrl 一致）：
+    // 测试服、中文站与正式服的市场行情相互独立，混用会导致着装评分等估值差几个数量级。
+    const marketUrl = hostname.startsWith('test.')
+      ? 'https://test.milkywayidle.com/game_data/marketplace.json'
+      : hostname.endsWith('milkywayidlecn.com')
+        ? 'https://milkywayidlecn.com/game_data/marketplace.json'
+        : `https://www.${domainname}/game_data/marketplace.json`;
 
     // CONFIG 只保存运行期环境和阈值，具体业务常量集中放在 common/constants.js。
     const CONFIG = {
@@ -20795,7 +22174,7 @@ to{transform:translateY(0);opacity:1}
       PROFILE_CACHE_TTL,
       PROFILE_CACHE_LIMIT,
       PROFILE_CACHE_MAX_BYTES,
-      MARKET_URL: `https://www.${domainname}/game_data/marketplace.json`,
+      MARKET_URL: marketUrl,
       characterId: new URLSearchParams(window.location.search).get('characterId'),
       MIN_FROM_LEVEL: HOUSE_MIN_FROM_LEVEL,
       MAX_FROM_LEVEL: HOUSE_MAX_FROM_LEVEL,
@@ -20815,9 +22194,7 @@ to{transform:translateY(0);opacity:1}
     i18n.loadLangPref();
 
     const ctx = {
-      BUILD_FLAGS,
       CONFIG,
-      I18N_MESSAGE_GROUPS,
       LanguageEvents: createLanguageEvents(),
       TemplateRenderer,
       domainname,

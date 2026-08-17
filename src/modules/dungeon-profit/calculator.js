@@ -20,6 +20,7 @@ const dungeonProfitCalculationMethods = {
     useGuzzlingPouch = true,
     guzzlingLevel = 0,
     excludeBackEquipmentValue = false,
+    applyMarketTax = true,
     customMode = false,
     customKeySource = 'materials',
     customBuySide = 'ask',
@@ -58,19 +59,19 @@ const dungeonProfitCalculationMethods = {
     const ticketHrid = dungeonInfo.keyItemHrid;
     const materialSettings = this.getMaterialSettings(useArtisanTea, useGuzzlingPouch, guzzlingLevel);
     const missingPrices = new Set();
-    const tokenValues = this.getTokenValues(true);
+    const tokenValues = this.getTokenValues(applyMarketTax);
     const outputOptions = {excludeBackEquipmentValue};
     const normalOutput = this.valueExpectedDrops(
       expectation.normalDrops,
       tokenValues,
-      true,
+      applyMarketTax,
       missingPrices,
       outputOptions
     );
     const refinementOutput = this.valueExpectedDrops(
       expectation.refinementDrops,
       tokenValues,
-      true,
+      applyMarketTax,
       missingPrices,
       outputOptions
     );
@@ -78,7 +79,23 @@ const dungeonProfitCalculationMethods = {
     expectation.refinementDrops.forEach((quantity, itemHrid) => {
       allDrops.set(itemHrid, Number(allDrops.get(itemHrid) || 0) + quantity);
     });
-    const totalOutput = this.valueExpectedDrops(allDrops, tokenValues, true, missingPrices, outputOptions);
+    const totalOutput = this.valueExpectedDrops(allDrops, tokenValues, applyMarketTax, missingPrices, outputOptions);
+    // 每日宝箱产出完全按市场 bid/ask 报价税前估值：不扣任何税（牛铃/牛铃袋也不扣），也不使用官方市场价值。
+    const pretaxTokenValues = this.getTokenValues(undefined);
+    const normalPretaxOutput = this.valueExpectedDrops(
+      expectation.normalDrops,
+      pretaxTokenValues,
+      undefined,
+      missingPrices,
+      outputOptions
+    );
+    const refinementPretaxOutput = this.valueExpectedDrops(
+      expectation.refinementDrops,
+      pretaxTokenValues,
+      undefined,
+      missingPrices,
+      outputOptions
+    );
     const createOpeningKeyQuantities = (dailyKeys, perRunKeys) =>
       [
         ...new Set([
@@ -236,6 +253,10 @@ const dungeonProfitCalculationMethods = {
       normalRevenueOptimistic: normalOutput.askTotal,
       refinementRevenueConservative: refinementOutput.bidTotal,
       refinementRevenueOptimistic: refinementOutput.askTotal,
+      normalChestOutputConservative: normalPretaxOutput.bidTotal,
+      normalChestOutputOptimistic: normalPretaxOutput.askTotal,
+      refinementChestOutputConservative: refinementPretaxOutput.bidTotal,
+      refinementChestOutputOptimistic: refinementPretaxOutput.askTotal,
       totalRevenueConservative,
       totalRevenueOptimistic,
       dailyConsumablesCost: dailyConsumablesCostCoins,
@@ -277,12 +298,21 @@ const dungeonProfitDataMethods = {
 
 // dungeon-profit-pricing-methods
 const dungeonProfitPricingMethods = {
-  getDirectPrice(itemHrid, side, applyMarketTax = false) {
+  getDirectPrice(itemHrid, side, applyMarketTax) {
     if (itemHrid === '/items/coin') return 1;
     const special = this.specialPriceSources[itemHrid];
     const marketHrid = special?.itemHrid || itemHrid;
-    // 牛铃袋按 18% 特殊税率折算，其余物品统一按普通市场税。
-    const taxMultiplier = marketHrid === '/items/bag_of_10_cowbells' ? COWBELL_TAX_MULTIPLIER : MARKET_TAX_MULTIPLIER;
+    // 市场税率倍率：普通物品按 MARKET_TAX_MULTIPLIER，牛铃袋按 COWBELL_TAX_MULTIPLIER。
+    // 挂单价缺失时按 bid 反推 ask 挂单价恒用该倍率还原，与“收益扣除市场税”选项无关。
+    const marketTaxMultiplier =
+      marketHrid === '/items/bag_of_10_cowbells' ? COWBELL_TAX_MULTIPLIER : MARKET_TAX_MULTIPLIER;
+    // 开启市场税时普通物品按 5%、牛铃袋按 18% 分别扣税；
+    // 未开启（或第三参缺省的成本/产出估值）时所有物品都按报价不扣税，牛铃袋也不例外。
+    const taxMultiplier = applyMarketTax
+      ? marketHrid === '/items/bag_of_10_cowbells'
+        ? COWBELL_TAX_MULTIPLIER
+        : MARKET_TAX_MULTIPLIER
+      : 1;
     const row = this.marketService.getMarketRow(marketHrid, 0);
     const getPositivePrice = (rawValue) => {
       const value = Number(rawValue);
@@ -291,16 +321,15 @@ const dungeonProfitPricingMethods = {
     let value = getPositivePrice(side === 'ask' ? row?.a : row?.b);
     if (!value && side === 'ask') {
       const bid = getPositivePrice(row?.b);
-      if (bid) value = Math.ceil(bid / taxMultiplier);
+      if (bid) value = Math.ceil(bid / marketTaxMultiplier);
     }
     if (!value) value = getPositivePrice(row?.p);
-    // 挂单与最近成交都缺失时取官方市场价值（市场指导价），比参考价更贴近官方口径。
-    if (!value) value = getPositivePrice(this.marketService?.getMarketValue?.(marketHrid, 0));
-    // 牛铃袋连市场价值也缺失时按参考兜底价估值，牛铃经 divisor 同步继承，避免宝箱牛铃收益算成 0。
+    // 牛铃袋连挂单与最近成交也缺失时按参考兜底价估值，牛铃经 divisor 同步继承，避免宝箱牛铃收益算成 0；
+    // 其余物品不使用官方市场价值（marketItemValues），缺价按 0 处理并在界面提示。
     if (!value && marketHrid === '/items/bag_of_10_cowbells') {
       value = COWBELL_BAG_FALLBACK_PRICE;
     }
-    if (applyMarketTax && value > 0) {
+    if (value > 0 && taxMultiplier < 1) {
       value = Math.floor(value * taxMultiplier);
     }
     return value / (special?.divisor || 1);
@@ -424,7 +453,7 @@ const dungeonProfitExpectationMethods = {
     return {normalDrops, refinementDrops, openingKeys, normalOpeningKeys, refinementOpeningKeys};
   },
 
-  getTokenValues(applyMarketTax = true) {
+  getTokenValues(applyMarketTax) {
     const {DataHub} = this.ctx;
     const clientData = DataHub.getClientData() || {};
     const marketData = this.marketService.marketData;
