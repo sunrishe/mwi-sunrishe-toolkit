@@ -17,12 +17,12 @@
 // @require            https://cdn.jsdelivr.net/npm/html-to-image@1.11.13/dist/html-to-image.js
 // @require            https://cdn.jsdelivr.net/npm/sweetalert2@11
 // @require            https://cdn.jsdelivr.net/gh/sunrishe/mwi-sunrishe-toolkit@d2d2cf9f83bac1372495e586b751cc1eddf00697/vendor/uhtml/uhtml.iife.min.js
-// @match              https://www.milkywayidle.com/*
 // @match              https://milkywayidle.com/*
-// @match              https://test.milkywayidle.com/*
-// @match              https://www.milkywayidlecn.com/*
 // @match              https://milkywayidlecn.com/*
+// @match              https://test.milkywayidle.com/*
 // @match              https://test.milkywayidlecn.com/*
+// @match              https://www.milkywayidle.com/*
+// @match              https://www.milkywayidlecn.com/*
 // @match              https://milkonomy.pages.dev/*
 // @match              https://hyhfish.github.io/milkonomy/*
 // @grant              unsafeWindow
@@ -37,6 +37,10 @@
 // @grant              GM_xmlhttpRequest
 // @grant              GM.xmlHttpRequest
 // @run-at             document-start
+// @connect            milkywayidle.com
+// @connect            milkywayidlecn.com
+// @connect            test.milkywayidle.com
+// @connect            test.milkywayidlecn.com
 // @connect            www.milkywayidle.com
 // @connect            www.milkywayidlecn.com
 // ==/UserScript==

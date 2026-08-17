@@ -3,7 +3,7 @@
 // @name:zh-CN         MWI Sunrishe 工具箱
 // @name:en            MWI Sunrishe Toolkit
 // @namespace          http://tampermonkey.net/
-// @version            2.10.1
+// @version            2.10.2
 // @description        MWI Sunrishe 综合工具箱：提供角色/队伍名片、技能/房屋/战斗升级规划、装备提升计算器、地下城收益、配装同步和市场伴侣增强。
 // @description:zh-CN  MWI Sunrishe 综合工具箱：提供角色/队伍名片、技能/房屋/战斗升级规划、装备提升计算器、地下城收益、配装同步和市场伴侣增强。
 // @description:en     MST toolkit for character/party cards, ability/house/combat upgrade planning, equipment comparison, dungeon profit, loadout sync, and Market Mate enhancements.
@@ -17,12 +17,12 @@
 // @require            https://cdn.jsdelivr.net/npm/html-to-image@1.11.13/dist/html-to-image.js
 // @require            https://cdn.jsdelivr.net/npm/sweetalert2@11
 // @require            https://cdn.jsdelivr.net/gh/sunrishe/mwi-sunrishe-toolkit@d2d2cf9f83bac1372495e586b751cc1eddf00697/vendor/uhtml/uhtml.iife.min.js
-// @match              https://www.milkywayidle.com/*
 // @match              https://milkywayidle.com/*
-// @match              https://test.milkywayidle.com/*
-// @match              https://www.milkywayidlecn.com/*
 // @match              https://milkywayidlecn.com/*
+// @match              https://test.milkywayidle.com/*
 // @match              https://test.milkywayidlecn.com/*
+// @match              https://www.milkywayidle.com/*
+// @match              https://www.milkywayidlecn.com/*
 // @match              https://milkonomy.pages.dev/*
 // @match              https://hyhfish.github.io/milkonomy/*
 // @grant              unsafeWindow
@@ -37,6 +37,10 @@
 // @grant              GM_xmlhttpRequest
 // @grant              GM.xmlHttpRequest
 // @run-at             document-start
+// @connect            milkywayidle.com
+// @connect            milkywayidlecn.com
+// @connect            test.milkywayidle.com
+// @connect            test.milkywayidlecn.com
 // @connect            www.milkywayidle.com
 // @connect            www.milkywayidlecn.com
 // ==/UserScript==
@@ -22159,13 +22163,10 @@ to{transform:translateY(0);opacity:1}
     const hostname = window.location.hostname;
     // 通过二级域判断中英文游戏站，保证 www 与子域名都能复用同一套配置。
     const domainname = hostname.substring(hostname.lastIndexOf('.', hostname.lastIndexOf('.') - 1) + 1);
-    // 市场数据源按当前站点环境分支（与 MWITools getMarketApiUrl 一致）：
-    // 测试服、中文站与正式服的市场行情相互独立，混用会导致着装评分等估值差几个数量级。
-    const marketUrl = hostname.startsWith('test.')
-      ? 'https://test.milkywayidle.com/game_data/marketplace.json'
-      : hostname.endsWith('milkywayidlecn.com')
-        ? 'https://milkywayidlecn.com/game_data/marketplace.json'
-        : `https://www.${domainname}/game_data/marketplace.json`;
+    // 市场数据源直接取当前站点自身：油猴头部 @match 已覆盖 www/裸域/test 三种格式的
+    // milkywayidle.com 与 milkywayidlecn.com，任何入口页面都读取本站点自己的市场行情，
+    // 天然不会跨服混用（测试服、中文站与正式服的市场相互独立，混用会导致估值差几个数量级）。
+    const marketUrl = `https://${hostname}/game_data/marketplace.json`;
 
     // CONFIG 只保存运行期环境和阈值，具体业务常量集中放在 common/constants.js。
     const CONFIG = {

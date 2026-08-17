@@ -25,13 +25,10 @@ export function runMst() {
   const hostname = window.location.hostname;
   // 通过二级域判断中英文游戏站，保证 www 与子域名都能复用同一套配置。
   const domainname = hostname.substring(hostname.lastIndexOf('.', hostname.lastIndexOf('.') - 1) + 1);
-  // 市场数据源按当前站点环境分支（与 MWITools getMarketApiUrl 一致）：
-  // 测试服、中文站与正式服的市场行情相互独立，混用会导致着装评分等估值差几个数量级。
-  const marketUrl = hostname.startsWith('test.')
-    ? 'https://test.milkywayidle.com/game_data/marketplace.json'
-    : hostname.endsWith('milkywayidlecn.com')
-      ? 'https://milkywayidlecn.com/game_data/marketplace.json'
-      : `https://www.${domainname}/game_data/marketplace.json`;
+  // 市场数据源直接取当前站点自身：油猴头部 @match 已覆盖 www/裸域/test 三种格式的
+  // milkywayidle.com 与 milkywayidlecn.com，任何入口页面都读取本站点自己的市场行情，
+  // 天然不会跨服混用（测试服、中文站与正式服的市场相互独立，混用会导致估值差几个数量级）。
+  const marketUrl = `https://${hostname}/game_data/marketplace.json`;
 
   // CONFIG 只保存运行期环境和阈值，具体业务常量集中放在 common/constants.js。
   const CONFIG = {
