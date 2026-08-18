@@ -80,7 +80,12 @@ test('市场加购模块装配完整', () => {
   // 按钮插入刷新按钮后方的文档流内，游戏重渲染清掉后由观察器重建；同页只允许一个活动实例。
   assert.match(moduleSourceFile, /insertAdjacentElement\('afterend', this\.wrapper\)/);
   assert.match(moduleSourceFile, /mst-marketplace-cart-button/);
-  assert.match(moduleSourceFile, /__MST_MARKETPLACE_CART_OWNER__/);
+  // 单例标记写在页面 window（unsafeWindow）上：油猴沙箱 window 与页面 window 隔离，
+  // 写在沙箱 window 上时其他脚本副本看不到标记，多实例会互相插拔按钮。
+  assert.match(moduleSourceFile, /pageWindow\.__MST_MARKETPLACE_CART_OWNER__/);
+  // 锚点只认 React 渲染的按钮：其他脚本克隆/注入的按钮（无 __reactFiber 关联）会被跳过，
+  // 避免误把克隆按钮当刷新按钮、点击时报“当前没有可加入购物车的市场物品”。
+  assert.match(moduleSourceFile, /DataHub\.getReactFiber\(button\)/);
   // 加购条目保留强化等级并走 MWITools 购物车接口。
   assert.match(moduleSourceFile, /enhancementLevel/);
   assert.match(moduleSourceFile, /MarketMateBridge\.addToCart/);

@@ -167,12 +167,14 @@ export class LabyrinthSupplyFeature {
   }
 
   init() {
-    const {CONFIG, LanguageEvents, utils} = this.ctx;
+    const {CONFIG, LanguageEvents, pageWindow, utils} = this.ctx;
     if (!CONFIG.isGameSite) return;
     // 同一页面只允许一个迷宫补给实例活动：调试注入、旧脚本残留等并存时，
     // 多个实例会互相清理对方插入的按钮导致按钮持续闪烁，先到先得。
-    if (window.__MST_LABYRINTH_SUPPLY_OWNER__) return;
-    window.__MST_LABYRINTH_SUPPLY_OWNER__ = true;
+    // 标记必须写在页面 window（unsafeWindow）上：油猴沙箱的 window 与页面 window
+    // 是两个对象，写在沙箱 window 上时其他脚本副本（另一个沙箱）看不到该标记。
+    if (pageWindow.__MST_LABYRINTH_SUPPLY_OWNER__) return;
+    pageWindow.__MST_LABYRINTH_SUPPLY_OWNER__ = true;
     // 旧版本脚本可能残留旧 CSS（如按钮 fixed 定位），主动覆盖为当前样式，避免升级后样式不更新。
     const existingStyle = document.getElementById('mst-labyrinth-supply-style');
     if (existingStyle) existingStyle.textContent = MST_LABYRINTH_SUPPLY_CSS;

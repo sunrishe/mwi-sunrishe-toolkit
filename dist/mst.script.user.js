@@ -3,7 +3,7 @@
 // @name:zh-CN         MWI Sunrishe 工具箱
 // @name:en            MWI Sunrishe Toolkit
 // @namespace          http://tampermonkey.net/
-// @version            2.11.0
+// @version            2.11.1
 // @description        MWI Sunrishe 综合工具箱：提供角色/队伍名片、技能/房屋/战斗升级规划、装备提升计算器、地下城收益、配装同步和市场伴侣增强。
 // @description:zh-CN  MWI Sunrishe 综合工具箱：提供角色/队伍名片、技能/房屋/战斗升级规划、装备提升计算器、地下城收益、配装同步和市场伴侣增强。
 // @description:en     MST toolkit for character/party cards, ability/house/combat upgrade planning, equipment comparison, dungeon profit, loadout sync, and Market Mate enhancements.
@@ -21631,12 +21631,14 @@
     }
 
     init() {
-      const {CONFIG, LanguageEvents, utils} = this.ctx;
+      const {CONFIG, LanguageEvents, pageWindow, utils} = this.ctx;
       if (!CONFIG.isGameSite) return;
       // 同一页面只允许一个迷宫补给实例活动：调试注入、旧脚本残留等并存时，
       // 多个实例会互相清理对方插入的按钮导致按钮持续闪烁，先到先得。
-      if (window.__MST_LABYRINTH_SUPPLY_OWNER__) return;
-      window.__MST_LABYRINTH_SUPPLY_OWNER__ = true;
+      // 标记必须写在页面 window（unsafeWindow）上：油猴沙箱的 window 与页面 window
+      // 是两个对象，写在沙箱 window 上时其他脚本副本（另一个沙箱）看不到该标记。
+      if (pageWindow.__MST_LABYRINTH_SUPPLY_OWNER__) return;
+      pageWindow.__MST_LABYRINTH_SUPPLY_OWNER__ = true;
       // 旧版本脚本可能残留旧 CSS（如按钮 fixed 定位），主动覆盖为当前样式，避免升级后样式不更新。
       const existingStyle = document.getElementById('mst-labyrinth-supply-style');
       if (existingStyle) existingStyle.textContent = MST_LABYRINTH_SUPPLY_CSS;
@@ -21897,19 +21899,21 @@
     }
 
     init() {
-      const {CONFIG, LanguageEvents, utils} = this.ctx;
+      const {CONFIG, LanguageEvents, pageWindow, utils} = this.ctx;
       if (!CONFIG.isGameSite) return;
       // 同一页面只允许一个市场加购实例活动：调试注入、旧脚本残留等并存时，
       // 多个实例会互相清理对方插入的按钮导致按钮持续闪烁，先到先得。
-      if (window.__MST_MARKETPLACE_CART_OWNER__) return;
-      window.__MST_MARKETPLACE_CART_OWNER__ = true;
+      // 标记必须写在页面 window（unsafeWindow）上：油猴沙箱的 window 与页面 window
+      // 是两个对象，写在沙箱 window 上时其他脚本副本（另一个沙箱）看不到该标记。
+      if (pageWindow.__MST_MARKETPLACE_CART_OWNER__) return;
+      pageWindow.__MST_MARKETPLACE_CART_OWNER__ = true;
       StyleService.ensure('mst-marketplace-cart-style', MST_MARKETPLACE_CART_CSS);
       this.bodyObserver = utils.observeBody(() => this.sync());
       LanguageEvents.subscribe(() => this.updateLabel());
     }
 
     sync() {
-      const {GameUiAdapter} = this.ctx;
+      const {DataHub, GameUiAdapter} = this.ctx;
       const container = GameUiAdapter.query('marketplaceNavButtons');
       // 游戏源码 renderMarketListingsNavigationButtons 的 children 顺序固定为
       // [viewAllItems, viewAllEnhancementLevels, refresh]，刷新按钮恒为最后一个；
@@ -21922,7 +21926,13 @@
           ...candidates
         ]
           .reverse()
-          .find((button) => !button.classList.contains('mst-marketplace-cart-button')) || null;
+          .find((button) => {
+            if (button.classList.contains('mst-marketplace-cart-button')) return false;
+            // 只认 React 渲染的按钮：其他脚本克隆/注入的按钮（如生产采集增强脚本的
+            // market-cart-btn）没有 __reactFiber 关联，用作锚点后读不到 MarketplacePanel
+            // state，点击会误报“当前没有可加入购物车的市场物品”。
+            return DataHub.getReactFiber(button) != null;
+          }) || null;
       if (!refreshButton) {
         this.teardown();
         return;
