@@ -1,0 +1,23 @@
+/* 市场“加入购物车”按钮插入刷新按钮后方的文档流内，随面板布局自动排布；
+   按钮本体复用游戏 Button 组件外观（类名运行时从导航按钮容器提取，哈希随游戏版本变化），
+   这里的样式只在游戏按钮类缺失时兜底。 */
+.mst-marketplace-cart {
+  display: inline-flex;
+}
+.mst-marketplace-cart-button:not([class*='Button_button__']) {
+  min-height: var(--button-height-normal, 1.875rem);
+  padding: 0 0.625rem;
+  box-sizing: border-box;
+  border: 1px solid var(--color-midnight-100, #454771);
+  border-radius: var(--radius-sm, 0.25rem);
+  background: var(--color-midnight-500, #2c2e45);
+  color: var(--color-text-dark-mode, #e7e7e7);
+  font: inherit;
+  font-size: var(--font-size-base, 0.875rem);
+  white-space: nowrap;
+  cursor: pointer;
+}
+.mst-marketplace-cart-button:not([class*='Button_button__']):hover {
+  border-color: var(--color-space-300, #98a7e9);
+  background: var(--color-midnight-400, #323450);
+}

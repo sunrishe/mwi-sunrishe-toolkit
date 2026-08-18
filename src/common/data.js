@@ -575,6 +575,7 @@ const dataHubCharacterDataMethods = {
 
     if (type === 'character_updated' && message.character) replace('character', message.character);
     if (type === 'character_info_updated' && message.characterInfo) replace('characterInfo', message.characterInfo);
+    if (type === 'setting_updated' && message.characterSetting) replace('characterSetting', message.characterSetting);
     if (type === 'character_stats_updated') {
       if (message.combatUnit) {
         replace('combatUnit', message.combatUnit);

@@ -51,7 +51,7 @@
   --swal2-toast-box-shadow: var(--shadow-sm, 2px 2px 4px rgba(0, 0, 0, 0.2));
   --swal2-toast-show-animation: mst-swal2-toast-show 140ms ease-out;
   --swal2-toast-hide-animation: mst-swal2-hide 100ms ease-in forwards;
-  z-index: 2147482100 !important;
+  z-index: var(--mst-z-popup) !important;
   font-family: Roboto, Helvetica, Arial, sans-serif;
 }
 
@@ -232,7 +232,7 @@
   position: fixed;
   top: max(var(--spacing-sm, 0.5rem), env(safe-area-inset-top));
   left: 50%;
-  z-index: 2147483550 !important;
+  z-index: var(--mst-z-toast) !important;
   display: grid;
   width: min(24rem, calc(100vw - 1rem));
   transform: translateX(-50%);

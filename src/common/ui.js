@@ -315,6 +315,13 @@ export class ClipboardCartImportFeature {
   addButton() {
     const {CONFIG, MarketMateBridge, i18n} = this.ctx;
     if (!CONFIG.isGameSite || !MarketMateBridge.isReady() || !this.panelRoot) return;
+    // 导入剪贴板只属于购物车清单页；项目/设置等其他标签页不展示，并清掉可能残留的旧按钮。
+    // MWITools 的 renderShell 会同步更新激活标签的 data-active，观察器回调读取到的标签状态即为最终状态。
+    const activeTab = this.panelRoot.querySelector('.tab[data-active="true"]')?.dataset?.tab;
+    if (activeTab !== 'cart') {
+      this.panelRoot.querySelectorAll('#mst-mmm-import-clipboard').forEach((node) => node.remove());
+      return;
+    }
     const footer = this.panelRoot.querySelector('footer.panel-footer');
     if (!footer) return;
     const clearButton = footer.querySelector('button.clear');
@@ -330,14 +337,17 @@ export class ClipboardCartImportFeature {
       button.id = 'mst-mmm-import-clipboard';
       button.type = 'button';
       // MWITools 购物车面板在 shadowRoot 内，页面样式不可达，用内联样式与面板按钮（清空/清空未收藏）协调。
+      // 面板按钮默认无边框，MST 按钮保持 1px 透明边框占位、悬停时才显示边框色，避免与面板按钮观感不一致。
       button.style.cssText =
-        'margin-left:auto;padding:9px 18px;border:1px solid rgba(231,231,231,0.18);' +
+        'margin-left:auto;padding:9px 18px;border:1px solid transparent;' +
         'border-radius:6px;background:rgba(231,231,231,0.08);color:#e7e7e7;' +
         'font-size:12.5px;font-weight:700;cursor:pointer;white-space:nowrap;';
       button.addEventListener('mouseenter', () => {
+        button.style.borderColor = 'rgba(231,231,231,0.18)';
         button.style.background = 'rgba(231,231,231,0.16)';
       });
       button.addEventListener('mouseleave', () => {
+        button.style.borderColor = 'transparent';
         button.style.background = 'rgba(231,231,231,0.08)';
       });
       button.addEventListener('click', (event) => {

@@ -3,7 +3,7 @@
 // @name:zh-CN         MWI Sunrishe 工具箱
 // @name:en            MWI Sunrishe Toolkit
 // @namespace          http://tampermonkey.net/
-// @version            2.10.2
+// @version            2.11.0
 // @description        MWI Sunrishe 综合工具箱：提供角色/队伍名片、技能/房屋/战斗升级规划、装备提升计算器、地下城收益、配装同步和市场伴侣增强。
 // @description:zh-CN  MWI Sunrishe 综合工具箱：提供角色/队伍名片、技能/房屋/战斗升级规划、装备提升计算器、地下城收益、配装同步和市场伴侣增强。
 // @description:en     MST toolkit for character/party cards, ability/house/combat upgrade planning, equipment comparison, dungeon profit, loadout sync, and Market Mate enhancements.
@@ -658,6 +658,7 @@
 
       if (type === 'character_updated' && message.character) replace('character', message.character);
       if (type === 'character_info_updated' && message.characterInfo) replace('characterInfo', message.characterInfo);
+      if (type === 'setting_updated' && message.characterSetting) replace('characterSetting', message.characterSetting);
       if (type === 'character_stats_updated') {
         if (message.combatUnit) {
           replace('combatUnit', message.combatUnit);
@@ -1647,6 +1648,41 @@
   // character-switcher-messages
   const CHARACTER_SWITCHER_MESSAGES = {switchCharacter: {zh: '切换角色', en: 'Switch Character'}};
 
+  // labyrinth-supply-messages
+  const LABYRINTH_SUPPLY_MESSAGES = {
+    labyrinthSupply: {zh: '补充补给', en: 'Restock Supplies'},
+    labyrinthSupplyTitle: {
+      zh: '按入场次数把迷宫道具与补给箱缺少的数量加入 MWITools 购物车',
+      en: 'Add missing labyrinth supplies and crates to the MWITools cart by entry count'
+    },
+    labyrinthSupplyPopoverTitle: {zh: '按入场次数补货', en: 'Restock by entries'},
+    labyrinthSupplyRunTitle: {zh: '按 {0} 次入场补足道具与补给箱', en: 'Restock for {0} entries'},
+    labyrinthSupplyDone: {
+      zh: '已把 {0} 种迷宫补给加入购物车，共 {1} 个',
+      en: 'Added {0} labyrinth supply types ({1} total)'
+    },
+    labyrinthSupplyNothingMissing: {
+      zh: '迷宫道具与补给箱已充足，无需补充',
+      en: 'Labyrinth supplies and crates are already full'
+    },
+    labyrinthSupplyAddFailed: {zh: '迷宫补给加入购物车失败', en: 'Failed to add labyrinth supplies to the cart'}
+  };
+
+  // marketplace-cart-messages
+  const MARKETPLACE_CART_MESSAGES = {
+    marketplaceCart: {zh: '加入购物车', en: 'Add to Cart'},
+    marketplaceCartTitle: {
+      zh: '把市场当前物品加入 MWITools 购物车，保留强化等级',
+      en: 'Add the current market item to the MWITools cart, keeping its enhancement level'
+    },
+    marketplaceCartDone: {zh: '已加入购物车：{0}', en: 'Added to cart: {0}'},
+    marketplaceCartNoItem: {
+      zh: '当前没有可加入购物车的市场物品',
+      en: 'No market item is currently selected'
+    },
+    marketplaceCartAddFailed: {zh: '加入购物车失败', en: 'Failed to add to the cart'}
+  };
+
   // eds-milkonomy-messages
   const EDS_MILKONOMY_MESSAGES = {
     copyMilkonomy: {zh: '复制 Milkonomy 数据', en: 'Copy Milkonomy Data'},
@@ -2032,6 +2068,8 @@
     houseCalculator: HOUSE_CALCULATOR_MESSAGES,
     marketMate: MARKET_MATE_MESSAGES,
     characterSwitcher: CHARACTER_SWITCHER_MESSAGES,
+    labyrinthSupply: LABYRINTH_SUPPLY_MESSAGES,
+    marketplaceCart: MARKETPLACE_CART_MESSAGES,
     edsMilkonomy: EDS_MILKONOMY_MESSAGES,
     characterCard: CHARACTER_CARD_MESSAGES,
     toolkitMenu: TOOLKIT_MENU_MESSAGES,
@@ -2075,6 +2113,10 @@
         housePanel: '[class*="HousePanel_housePanel__"]',
         houseButtonContainer: '[class*="HousePanel_buttonContainer__"]',
         houseTitle: '[class*="HousePanel_title__"]',
+        labyrinthPanel: '[class*="LabyrinthPanel_labyrinthPanel__"]',
+        labyrinthEntryScreen: '[class*="LabyrinthPanel_entryScreen__"]',
+        labyrinthButtonsContainer: '[class*="LabyrinthPanel_buttonsContainer__"]',
+        marketplaceNavButtons: '[class*="MarketplacePanel_marketNavButtonContainer__"]',
         equipmentPanel: '[class*="EquipmentPanel_equipmentPanel__"]',
         equipmentButtonContainer: '[class*="EquipmentPanel_buttonContainer__"]',
         selectedLoadout: '[class*="LoadoutsPanel_selectedLoadout__"]',
@@ -3233,6 +3275,13 @@
     addButton() {
       const {CONFIG, MarketMateBridge, i18n} = this.ctx;
       if (!CONFIG.isGameSite || !MarketMateBridge.isReady() || !this.panelRoot) return;
+      // 导入剪贴板只属于购物车清单页；项目/设置等其他标签页不展示，并清掉可能残留的旧按钮。
+      // MWITools 的 renderShell 会同步更新激活标签的 data-active，观察器回调读取到的标签状态即为最终状态。
+      const activeTab = this.panelRoot.querySelector('.tab[data-active="true"]')?.dataset?.tab;
+      if (activeTab !== 'cart') {
+        this.panelRoot.querySelectorAll('#mst-mmm-import-clipboard').forEach((node) => node.remove());
+        return;
+      }
       const footer = this.panelRoot.querySelector('footer.panel-footer');
       if (!footer) return;
       const clearButton = footer.querySelector('button.clear');
@@ -3248,14 +3297,17 @@
         button.id = 'mst-mmm-import-clipboard';
         button.type = 'button';
         // MWITools 购物车面板在 shadowRoot 内，页面样式不可达，用内联样式与面板按钮（清空/清空未收藏）协调。
+        // 面板按钮默认无边框，MST 按钮保持 1px 透明边框占位、悬停时才显示边框色，避免与面板按钮观感不一致。
         button.style.cssText =
-          'margin-left:auto;padding:9px 18px;border:1px solid rgba(231,231,231,0.18);' +
+          'margin-left:auto;padding:9px 18px;border:1px solid transparent;' +
           'border-radius:6px;background:rgba(231,231,231,0.08);color:#e7e7e7;' +
           'font-size:12.5px;font-weight:700;cursor:pointer;white-space:nowrap;';
         button.addEventListener('mouseenter', () => {
+          button.style.borderColor = 'rgba(231,231,231,0.18)';
           button.style.background = 'rgba(231,231,231,0.16)';
         });
         button.addEventListener('mouseleave', () => {
+          button.style.borderColor = 'transparent';
           button.style.background = 'rgba(231,231,231,0.08)';
         });
         button.addEventListener('click', (event) => {
@@ -8027,7 +8079,7 @@
 .mst-character-card .mst-card-readonly-empty-skill-slot{cursor:default}
 .mst-character-card .mst-card-readonly-empty-skill-slot:hover{opacity:.3;border-color:#4a90e24d;background:#ffffff0d}
 .mst-character-card .mst-card-empty-skill-label{color:#999;font-size:10px;line-height:1}
-.mst-skill-selector-modal{position:fixed;top:0;left:0;width:100%;height:100%;background:#000c;z-index:2147482101;display:flex;justify-content:center;align-items:center;padding:var(--spacing-sm, .5rem);box-sizing:border-box}
+.mst-skill-selector-modal{position:fixed;top:0;left:0;width:100%;height:100%;background:#000c;z-index:var(--mst-z-popup);display:flex;justify-content:center;align-items:center;padding:var(--spacing-sm, .5rem);box-sizing:border-box}
 .mst-skill-selector-content{display:grid;grid-template-rows:auto auto minmax(0,1fr) auto;width:min(34rem,calc(100vw - 1rem));max-height:calc(100vh - 1rem);max-height:calc(100dvh - 1rem);max-height:calc(100svh - 1rem);background:var(--color-midnight-900, #131419);border-radius:var(--radius-sm, .25rem);padding:var(--spacing-sm, .5rem);overflow:hidden;position:relative;border:var(--border-width-thin, 1px) solid var(--color-neutral-200, #d0d0d0);box-shadow:0 0 .25rem .25rem #d0d0d047}
 .mst-skill-selector-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:var(--spacing-xs, .25rem);border-bottom:var(--border-width-thin, 1px) solid var(--color-midnight-100, #454771);padding-bottom:var(--spacing-xs, .25rem)}
 .mst-skill-selector-header h3{margin:0;color:#fff;font-size:var(--font-size-base, .875rem)}
@@ -21403,6 +21455,563 @@
     }
   }
 
+  var MST_LABYRINTH_SUPPLY_CSS = String.raw`.mst-labyrinth-supply{display:flex;justify-content:center;margin:0 0 .25rem}
+.mst-labyrinth-supply-toggle:not([class*=Button_button__]){min-height:var(--button-height-normal, 1.875rem);padding:0 .625rem;box-sizing:border-box;border:1px solid var(--color-midnight-100, #454771);border-radius:var(--radius-sm, .25rem);background:var(--color-midnight-500, #2c2e45);color:var(--color-text-dark-mode, #e7e7e7);font:inherit;font-size:var(--font-size-base, .875rem);white-space:nowrap;cursor:pointer}
+.mst-labyrinth-supply-toggle:not([class*=Button_button__]):hover{border-color:var(--color-space-300, #98a7e9);background:var(--color-midnight-400, #323450)}
+.mst-labyrinth-supply-popover{position:fixed;z-index:var(--mst-z-popup);display:flex;min-width:12rem;flex-direction:column;gap:.35rem;padding:.5rem;box-sizing:border-box;border:1px solid var(--color-midnight-100, #454771);border-radius:var(--radius-sm, .25rem);background:var(--color-midnight-600, #27283b);box-shadow:var(--shadow-md, 0 .35rem 1rem rgba(0, 0, 0, .4));font-family:Roboto,Helvetica,Arial,sans-serif}
+.mst-labyrinth-supply-popover[hidden]{display:none}
+.mst-labyrinth-supply-popover-title{color:var(--color-text-dark-mode, #e7e7e7);font-size:var(--font-size-small, .75rem);font-weight:600;text-align:center}
+.mst-labyrinth-supply-popover-grid{display:grid;grid-template-columns:repeat(5,2rem);gap:.3rem;justify-content:center}
+.mst-labyrinth-supply-popover-grid button{min-height:2rem;padding:0;border:1px solid var(--color-midnight-100, #454771);border-radius:var(--radius-sm, .25rem);background:var(--color-midnight-500, #2c2e45);color:var(--color-text-dark-mode, #e7e7e7);font:inherit;font-size:var(--font-size-base, .875rem);cursor:pointer}
+.mst-labyrinth-supply-popover-grid button:hover{border-color:var(--color-space-300, #98a7e9);background:var(--color-midnight-400, #323450)}`;
+
+  // 迷宫入场配置未设置物品时，按专家档位道具兜底（与游戏 LabyrinthSupplyItems 的 expert 系列一致）。
+  const LABYRINTH_DEFAULT_ITEMS = Object.freeze({
+    torch: '/items/expert_torch',
+    shroud: '/items/expert_shroud',
+    beacon: '/items/expert_beacon',
+    teaCrate: '/items/expert_tea_crate',
+    coffeeCrate: '/items/expert_coffee_crate',
+    foodCrate: '/items/expert_food_crate'
+  });
+
+  // 道具携带上限：角色未解锁对应迷宫升级时使用游戏基础上限（LabyrinthBaseTorchCap 等）。
+  const LABYRINTH_BASE_CAPS = Object.freeze({torch: 100, shroud: 4, beacon: 5});
+
+  // 游戏入场券上限固定为 5（迷宫入口“入场券: {{current}} / {{max}}”的 max 为硬编码）。
+  const LABYRINTH_MAX_ENTRIES = 5;
+
+  const SUPPLY_KEYS = Object.freeze([
+    'torch', 'shroud', 'beacon'
+  ]);
+  const CRATE_KEYS = Object.freeze([
+    'teaCrate', 'coffeeCrate', 'foodCrate'
+  ]);
+
+  // 每次入场各补给箱消耗 1 个（茶箱/咖啡箱/食物箱），道具按携带上限补足。
+  function calculateLabyrinthSupply(config, ownedCounts, entryCount) {
+    const count = Math.max(1, Math.floor(Number(entryCount) || 0));
+    const owned = ownedCounts || {};
+    const items = [];
+    for (const key of SUPPLY_KEYS) {
+      const entry = config?.[key];
+      if (!entry?.hrid) continue;
+      const cap = Math.max(0, Number(entry.cap) || 0);
+      const missing = Math.max(0, cap * count - Number(owned[entry.hrid] || 0));
+      if (missing > 0) items.push({itemId: entry.hrid, quantity: missing});
+    }
+    for (const key of CRATE_KEYS) {
+      const entry = config?.[key];
+      if (!entry?.hrid) continue;
+      const missing = Math.max(0, count - Number(owned[entry.hrid] || 0));
+      if (missing > 0) items.push({itemId: entry.hrid, quantity: missing});
+    }
+    return items;
+  }
+
+  // labyrinth-supply-config
+  const labyrinthSupplyConfig = {
+    getConfig(feature) {
+      const {CharacterDataService} = feature.ctx;
+      const raw = CharacterDataService.raw || {};
+      const info = raw.characterInfo || {};
+      const setting = raw.characterSetting || {};
+      const cap = (name) => {
+        const value = Number(info[`labyrinth${name}Cap`]);
+        return value > 0 ? value : LABYRINTH_BASE_CAPS[name.toLowerCase()];
+      };
+      const pick = (name) => setting[`labyrinth${name}Hrid`] || LABYRINTH_DEFAULT_ITEMS[name.toLowerCase()];
+      return {
+        torch: {hrid: pick('Torch'), cap: cap('Torch')},
+        shroud: {hrid: pick('Shroud'), cap: cap('Shroud')},
+        beacon: {hrid: pick('Beacon'), cap: cap('Beacon')},
+        teaCrate: {hrid: pick('TeaCrate')},
+        coffeeCrate: {hrid: pick('CoffeeCrate')},
+        foodCrate: {hrid: pick('FoodCrate')}
+      };
+    }
+  };
+
+  // labyrinth-supply-cart
+  const labyrinthSupplyCart = {
+    addToCart(feature, entryCount) {
+      const {CharacterDataService, DataHub, MarketMateBridge, i18n, Notifier} = feature.ctx;
+      if (!MarketMateBridge.isReady()) {
+        Notifier.toast(i18n.t('marketMateUnavailable'), 'warning');
+        return;
+      }
+      const config = labyrinthSupplyConfig.getConfig(feature);
+      const owned = {};
+      for (const key of [
+        ...SUPPLY_KEYS, ...CRATE_KEYS
+      ]) {
+        const hrid = config[key].hrid;
+        if (hrid && owned[hrid] == null) owned[hrid] = CharacterDataService.getInventoryCount(hrid, 0);
+      }
+      const quantities = calculateLabyrinthSupply(config, owned, entryCount);
+      if (!quantities.length) {
+        Notifier.toast(i18n.t('labyrinthSupplyNothingMissing'), 'info');
+        return;
+      }
+      const items = quantities.map(({itemId, quantity}) => ({
+        itemId,
+        name: DataHub.resolveItemName(itemId),
+        iconRef: itemId,
+        quantity,
+        source: 'mst_labyrinth'
+      }));
+      const response = MarketMateBridge.addToCart(items);
+      if (!response?.ok) {
+        Notifier.toast(response?.error || i18n.t('labyrinthSupplyAddFailed'), 'error');
+        return;
+      }
+      const total = quantities.reduce((sum, item) => sum + item.quantity, 0);
+      Notifier.toast(i18n.t('labyrinthSupplyDone', quantities.length, total.toLocaleString(i18n.locale)), 'success');
+    }
+  };
+
+  // labyrinth-supply-popover
+  const labyrinthSupplyPopover = {
+    show(feature) {
+      if (!feature.popover || !feature.wrapper?.isConnected) return;
+      feature.popover.hidden = false;
+      this.position(feature);
+    },
+
+    hide(feature) {
+      if (feature.popover) feature.popover.hidden = true;
+    },
+
+    position(feature) {
+      const popover = feature.popover;
+      const trigger = feature.wrapper?.querySelector('.mst-labyrinth-supply-toggle');
+      if (!popover || !trigger) return;
+      const viewport = window.visualViewport;
+      const viewportLeft = viewport?.offsetLeft || 0;
+      const viewportTop = viewport?.offsetTop || 0;
+      const viewportRight = viewportLeft + (viewport?.width || window.innerWidth);
+      const viewportBottom = viewportTop + (viewport?.height || window.innerHeight);
+      const margin = 8;
+      const gap = 6;
+      const triggerRect = trigger.getBoundingClientRect();
+      const popoverRect = popover.getBoundingClientRect();
+      const left = Math.max(
+        viewportLeft + margin,
+        Math.min(
+          triggerRect.left + triggerRect.width / 2 - popoverRect.width / 2,
+          viewportRight - popoverRect.width - margin
+        )
+      );
+      // 优先显示在按钮上方，空间不足时再放到下方。
+      const aboveTop = triggerRect.top - popoverRect.height - gap;
+      const belowTop = triggerRect.bottom + gap;
+      const top =
+        aboveTop >= viewportTop + margin ? aboveTop : Math.min(belowTop, viewportBottom - popoverRect.height - margin);
+      popover.style.left = `${left}px`;
+      popover.style.top = `${top}px`;
+    }
+  };
+
+  // labyrinth-supply-feature
+  class LabyrinthSupplyFeature {
+    static ctx = null;
+
+    static configure(ctx) {
+      this.ctx = ctx;
+    }
+
+    constructor() {
+      this.ctx = LabyrinthSupplyFeature.ctx;
+      this.bodyObserver = null;
+      this.anchor = null;
+      this.wrapper = null;
+      this.popover = null;
+      this.hideTimer = null;
+      this.lastTogglePointerAt = 0;
+    }
+
+    init() {
+      const {CONFIG, LanguageEvents, utils} = this.ctx;
+      if (!CONFIG.isGameSite) return;
+      // 同一页面只允许一个迷宫补给实例活动：调试注入、旧脚本残留等并存时，
+      // 多个实例会互相清理对方插入的按钮导致按钮持续闪烁，先到先得。
+      if (window.__MST_LABYRINTH_SUPPLY_OWNER__) return;
+      window.__MST_LABYRINTH_SUPPLY_OWNER__ = true;
+      // 旧版本脚本可能残留旧 CSS（如按钮 fixed 定位），主动覆盖为当前样式，避免升级后样式不更新。
+      const existingStyle = document.getElementById('mst-labyrinth-supply-style');
+      if (existingStyle) existingStyle.textContent = MST_LABYRINTH_SUPPLY_CSS;
+      else StyleService.ensure('mst-labyrinth-supply-style', MST_LABYRINTH_SUPPLY_CSS);
+      this.bodyObserver = utils.observeBody(() => this.sync());
+      LanguageEvents.subscribe(() => this.updateLabels());
+    }
+
+    sync() {
+      const {GameUiAdapter} = this.ctx;
+      const panel = GameUiAdapter.query('labyrinthPanel');
+      // 按钮容器与入口屏是迷宫标签页下的平级节点（真实 DOM 位于 labyrinthTab > bottomArea > infoContainer 内），
+      // 且只有入口屏才渲染（进行中的迷宫无此容器），直接在面板内查询即可。
+      const buttonsContainer = panel?.querySelector('[class*="LabyrinthPanel_buttonsContainer"]') || null;
+      // 只认真正的“进入迷宫”按钮：补充补给按钮也复用 Button_ 类，若把其他实例的
+      // 补充补给按钮错当锚点，两个实例会互相插拔按钮导致持续闪烁，必须排除。
+      const candidates = buttonsContainer ? [
+            ...buttonsContainer.querySelectorAll('button')
+          ] : [];
+      const enterButton =
+        candidates.find(
+          (button) => /Button_/.test(button.className) && !button.classList.contains('mst-labyrinth-supply-toggle')
+        ) ||
+        candidates.find((button) => !button.classList.contains('mst-labyrinth-supply-toggle')) ||
+        null;
+      if (!enterButton) {
+        this.teardown();
+        return;
+      }
+      // “进入迷宫”按钮默认用 large 档（2.25rem 高），视觉偏高；
+      // 移除 Button_large 变体即回落到游戏官方 normal 档高度（1.875rem），游戏重渲染后由本方法重新维持。
+      const buttonNames = String(enterButton.className || '').split(/\s+/);
+      const largeIndex = buttonNames.findIndex((name) => name.startsWith('Button_large__'));
+      if (largeIndex >= 0) {
+        buttonNames.splice(largeIndex, 1);
+        enterButton.className = buttonNames.join(' ');
+      }
+      // 按钮与悬浮窗都随游戏面板布局：按钮插入“进入迷宫”按钮后方的文档流内（与房屋计算器触发按钮一致），
+      // 悬浮窗是临时浮层才挂 body；游戏重渲染清掉按钮节点时由观察器重建。
+      if (enterButton !== this.anchor || !this.wrapper?.isConnected) {
+        this.teardown();
+        this.anchor = enterButton;
+        this.build(enterButton);
+      }
+    }
+
+    build(anchor) {
+      const {i18n} = this.ctx;
+      // 复用游戏按钮外观：基础类从页面现有按钮动态提取（游戏更新 CSS 哈希后仍能跟随），
+      // 与“进入迷宫”按钮同为官方 normal 档尺寸；不追加 small/large 变体。
+      const gameButtonClass = (() => {
+        const found = new Set();
+        this.ctx.GameUiAdapter.query('labyrinthPanel')
+          ?.querySelectorAll('button[class*="Button_"]')
+          .forEach((button) => {
+            String(button.className || '')
+              .split(/\s+/)
+              .forEach((name) => {
+                if (name.startsWith('Button_button__')) found.add(name);
+              });
+          });
+        return [
+            ...found
+          ].find((name) => name.startsWith('Button_button__')) || 'Button_button__1Fe9z';
+      })();
+      this.wrapper = document.createElement('div');
+      this.wrapper.className = 'mst-labyrinth-supply';
+      const label = i18n.t('labyrinthSupply');
+      this.wrapper.innerHTML = `<button type="button" class="mst-labyrinth-supply-toggle ${gameButtonClass}" title="${label}">${label}</button>`;
+      // 先清掉按钮容器内可能残留的同名按钮（页面同时存在多个脚本实例时避免互相干扰）。
+      anchor.parentElement?.querySelectorAll('.mst-labyrinth-supply').forEach((element) => element.remove());
+      // 插入按钮容器文档流（“进入迷宫”按钮正上方），随面板布局自动排布，不会漂移。
+      anchor.insertAdjacentElement('beforebegin', this.wrapper);
+      const toggle = this.wrapper.querySelector('.mst-labyrinth-supply-toggle');
+      // 点击切换小窗：pointerup 先于触屏点击时浏览器合成的 mouseenter 触发（合成序列为
+      // touchstart → touchend → pointerup → mouseenter → mousedown → mouseup → click），
+      // 若沿用 click 切换，弹窗会先被合成 mouseenter 显示、再被 click 判定“已显示”而立即
+      // 隐藏，移动端表现为点了没反应；pointerup 切换时弹窗状态尚未被合成事件改动。
+      toggle.addEventListener('pointerup', (event) => {
+        event.stopPropagation();
+        this.lastTogglePointerAt = Date.now();
+        this.togglePopover();
+      });
+      // 键盘（Enter/空格）只触发 click，作为切换兜底；pointerup 已切换的同一点击跳过去重。
+      toggle.addEventListener('click', (event) => {
+        event.stopPropagation();
+        if (Date.now() - (this.lastTogglePointerAt || 0) < 500) return;
+        this.togglePopover();
+      });
+
+      this.popover = document.createElement('div');
+      this.popover.className = 'mst-labyrinth-supply-popover';
+      this.popover.setAttribute('role', 'menu');
+      this.popover.hidden = true;
+      document.body.appendChild(this.popover);
+      this.renderPopover();
+
+      // 悬浮显示小窗；从按钮移向小窗期间短暂延迟隐藏，避免窗口抖动。
+      // 触屏点击会合成 mouseenter（在 pointerup 之后），500ms 内忽略，避免覆盖点击切换的结果。
+      this.wrapper.addEventListener('mouseenter', () => {
+        if (Date.now() - (this.lastTogglePointerAt || 0) < 500) return;
+        this.scheduleShow(0);
+      });
+      this.wrapper.addEventListener('mouseleave', () => this.scheduleHide());
+      this.popover.addEventListener('mouseenter', () => {
+        if (Date.now() - (this.lastTogglePointerAt || 0) < 500) return;
+        this.scheduleShow(0);
+      });
+      this.popover.addEventListener('mouseleave', () => this.scheduleHide());
+      document.addEventListener(
+        'pointerdown',
+        (this.outsidePointerDownHandler = (event) => {
+          if (!this.wrapper?.contains(event.target) && !this.popover?.contains(event.target)) this.hidePopover();
+        })
+      );
+      // 捕获阶段监听滚动与视口变化：悬浮窗显示期间跟随按钮重新定位（按钮本体在文档流内无需处理）。
+      this.repositionHandler = () => {
+        if (!this.popover?.hidden) labyrinthSupplyPopover.position(this);
+      };
+      document.addEventListener('scroll', this.repositionHandler, true);
+      window.addEventListener('resize', this.repositionHandler);
+      window.visualViewport?.addEventListener('resize', this.repositionHandler);
+      window.visualViewport?.addEventListener('scroll', this.repositionHandler);
+      this.updateLabels();
+    }
+
+    renderPopover() {
+      const {i18n, TemplateRenderer} = this.ctx;
+      const options = Array.from(
+        {length: LABYRINTH_MAX_ENTRIES},
+        (_, index) => TemplateRenderer.html`
+  <button type="button" role="menuitem" data-entry-count=${String(index + 1)}
+      title=${i18n.t('labyrinthSupplyRunTitle', String(index + 1))}>${index + 1}</button>`
+      );
+      TemplateRenderer.render(
+        () => TemplateRenderer.html`
+  <div class="mst-labyrinth-supply-popover-title">${i18n.t('labyrinthSupplyPopoverTitle')}</div>
+  <div class="mst-labyrinth-supply-popover-grid">${options}</div>
+`,
+        this.popover
+      );
+      this.popover.querySelectorAll('[data-entry-count]').forEach((button) => {
+        button.addEventListener('click', (event) => {
+          event.stopPropagation();
+          labyrinthSupplyCart.addToCart(this, Number(button.dataset.entryCount));
+          this.hidePopover();
+        });
+      });
+    }
+
+    scheduleShow(delay) {
+      clearTimeout(this.hideTimer);
+      this.hideTimer = null;
+      const show = () => labyrinthSupplyPopover.show(this);
+      if (delay > 0) this.hideTimer = setTimeout(show, delay);
+      else show();
+    }
+
+    scheduleHide() {
+      clearTimeout(this.hideTimer);
+      this.hideTimer = setTimeout(() => this.hidePopover(), 120);
+    }
+
+    togglePopover() {
+      if (this.popover?.hidden) this.scheduleShow(0);
+      else this.hidePopover();
+    }
+
+    hidePopover() {
+      clearTimeout(this.hideTimer);
+      this.hideTimer = null;
+      labyrinthSupplyPopover.hide(this);
+    }
+
+    teardown() {
+      if (this.hideTimer) {
+        clearTimeout(this.hideTimer);
+        this.hideTimer = null;
+      }
+      if (this.outsidePointerDownHandler) {
+        document.removeEventListener('pointerdown', this.outsidePointerDownHandler);
+        this.outsidePointerDownHandler = null;
+      }
+      if (this.repositionHandler) {
+        document.removeEventListener('scroll', this.repositionHandler, true);
+        window.removeEventListener('resize', this.repositionHandler);
+        window.visualViewport?.removeEventListener('resize', this.repositionHandler);
+        window.visualViewport?.removeEventListener('scroll', this.repositionHandler);
+        this.repositionHandler = null;
+      }
+      this.popover?.remove();
+      this.popover = null;
+      this.wrapper?.remove();
+      this.wrapper = null;
+      this.anchor = null;
+    }
+
+    updateLabels() {
+      const {i18n} = this.ctx;
+      const toggle = this.wrapper?.querySelector('.mst-labyrinth-supply-toggle');
+      if (!toggle) return;
+      const label = i18n.t('labyrinthSupply');
+      toggle.textContent = label;
+      toggle.title = i18n.t('labyrinthSupplyTitle');
+      // 悬浮小窗内容只在构建时渲染一次，语言切换后标题与入场次数按钮提示也要跟着更新。
+      const title = this.popover?.querySelector('.mst-labyrinth-supply-popover-title');
+      if (title) title.textContent = i18n.t('labyrinthSupplyPopoverTitle');
+      this.popover?.querySelectorAll('[data-entry-count]').forEach((button) => {
+        button.title = i18n.t('labyrinthSupplyRunTitle', String(button.dataset.entryCount));
+      });
+    }
+  }
+
+  var MST_MARKETPLACE_CART_CSS = String.raw`.mst-marketplace-cart{display:inline-flex}
+.mst-marketplace-cart-button:not([class*=Button_button__]){min-height:var(--button-height-normal, 1.875rem);padding:0 .625rem;box-sizing:border-box;border:1px solid var(--color-midnight-100, #454771);border-radius:var(--radius-sm, .25rem);background:var(--color-midnight-500, #2c2e45);color:var(--color-text-dark-mode, #e7e7e7);font:inherit;font-size:var(--font-size-base, .875rem);white-space:nowrap;cursor:pointer}
+.mst-marketplace-cart-button:not([class*=Button_button__]):hover{border-color:var(--color-space-300, #98a7e9);background:var(--color-midnight-400, #323450)}`;
+
+  // 市场加购固定数量：把“市场当前物品”加入购物车 1 个。
+  const MARKETPLACE_CART_QUANTITY = 1;
+
+  // marketplace-cart-state
+  // 从锚点 DOM 的 React fiber 链向上找 MarketplacePanel 类组件实例并返回其 state；
+  // 游戏源码（MarketplacePanel 组件）该 state 同时含 marketListingsView/itemHrid/enhancementLevel，
+  // 订单簿视图下 enhancementLevel 就是当前查看的强化等级，可增强物品据此保留等级。
+  function readMarketplacePanelState(fiber) {
+    let current = fiber;
+    while (current) {
+      const instance = current.stateNode;
+      const state = instance?.state;
+      if (
+        state &&
+        typeof state === 'object' &&
+        'marketListingsView' in state &&
+        'itemHrid' in state &&
+        'enhancementLevel' in state &&
+        typeof instance.handleRefresh === 'function'
+      ) {
+        return state;
+      }
+      current = current.return;
+    }
+    return null;
+  }
+
+  // marketplace-cart-feature
+  class MarketplaceCartFeature {
+    static ctx = null;
+
+    static configure(ctx) {
+      this.ctx = ctx;
+    }
+
+    constructor() {
+      this.ctx = MarketplaceCartFeature.ctx;
+      this.bodyObserver = null;
+      this.anchor = null;
+      this.wrapper = null;
+    }
+
+    init() {
+      const {CONFIG, LanguageEvents, utils} = this.ctx;
+      if (!CONFIG.isGameSite) return;
+      // 同一页面只允许一个市场加购实例活动：调试注入、旧脚本残留等并存时，
+      // 多个实例会互相清理对方插入的按钮导致按钮持续闪烁，先到先得。
+      if (window.__MST_MARKETPLACE_CART_OWNER__) return;
+      window.__MST_MARKETPLACE_CART_OWNER__ = true;
+      StyleService.ensure('mst-marketplace-cart-style', MST_MARKETPLACE_CART_CSS);
+      this.bodyObserver = utils.observeBody(() => this.sync());
+      LanguageEvents.subscribe(() => this.updateLabel());
+    }
+
+    sync() {
+      const {GameUiAdapter} = this.ctx;
+      const container = GameUiAdapter.query('marketplaceNavButtons');
+      // 游戏源码 renderMarketListingsNavigationButtons 的 children 顺序固定为
+      // [viewAllItems, viewAllEnhancementLevels, refresh]，刷新按钮恒为最后一个；
+      // 排除本模块按钮后取最后一个（React 重渲染清掉本模块按钮后即刷新按钮本身）。
+      const candidates = container ? [
+            ...container.querySelectorAll('button')
+          ] : [];
+      const refreshButton =
+        [
+          ...candidates
+        ]
+          .reverse()
+          .find((button) => !button.classList.contains('mst-marketplace-cart-button')) || null;
+      if (!refreshButton) {
+        this.teardown();
+        return;
+      }
+      // 按钮插入刷新按钮后方的文档流内（与迷宫补充补给同一做法），随面板布局自动排布；
+      // 游戏重渲染清掉按钮节点时由观察器重建。
+      if (refreshButton !== this.anchor || !this.wrapper?.isConnected) {
+        this.teardown();
+        this.anchor = refreshButton;
+        this.build(refreshButton);
+      }
+    }
+
+    build(anchor) {
+      const {i18n} = this.ctx;
+      // 复用游戏按钮外观：基础类从导航按钮容器现有按钮动态提取（游戏更新 CSS 哈希后仍能跟随）。
+      const gameButtonClass = (() => {
+        const names = [];
+        anchor.parentElement?.querySelectorAll('button[class*="Button_"]').forEach((button) => {
+          names.push(...String(button.className || '').split(/\s+/));
+        });
+        return names.find((name) => name.startsWith('Button_button__')) || 'Button_button__1Fe9z';
+      })();
+      this.wrapper = document.createElement('div');
+      this.wrapper.className = 'mst-marketplace-cart';
+      const label = i18n.t('marketplaceCart');
+      this.wrapper.innerHTML = `<button type="button" class="mst-marketplace-cart-button ${gameButtonClass}" title="${label}">${label}</button>`;
+      // 先清掉按钮容器内可能残留的同名按钮（页面同时存在多个脚本实例时避免互相干扰）。
+      anchor.parentElement?.querySelectorAll('.mst-marketplace-cart').forEach((element) => element.remove());
+      // 插入刷新按钮后方的文档流内，随面板布局自动排布，不会漂移。
+      anchor.insertAdjacentElement('afterend', this.wrapper);
+      const button = this.wrapper.querySelector('.mst-marketplace-cart-button');
+      button.addEventListener('click', (event) => {
+        event.stopPropagation();
+        this.addToCart();
+      });
+      this.updateLabel();
+    }
+
+    addToCart() {
+      const {DataHub, i18n, MarketMateBridge, Notifier} = this.ctx;
+      if (!MarketMateBridge.isReady()) {
+        Notifier.toast(i18n.t('marketMateUnavailable'), 'warning');
+        return;
+      }
+      const anchor = this.anchor;
+      if (!anchor?.isConnected) return;
+      const state = readMarketplacePanelState(DataHub.getReactFiber(anchor));
+      const itemHrid = state?.itemHrid;
+      if (!state || !itemHrid) {
+        Notifier.toast(i18n.t('marketplaceCartNoItem'), 'warning');
+        return;
+      }
+      const enhancementLevel = Math.max(0, Math.floor(Number(state.enhancementLevel) || 0));
+      const name = DataHub.resolveItemName(itemHrid);
+      const response = MarketMateBridge.addToCart([
+        {
+          itemId: itemHrid,
+          enhancementLevel,
+          name,
+          iconRef: itemHrid,
+          quantity: MARKETPLACE_CART_QUANTITY,
+          source: 'mst_marketplace'
+        }
+      ]);
+      if (!response?.ok) {
+        Notifier.toast(response?.error || i18n.t('marketplaceCartAddFailed'), 'error');
+        return;
+      }
+      const label = enhancementLevel > 0 ? `${name} +${enhancementLevel}` : name;
+      Notifier.toast(i18n.t('marketplaceCartDone', label), 'success');
+    }
+
+    updateLabel() {
+      const {i18n} = this.ctx;
+      const button = this.wrapper?.querySelector('.mst-marketplace-cart-button');
+      if (!button) return;
+      const label = i18n.t('marketplaceCart');
+      button.textContent = label;
+      button.title = i18n.t('marketplaceCartTitle');
+    }
+
+    teardown() {
+      this.wrapper?.remove();
+      this.wrapper = null;
+      this.anchor = null;
+    }
+  }
+
   // toolkit-menu-feature
   class ToolkitMenuFeature {
     constructor(
@@ -21576,6 +22185,8 @@
     EquipmentComparisonService.configure(ctx, CombatSimulationService);
     HouseCalculatorUI.configure(ctx, ctx.Notifier);
     HouseCalculatorLauncher.configure(ctx);
+    LabyrinthSupplyFeature.configure(ctx);
+    MarketplaceCartFeature.configure(ctx);
 
     ctx.AbilityUpgradeCalculatorFeature = AbilityUpgradeCalculatorFeature;
     ctx.BuildScoreService = BuildScoreService;
@@ -21590,10 +22201,13 @@
     ctx.EquipmentComparisonService = EquipmentComparisonService;
     ctx.HouseCalculator = HouseCalculator;
     ctx.HouseCalculatorUI = HouseCalculatorUI;
+    ctx.LabyrinthSupplyFeature = LabyrinthSupplyFeature;
+    ctx.MarketplaceCartFeature = MarketplaceCartFeature;
     ctx.ToolkitMenuFeature = ToolkitMenuFeature;
   }
 
-  var MST_APP_BASE_CSS = String.raw`[class*=EquipmentPanel_buttonContainer]{display:flex!important;align-items:center;justify-content:center;flex-wrap:nowrap;gap:.25rem;width:max-content;max-width:100%}
+  var MST_APP_BASE_CSS = String.raw`:root{--mst-z-popup: 1000;--mst-z-toast: 2147483550}
+[class*=EquipmentPanel_buttonContainer]{display:flex!important;align-items:center;justify-content:center;flex-wrap:nowrap;gap:.25rem;width:max-content;max-width:100%}
 .mst-eds-profit-menu{position:relative;display:inline-flex}
 .mst-eds-profit-submenu{position:absolute;top:calc(100% + .25rem);left:50%;z-index:2147483000;display:flex;min-width:max-content;transform:translate(-50%);flex-direction:column;gap:.25rem;padding:.35rem;border:1px solid var(--color-midnight-100, #454771);border-radius:var(--radius-sm, .25rem);background:var(--color-midnight-600, #27283b);box-shadow:var(--shadow-md, 0 4px 10px rgba(0, 0, 0, .35))}
 .mst-eds-profit-submenu[hidden]{display:none}
@@ -21893,7 +22507,7 @@
 #mst-language-toggle:hover{background:var(--color-midnight-400, #323450);color:#fff}
 #mst-language-toggle:focus-visible{outline:1px solid var(--color-space-200, #bbc5f1);outline-offset:1px}`;
 
-  var MST_SWAL_THEME_CSS = String.raw`.mst-swal2-theme{--swal2-backdrop: var(--color-midnight-800-opacity-80, rgba(25, 26, 36, .8));--swal2-container-padding: var(--spacing-sm, .5rem);--swal2-width: 25rem;--swal2-padding: var(--spacing-sm-plus, .625rem);--swal2-border: var(--border-width-thin, 1px) solid var(--color-neutral-200, #d0d0d0);--swal2-border-radius: var(--radius-sm, .25rem);--swal2-background: var(--color-midnight-900, #131419);--swal2-color: var(--color-text-dark-mode, #e7e7e7);--swal2-show-animation: mst-swal2-show .12s ease-out;--swal2-hide-animation: mst-swal2-hide .1s ease-in forwards;--swal2-title-padding: 0 var(--spacing-xl-plus, 1.25rem) var(--spacing-xs, .25rem) 0;--swal2-html-container-padding: 0;--swal2-input-border: var(--border-width-thin, 1px) solid var(--color-midnight-100, #454771);--swal2-input-border-radius: var(--radius-xs, .125rem);--swal2-input-box-shadow: none;--swal2-input-background: var(--color-midnight-900, #131419);--swal2-input-color: var(--color-text-dark-mode, #e7e7e7);--swal2-input-transition: border-color .12s ease, box-shadow .12s ease;--swal2-input-hover-box-shadow: none;--swal2-input-focus-border: var(--border-width-thin, 1px) solid var(--color-space-300, #98a7e9);--swal2-input-focus-box-shadow: 0 0 0 1px var(--color-space-600, #4357af);--swal2-validation-message-background: var(--color-midnight-500, #2c2e45);--swal2-validation-message-color: var(--color-scarlet-200, #ecadb1);--swal2-footer-border-color: var(--color-midnight-400, #323450);--swal2-footer-background: transparent;--swal2-footer-color: var(--color-space-200, #bbc5f1);--swal2-close-button-color: var(--color-space-300, #98a7e9);--swal2-close-button-font-size: var(--font-size-xl-plus, 1.375rem);--swal2-close-button-transition: color .12s ease, background-color .12s ease;--swal2-actions-justify-content: center;--swal2-actions-margin: var(--spacing-sm, .5rem) auto 0;--swal2-actions-padding: 0;--swal2-action-button-transition: background-color .12s ease;--swal2-action-button-focus-box-shadow: 0 0 0 2px var(--color-midnight-900, #131419), 0 0 0 3px var(--color-space-300, #98a7e9);--swal2-confirm-button-border-radius: var(--radius-sm, .25rem);--swal2-confirm-button-background-color: var(--color-primary, #4357af);--swal2-confirm-button-color: var(--color-text-dark-mode, #e7e7e7);--swal2-confirm-button-box-shadow: none;--swal2-deny-button-border-radius: var(--radius-sm, .25rem);--swal2-deny-button-background-color: var(--color-warning, #db3333);--swal2-deny-button-color: var(--color-text-dark-mode, #e7e7e7);--swal2-deny-button-box-shadow: none;--swal2-cancel-button-border-radius: var(--radius-sm, .25rem);--swal2-cancel-button-background-color: var(--color-midnight-500, #2c2e45);--swal2-cancel-button-color: var(--color-text-dark-mode, #e7e7e7);--swal2-cancel-button-box-shadow: none;--swal2-toast-border: var(--border-width-thin, 1px) solid var(--color-midnight-100, #454771);--swal2-toast-box-shadow: var(--shadow-sm, 2px 2px 4px rgba(0, 0, 0, .2));--swal2-toast-show-animation: mst-swal2-toast-show .14s ease-out;--swal2-toast-hide-animation: mst-swal2-hide .1s ease-in forwards;z-index:2147482100!important;font-family:Roboto,Helvetica,Arial,sans-serif}
+  var MST_SWAL_THEME_CSS = String.raw`.mst-swal2-theme{--swal2-backdrop: var(--color-midnight-800-opacity-80, rgba(25, 26, 36, .8));--swal2-container-padding: var(--spacing-sm, .5rem);--swal2-width: 25rem;--swal2-padding: var(--spacing-sm-plus, .625rem);--swal2-border: var(--border-width-thin, 1px) solid var(--color-neutral-200, #d0d0d0);--swal2-border-radius: var(--radius-sm, .25rem);--swal2-background: var(--color-midnight-900, #131419);--swal2-color: var(--color-text-dark-mode, #e7e7e7);--swal2-show-animation: mst-swal2-show .12s ease-out;--swal2-hide-animation: mst-swal2-hide .1s ease-in forwards;--swal2-title-padding: 0 var(--spacing-xl-plus, 1.25rem) var(--spacing-xs, .25rem) 0;--swal2-html-container-padding: 0;--swal2-input-border: var(--border-width-thin, 1px) solid var(--color-midnight-100, #454771);--swal2-input-border-radius: var(--radius-xs, .125rem);--swal2-input-box-shadow: none;--swal2-input-background: var(--color-midnight-900, #131419);--swal2-input-color: var(--color-text-dark-mode, #e7e7e7);--swal2-input-transition: border-color .12s ease, box-shadow .12s ease;--swal2-input-hover-box-shadow: none;--swal2-input-focus-border: var(--border-width-thin, 1px) solid var(--color-space-300, #98a7e9);--swal2-input-focus-box-shadow: 0 0 0 1px var(--color-space-600, #4357af);--swal2-validation-message-background: var(--color-midnight-500, #2c2e45);--swal2-validation-message-color: var(--color-scarlet-200, #ecadb1);--swal2-footer-border-color: var(--color-midnight-400, #323450);--swal2-footer-background: transparent;--swal2-footer-color: var(--color-space-200, #bbc5f1);--swal2-close-button-color: var(--color-space-300, #98a7e9);--swal2-close-button-font-size: var(--font-size-xl-plus, 1.375rem);--swal2-close-button-transition: color .12s ease, background-color .12s ease;--swal2-actions-justify-content: center;--swal2-actions-margin: var(--spacing-sm, .5rem) auto 0;--swal2-actions-padding: 0;--swal2-action-button-transition: background-color .12s ease;--swal2-action-button-focus-box-shadow: 0 0 0 2px var(--color-midnight-900, #131419), 0 0 0 3px var(--color-space-300, #98a7e9);--swal2-confirm-button-border-radius: var(--radius-sm, .25rem);--swal2-confirm-button-background-color: var(--color-primary, #4357af);--swal2-confirm-button-color: var(--color-text-dark-mode, #e7e7e7);--swal2-confirm-button-box-shadow: none;--swal2-deny-button-border-radius: var(--radius-sm, .25rem);--swal2-deny-button-background-color: var(--color-warning, #db3333);--swal2-deny-button-color: var(--color-text-dark-mode, #e7e7e7);--swal2-deny-button-box-shadow: none;--swal2-cancel-button-border-radius: var(--radius-sm, .25rem);--swal2-cancel-button-background-color: var(--color-midnight-500, #2c2e45);--swal2-cancel-button-color: var(--color-text-dark-mode, #e7e7e7);--swal2-cancel-button-box-shadow: none;--swal2-toast-border: var(--border-width-thin, 1px) solid var(--color-midnight-100, #454771);--swal2-toast-box-shadow: var(--shadow-sm, 2px 2px 4px rgba(0, 0, 0, .2));--swal2-toast-show-animation: mst-swal2-toast-show .14s ease-out;--swal2-toast-hide-animation: mst-swal2-hide .1s ease-in forwards;z-index:var(--mst-z-popup)!important;font-family:Roboto,Helvetica,Arial,sans-serif}
 .mst-swal2-theme.swal2-container{overflow:hidden!important}
 .mst-swal2-theme .swal2-popup{min-width:min(18.75rem,calc(100vw - 1rem));max-width:calc(100vw - 1rem);min-height:6.25rem;box-sizing:border-box;font-family:Roboto,Helvetica,Arial,sans-serif;font-size:var(--font-size-base, .875rem);font-weight:var(--font-weight-normal, 400);line-height:var(--line-height-normal, 1.375);box-shadow:0 0 .25rem .25rem #d0d0d048}
 .mst-swal2-theme .swal2-title{margin:0;padding-right:calc(1.375rem + var(--spacing-md, .75rem));padding-bottom:var(--spacing-sm, .5rem);color:var(--color-text-dark-mode, #e7e7e7);font-size:var(--font-size-md, 1rem);font-weight:var(--font-weight-semibold, 600);line-height:var(--line-height-normal, 1.375);letter-spacing:0;text-align:left}
@@ -21917,7 +22531,7 @@
 .mst-swal2-theme .mst-swal2-html-popup .swal2-html-container{min-height:0;max-height:calc(100vh - 10rem);max-height:calc(100dvh - 10rem);max-height:calc(100svh - 10rem);margin-right:0;margin-left:0;padding-right:0;overflow-x:hidden;overflow-y:auto;overscroll-behavior:contain;scrollbar-color:var(--color-space-300, #98a7e9) transparent;scrollbar-width:thin;white-space:normal}
 .mst-swal2-theme .mst-swal2-html-popup .swal2-html-container::-webkit-scrollbar{width:var(--scrollbar-width, .25rem)}
 .mst-swal2-theme .mst-swal2-html-popup .swal2-html-container::-webkit-scrollbar-thumb{border-radius:var(--scrollbar-border-radius, .25rem);background:var(--color-space-300, #98a7e9)}
-.mst-swal-toast-host{position:fixed;top:max(var(--spacing-sm, .5rem),env(safe-area-inset-top));left:50%;z-index:2147483550!important;display:grid;width:min(24rem,calc(100vw - 1rem));transform:translate(-50%);pointer-events:none}
+.mst-swal-toast-host{position:fixed;top:max(var(--spacing-sm, .5rem),env(safe-area-inset-top));left:50%;z-index:var(--mst-z-toast)!important;display:grid;width:min(24rem,calc(100vw - 1rem));transform:translate(-50%);pointer-events:none}
 .mst-swal2-theme .swal2-toast.mst-swal2-toast{display:grid!important;width:min(24rem,calc(100vw - 1rem));min-width:0;min-height:0;margin:0;padding:0;border:0;background:transparent;color:var(--color-text-dark-mode, #e7e7e7);font-size:var(--font-size-base, .875rem);line-height:var(--line-height-normal, 1.375);box-shadow:none;pointer-events:auto}
 .mst-swal2-theme .swal2-toast .swal2-html-container{width:100%;margin:0;padding:0;overflow:visible;font-size:var(--font-size-base, .875rem);line-height:var(--line-height-normal, 1.375);text-align:left;white-space:normal}
 .mst-swal2-theme .mst-swal-toast-stack{display:grid;gap:var(--spacing-xs-plus, .375rem);width:100%}
@@ -22092,6 +22706,8 @@ to{transform:translateY(0);opacity:1}
         EquipmentComparisonFeature,
         ToolkitMenuFeature,
         ClipboardCartImportFeature,
+        LabyrinthSupplyFeature,
+        MarketplaceCartFeature,
         Notifier
       } = this.ctx;
       installAppStyles();
@@ -22128,6 +22744,8 @@ to{transform:translateY(0);opacity:1}
       equipmentComparison.init();
       toolkitMenu.init();
       new ClipboardCartImportFeature(this.ctx, Notifier).init();
+      new LabyrinthSupplyFeature().init();
+      new MarketplaceCartFeature().init();
       this.languageController.init();
       this.observeDOM();
     }

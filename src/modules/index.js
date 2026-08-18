@@ -11,6 +11,8 @@ import {EquipmentComparisonFeature} from './equipment-comparison/index.js';
 import {CombatSimulationService} from './equipment-comparison/simulator.js';
 import {HouseCalculator} from './house-calculator/calculator.js';
 import {HouseCalculatorLauncher, HouseCalculatorUI} from './house-calculator/index.js';
+import {LabyrinthSupplyFeature} from './labyrinth-supply/index.js';
+import {MarketplaceCartFeature} from './marketplace-cart/index.js';
 import {ToolkitMenuFeature} from './toolkit-menu/index.js';
 
 export function installModules(ctx) {
@@ -23,6 +25,8 @@ export function installModules(ctx) {
   EquipmentComparisonService.configure(ctx, CombatSimulationService);
   HouseCalculatorUI.configure(ctx, ctx.Notifier);
   HouseCalculatorLauncher.configure(ctx);
+  LabyrinthSupplyFeature.configure(ctx);
+  MarketplaceCartFeature.configure(ctx);
 
   ctx.AbilityUpgradeCalculatorFeature = AbilityUpgradeCalculatorFeature;
   ctx.BuildScoreService = BuildScoreService;
@@ -37,5 +41,7 @@ export function installModules(ctx) {
   ctx.EquipmentComparisonService = EquipmentComparisonService;
   ctx.HouseCalculator = HouseCalculator;
   ctx.HouseCalculatorUI = HouseCalculatorUI;
+  ctx.LabyrinthSupplyFeature = LabyrinthSupplyFeature;
+  ctx.MarketplaceCartFeature = MarketplaceCartFeature;
   ctx.ToolkitMenuFeature = ToolkitMenuFeature;
 }

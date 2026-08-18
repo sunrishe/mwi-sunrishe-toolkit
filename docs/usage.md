@@ -48,6 +48,16 @@ MST 是独立脚本，以下项目提供了参考或公开接口；参考类功�
 - **入口**：工具箱。
 - **功能**：按地下城、难度、耗时、钥匙来源和市场价格，估算每日收益、每车收益、钥匙成本和宝箱产出。
 
+## 迷宫补充补给
+
+- **入口**：迷宫“进入迷宫”按钮上方。
+- **功能**：悬浮“补充补给”按钮，选择 1~5 次入场，把缺少的迷宫道具和补给箱加入 MWITools 购物车；只加购，不自动下单。
+
+## 市场加入购物车
+
+- **入口**：市场“刷新”按钮右侧。
+- **功能**：把市场当前查看的物品加入 MWITools 购物车，每次 1 个，查看强化等级订单时按该等级加购；只加购，不自动下单。
+
 ## 切换角色
 
 - **入口**：工具箱。
@@ -115,6 +125,16 @@ Click **Toolkit** in the top character-info area. It is the main entry for cards
 - **Entry**: Toolkit.
 - **Does**: estimates daily profit, run profit, key costs, and chest output by dungeon, tier, run time, key source, and market prices.
 
+## Labyrinth Restock Supplies
+
+- **Entry**: above the Labyrinth "Enter Labyrinth" button.
+- **Does**: hovering the Restock Supplies button opens a small window to pick 1–5 entries and adds the missing supplies and crates to the MWITools cart. MST only adds to the cart and never places orders.
+
+## Marketplace Add to Cart
+
+- **Entry**: to the right of the Marketplace "Refresh" button.
+- **Does**: adds the market item currently being viewed to the MWITools cart, one at a time, keeping the enhancement level of the order book being viewed. MST only adds to the cart and never places orders.
+
 ## Switch Character
 
 - **Entry**: Toolkit.
@@ -139,6 +159,11 @@ Click **Toolkit** in the top character-info area. It is the main entry for cards
 - EDS 历史线保留 `1.x` 版本号，最后一个作为融合基础的版本是 `1.2.7`。
 - MST 从 `2.0.0` 开始，表示从装备数据同步脚本升级为综合工具箱。
 - 后续版本遵循语义化版本：不兼容变更提升主版本，向后兼容的新功能提升次版本，修复和兼容性调整提升补丁版本；开发构建使用 `-dev.<时间戳>` 后缀。
+
+## v2.11.0
+
+1. 迷宫入口新增“补充补给”：在“进入迷宫”按钮上方提供补给按钮，鼠标悬浮时弹出小窗口选择 1~5 次入场，把缺少的火把、斗筜、探照灯和茶箱、咖啡箱、食物箱加入 MWITools 购物车（道具按页面配置与携带上限补足，补给箱按入场次数补足，页面未配置时按专家档位；只加入购物车，不自动下单）。
+2. 市场新增“加入购物车”按钮：在市场“刷新”按钮右侧，点击把当前查看的物品加入 MWITools 购物车，每次 1 个；查看具体强化等级的订单时按该等级加入，未强化物品按 +0 加入（只加入购物车，不自动下单）。
 
 ## v2.10.2
 
