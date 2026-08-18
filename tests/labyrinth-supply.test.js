@@ -131,8 +131,9 @@ test('迷宫补给模块装配与默认配置完整', () => {
   assert.match(moduleSourceFile, /classList\.contains\('mst-labyrinth-supply-toggle'\)/);
   // 插入前清理按钮容器内残留的同名按钮，防止多实例并存时互相干扰。
   assert.match(moduleSourceFile, /querySelectorAll\('\.mst-labyrinth-supply'\)\.forEach/);
-  // 同一页面只允许一个迷宫补给实例活动，先到先得，防止多实例互相清理按钮。
-  assert.match(moduleSourceFile, /__MST_LABYRINTH_SUPPLY_OWNER__/);
+  // 同一页面只允许一个迷宫补给实例活动，先到先得，防止多实例互相清理按钮；
+  // 单例标记写在页面 window（unsafeWindow）上（油猴沙箱 window 与页面 window 隔离）。
+  assert.match(moduleSourceFile, /pageWindow\.__MST_LABYRINTH_SUPPLY_OWNER__/);
   // 点击切换小窗用 pointerup 触发（先于触屏点击时浏览器合成的 mouseenter），
   // click 只作键盘兜底并按 500ms 间隔去重，移动端不再出现“点了没反应”。
   assert.match(moduleSourceFile, /toggle\.addEventListener\('pointerup'/);
