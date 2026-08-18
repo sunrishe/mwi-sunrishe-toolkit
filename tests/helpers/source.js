@@ -11,7 +11,8 @@ const RUNTIME_SOURCE_FILES = [
   'src/modules/character-card/build-score/legacy.js', 'src/modules/character-card/build-score/v26.js', 'src/modules/character-card/build-score/index.js', 'src/modules/character-card/index.js', 'src/modules/combat-upgrade/planner.js',
   'src/modules/combat-upgrade/index.js', 'src/modules/dungeon-profit/calculator.js', 'src/modules/dungeon-profit/index.js', 'src/modules/eds-milkonomy/converter.js', 'src/modules/eds-milkonomy/index.js',
   'src/modules/equipment-comparison/worker-runtime.js', 'src/modules/equipment-comparison/simulator.js', 'src/modules/equipment-comparison/comparison.js', 'src/modules/equipment-comparison/presets.js', 'src/modules/equipment-comparison/index.js',
-  'src/modules/house-calculator/calculator.js', 'src/modules/house-calculator/index.js', 'src/modules/toolkit-menu/index.js', 'src/modules/index.js', 'src/index.js'
+  'src/modules/house-calculator/calculator.js', 'src/modules/house-calculator/index.js', 'src/modules/labyrinth-supply/index.js', 'src/modules/marketplace-cart/index.js', 'src/modules/toolkit-menu/index.js',
+  'src/modules/index.js', 'src/index.js'
 ];
 
 function readSourceFile(...segments) {

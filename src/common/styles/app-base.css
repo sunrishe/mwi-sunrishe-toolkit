@@ -1,3 +1,15 @@
+/* MST 层级约定（z-index 统一由这里声明，不在各处散落魔法数字）：
+   - 游戏原生 UI 最高只用到 z-index 9，所有 MST 浮层都高于游戏 UI；
+   - --mst-z-popup 是 MST 普通弹窗（SweetAlert2 弹窗、名片技能选择模态框等全屏层）的层级，
+     必须低于 MWITools 购物车按钮层——MWITools 购物车把手/抽屉当前为 z-index 1001/1002，
+     市场导航会话时宿主整体抬到 2147482000，因此普通弹窗取 1000，保证购物车按钮始终盖在弹窗之上、可见可点；
+   - --mst-z-toast 是 Toast 宿主的层级，Toast 不受“低于购物车按钮层”限制，保持最高。
+   MWITools 更新后必须按此约定重新核对购物车按钮层级是否变化（见 docs/业务功能要求.md）。 */
+:root {
+  --mst-z-popup: 1000;
+  --mst-z-toast: 2147483550;
+}
+
 [class*='EquipmentPanel_buttonContainer'] {
   /* 装备面板按钮行空间很窄，强制横向排列避免撑开原游戏布局。 */
   display: flex !important;

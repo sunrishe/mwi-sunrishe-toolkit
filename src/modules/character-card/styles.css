@@ -856,7 +856,7 @@
   font-size: 10px;
   line-height: 1;
 }
-/* 技能选择器模态框样式 */
+/* 技能选择器模态框样式（普通弹窗，层级低于 MWITools 购物车按钮层，见 app-base.css 的 --mst-z-popup 约定） */
 .mst-skill-selector-modal {
   position: fixed;
   top: 0;
@@ -864,7 +864,7 @@
   width: 100%;
   height: 100%;
   background: rgba(0, 0, 0, 0.8);
-  z-index: 2147482101;
+  z-index: var(--mst-z-popup);
   display: flex;
   justify-content: center;
   align-items: center;

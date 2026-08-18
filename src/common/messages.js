@@ -107,6 +107,41 @@ export const MARKET_MATE_MESSAGES = {
 // character-switcher-messages
 export const CHARACTER_SWITCHER_MESSAGES = {switchCharacter: {zh: '切换角色', en: 'Switch Character'}};
 
+// labyrinth-supply-messages
+export const LABYRINTH_SUPPLY_MESSAGES = {
+  labyrinthSupply: {zh: '补充补给', en: 'Restock Supplies'},
+  labyrinthSupplyTitle: {
+    zh: '按入场次数把迷宫道具与补给箱缺少的数量加入 MWITools 购物车',
+    en: 'Add missing labyrinth supplies and crates to the MWITools cart by entry count'
+  },
+  labyrinthSupplyPopoverTitle: {zh: '按入场次数补货', en: 'Restock by entries'},
+  labyrinthSupplyRunTitle: {zh: '按 {0} 次入场补足道具与补给箱', en: 'Restock for {0} entries'},
+  labyrinthSupplyDone: {
+    zh: '已把 {0} 种迷宫补给加入购物车，共 {1} 个',
+    en: 'Added {0} labyrinth supply types ({1} total)'
+  },
+  labyrinthSupplyNothingMissing: {
+    zh: '迷宫道具与补给箱已充足，无需补充',
+    en: 'Labyrinth supplies and crates are already full'
+  },
+  labyrinthSupplyAddFailed: {zh: '迷宫补给加入购物车失败', en: 'Failed to add labyrinth supplies to the cart'}
+};
+
+// marketplace-cart-messages
+export const MARKETPLACE_CART_MESSAGES = {
+  marketplaceCart: {zh: '加入购物车', en: 'Add to Cart'},
+  marketplaceCartTitle: {
+    zh: '把市场当前物品加入 MWITools 购物车，保留强化等级',
+    en: 'Add the current market item to the MWITools cart, keeping its enhancement level'
+  },
+  marketplaceCartDone: {zh: '已加入购物车：{0}', en: 'Added to cart: {0}'},
+  marketplaceCartNoItem: {
+    zh: '当前没有可加入购物车的市场物品',
+    en: 'No market item is currently selected'
+  },
+  marketplaceCartAddFailed: {zh: '加入购物车失败', en: 'Failed to add to the cart'}
+};
+
 // eds-milkonomy-messages
 export const EDS_MILKONOMY_MESSAGES = {
   copyMilkonomy: {zh: '复制 Milkonomy 数据', en: 'Copy Milkonomy Data'},
@@ -492,6 +527,8 @@ export const I18N_MESSAGE_GROUPS = {
   houseCalculator: HOUSE_CALCULATOR_MESSAGES,
   marketMate: MARKET_MATE_MESSAGES,
   characterSwitcher: CHARACTER_SWITCHER_MESSAGES,
+  labyrinthSupply: LABYRINTH_SUPPLY_MESSAGES,
+  marketplaceCart: MARKETPLACE_CART_MESSAGES,
   edsMilkonomy: EDS_MILKONOMY_MESSAGES,
   characterCard: CHARACTER_CARD_MESSAGES,
   toolkitMenu: TOOLKIT_MENU_MESSAGES,

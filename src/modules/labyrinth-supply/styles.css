@@ -1,0 +1,71 @@
+/* 迷宫补充补给按钮插入“进入迷宫”按钮后方的文档流内，随面板布局自动排布；
+   按钮本体复用游戏 Button 组件外观（类名运行时从页面按钮提取，哈希随游戏版本变化），
+   这里的样式只在游戏按钮类缺失时兜底。悬浮小窗是临时浮层，挂 body 用 fixed 定位，
+   层级与普通弹窗一致，低于 MWITools 购物车按钮层（见 app-base.css 的 --mst-z-popup 约定）。 */
+.mst-labyrinth-supply {
+  display: flex;
+  justify-content: center;
+  margin: 0 0 0.25rem;
+}
+.mst-labyrinth-supply-toggle:not([class*='Button_button__']) {
+  min-height: var(--button-height-normal, 1.875rem);
+  padding: 0 0.625rem;
+  box-sizing: border-box;
+  border: 1px solid var(--color-midnight-100, #454771);
+  border-radius: var(--radius-sm, 0.25rem);
+  background: var(--color-midnight-500, #2c2e45);
+  color: var(--color-text-dark-mode, #e7e7e7);
+  font: inherit;
+  font-size: var(--font-size-base, 0.875rem);
+  white-space: nowrap;
+  cursor: pointer;
+}
+.mst-labyrinth-supply-toggle:not([class*='Button_button__']):hover {
+  border-color: var(--color-space-300, #98a7e9);
+  background: var(--color-midnight-400, #323450);
+}
+.mst-labyrinth-supply-popover {
+  position: fixed;
+  z-index: var(--mst-z-popup);
+  display: flex;
+  min-width: 12rem;
+  flex-direction: column;
+  gap: 0.35rem;
+  padding: 0.5rem;
+  box-sizing: border-box;
+  border: 1px solid var(--color-midnight-100, #454771);
+  border-radius: var(--radius-sm, 0.25rem);
+  background: var(--color-midnight-600, #27283b);
+  box-shadow: var(--shadow-md, 0 0.35rem 1rem rgba(0, 0, 0, 0.4));
+  font-family: Roboto, Helvetica, Arial, sans-serif;
+}
+.mst-labyrinth-supply-popover[hidden] {
+  display: none;
+}
+.mst-labyrinth-supply-popover-title {
+  color: var(--color-text-dark-mode, #e7e7e7);
+  font-size: var(--font-size-small, 0.75rem);
+  font-weight: 600;
+  text-align: center;
+}
+.mst-labyrinth-supply-popover-grid {
+  display: grid;
+  grid-template-columns: repeat(5, 2rem);
+  gap: 0.3rem;
+  justify-content: center;
+}
+.mst-labyrinth-supply-popover-grid button {
+  min-height: 2rem;
+  padding: 0;
+  border: 1px solid var(--color-midnight-100, #454771);
+  border-radius: var(--radius-sm, 0.25rem);
+  background: var(--color-midnight-500, #2c2e45);
+  color: var(--color-text-dark-mode, #e7e7e7);
+  font: inherit;
+  font-size: var(--font-size-base, 0.875rem);
+  cursor: pointer;
+}
+.mst-labyrinth-supply-popover-grid button:hover {
+  border-color: var(--color-space-300, #98a7e9);
+  background: var(--color-midnight-400, #323450);
+}

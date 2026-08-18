@@ -163,6 +163,8 @@ export class AppController {
       EquipmentComparisonFeature,
       ToolkitMenuFeature,
       ClipboardCartImportFeature,
+      LabyrinthSupplyFeature,
+      MarketplaceCartFeature,
       Notifier
     } = this.ctx;
     installAppStyles();
@@ -199,6 +201,8 @@ export class AppController {
     equipmentComparison.init();
     toolkitMenu.init();
     new ClipboardCartImportFeature(this.ctx, Notifier).init();
+    new LabyrinthSupplyFeature().init();
+    new MarketplaceCartFeature().init();
     this.languageController.init();
     this.observeDOM();
   }

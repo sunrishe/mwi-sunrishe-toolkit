@@ -218,6 +218,21 @@ test('开发专用语言切换样式通过 raw CSS 构建插件注入', () => {
   assert.doesNotMatch(source, /#mst-toolkit-character-dropdown\s*\{/);
 });
 
+test('普通弹窗层级低于 MWITools 购物车按钮层，Toast 保持最高', () => {
+  // 层级统一由 app-base.css 的 :root 变量声明，MWITools 更新后需在此核对购物车按钮层级。
+  const popupLayer = Number(/--mst-z-popup\s*:\s*(\d+)/.exec(appBaseCss)?.[1]);
+  const toastLayer = Number(/--mst-z-toast\s*:\s*(\d+)/.exec(appBaseCss)?.[1]);
+  assert.ok(Number.isFinite(popupLayer), 'app-base.css 必须声明 --mst-z-popup');
+  assert.ok(Number.isFinite(toastLayer), 'app-base.css 必须声明 --mst-z-toast');
+  // 游戏原生 UI 最高只用 z-index 9；MWITools 购物车把手/抽屉为 1001/1002。
+  assert.ok(popupLayer > 9, '普通弹窗层级必须高于游戏原生 UI');
+  assert.ok(popupLayer < 1001, '普通弹窗层级必须低于 MWITools 购物车按钮层（1001/1002）');
+  assert.ok(toastLayer > popupLayer, 'Toast 不受购物车按钮层限制，层级应高于普通弹窗');
+  assert.match(swalThemeCss, /\.mst-swal2-theme\s*\{[^}]*z-index:\s*var\(--mst-z-popup\)\s*!important/s);
+  assert.match(swalThemeCss, /\.mst-swal-toast-host\s*\{[^}]*z-index:\s*var\(--mst-z-toast\)\s*!important/s);
+  assert.match(characterCardCss, /\.mst-skill-selector-modal\s*\{[^}]*z-index:\s*var\(--mst-z-popup\)/s);
+});
+
 test('构建脚本执行源码修复且完整检查避免重复修复', () => {
   const scripts = packageManifest.scripts;
   assert.equal(scripts['build:prepare'], 'yarn lint:fix && yarn format');
@@ -327,6 +342,15 @@ test('市场伴侣剪贴板导入只按 MST 按钮自身去重', () => {
 
   assert.match(featureSource, /querySelectorAll\('#mst-mmm-import-clipboard'\)/);
   assert.doesNotMatch(featureSource, /data-act=["']importclip/);
+  // 导入剪贴板按钮默认无边框，鼠标悬浮时才显示边框色，避免与 MWITools 面板按钮观感不一致。
+  assert.match(featureSource, /border:\s*1px solid transparent/);
+  assert.doesNotMatch(featureSource, /rgba\(231,231,231,0\.18\);/);
+  assert.match(featureSource, /button\.style\.borderColor\s*=\s*'rgba\(231,231,231,0\.18\)'/);
+  assert.match(featureSource, /button\.style\.borderColor\s*=\s*'transparent'/);
+  // 导入剪贴板按钮只在购物车清单页展示，其他标签页（项目/设置）不展示。
+  assert.match(featureSource, /\.tab\[data-active="true"\]/);
+  assert.match(featureSource, /activeTab\s*!==\s*'cart'/);
+  assert.match(featureSource, /querySelectorAll\('#mst-mmm-import-clipboard'\)\.forEach/);
 });
 
 test('市场技能书悬浮菜单注入技能升级计算器入口且复用公共观察器', () => {
