@@ -495,6 +495,256 @@ test('宝箱掉落期望合并重复物品', () => {
   assert.equal(output.askTotal, 404);
 });
 
+test('掉落表按官方宝箱直接掉落条目分别展示，同一物品多条掉落不合并', () => {
+  const syntheticClientData = {
+    actionDetailMap: {},
+    itemDetailMap: {'/items/test_chest': {hrid: '/items/test_chest'}},
+    openableLootDropMap: {
+      '/items/test_chest': [
+        {
+          itemHrid: '/items/test_item',
+          dropRate: 0.5,
+          minCount: 2,
+          maxCount: 4
+        }, {itemHrid: '/items/test_item', dropRate: 0.1, minCount: 1, maxCount: 1}, {
+          itemHrid: '/items/other_item',
+          dropRate: 0.25,
+          minCount: 1,
+          maxCount: 1
+        }
+      ]
+    },
+    shopItemDetailMap: {}
+  };
+  const Service = loadService(syntheticClientData, {});
+  const service = new Service(
+    createMarketService({'/items/test_item': {0: {a: 120, b: 100}}, '/items/other_item': {0: {a: 40, b: 20}}})
+  );
+  const expectation = service.calculateExpectedChestDrops([
+    {itemHrid: '/items/test_chest', quantity: 2, isRefinement: false}
+  ]);
+  const dropTable = service.buildDropTable(
+    expectation,
+    new Map(expectation.normalDrops),
+    2,
+    0,
+    service.getTokenValues(undefined),
+    new Set(),
+    {}
+  );
+  const testItems = dropTable.rows.filter((row) => row.itemHrid === '/items/test_item');
+  const otherItem = dropTable.rows.find((row) => row.itemHrid === '/items/other_item');
+
+  // 官方宝箱直接掉落条目分别成行，不递归展开、不按物品合并；掉率为打开该宝箱的官方掉率。
+  assert.equal(dropTable.rows.length, 3);
+  assert.equal(testItems.length, 2);
+  assert.ok(Math.abs(testItems[0].dropRate - 0.5) < 1e-12);
+  assert.ok(Math.abs(testItems[0].quantity - 3) < 1e-12);
+  assert.ok(Math.abs(testItems[1].dropRate - 0.1) < 1e-12);
+  assert.ok(Math.abs(testItems[1].quantity - 0.2) < 1e-12);
+  assert.equal(testItems[0].askValue, 360);
+  assert.equal(testItems[1].bidValue, 20);
+  assert.equal(otherItem.dropRate, 0.25);
+  assert.equal(otherItem.quantity, 0.5);
+  // 期望数量 = 每日宝箱数量 × 掉率 × 平均掉落数量 = 2 × 0.5 × 3 = 3。
+  assert.ok(Math.abs(testItems[0].quantity - 2 * 0.5 * ((2 + 4) / 2)) < 1e-12);
+  assert.ok(Math.abs(otherItem.quantity - 2 * 0.25 * ((1 + 1) / 2)) < 1e-12);
+  // 掉落表合计等于各行折算价值之和。
+  assert.equal(dropTable.quantityTotal, 3.7);
+  assert.equal(dropTable.askTotal, 404);
+  assert.equal(dropTable.bidTotal, 330);
+});
+
+test('掉落表固定按税前报价展示，宝箱行按展开内容估值不显示 0', () => {
+  const Service = loadService();
+  const service = new Service(createMarketService(createCompleteMarketData()));
+  const result = service.calculate({actionHrid: '/actions/combat/pirate_cove', difficultyTier: 0, clearMinutes: 1440});
+  const essenceRows = result.dropTable.rows.filter((row) => row.itemHrid === '/items/pirate_essence');
+
+  // 官方海盗普通宝箱含两条 pirate_essence（100%×400-800 与 5%×2000-4000），按官方条目分别成行。
+  assert.equal(essenceRows.length, 2);
+  assert.ok(Math.abs(essenceRows[0].dropRate - 1) < 1e-12);
+  assert.ok(Math.abs(essenceRows[0].quantity - 777) < 1e-12);
+  assert.ok(Math.abs(essenceRows[1].dropRate - 0.05) < 1e-12);
+  assert.ok(Math.abs(essenceRows[1].quantity - 194.25) < 1e-12);
+  essenceRows.forEach((row) => {
+    assert.equal(row.chestType, 'normal');
+    assert.equal(row.ask, 100);
+    assert.equal(row.bid, 80);
+  });
+  // 嵌套宝箱（large_treasure_chest）按展开后的最终物品税前估值，单价与总值均不为 0。
+  const nestedChestRow = result.dropTable.rows.find((row) => row.itemHrid === '/items/large_treasure_chest');
+  assert.ok(nestedChestRow);
+  assert.equal(nestedChestRow.chestType, 'normal');
+  assert.ok(nestedChestRow.ask > 0);
+  assert.ok(nestedChestRow.bid > 0);
+  assert.ok(Math.abs(nestedChestRow.askValue - nestedChestRow.quantity * nestedChestRow.ask) < 1e-9);
+  assert.ok(Math.abs(nestedChestRow.bidValue - nestedChestRow.quantity * nestedChestRow.bid) < 1e-9);
+  // 展开估值落在合理区间：宝箱内容含金币与宝石，仅金币部分即远超普通物品单价。
+  assert.ok(nestedChestRow.ask > 60000);
+  // 合计等于各行折算价值之和，不随“收益扣除市场税”选项变化（掉落表始终按税前报价估值）。
+  assert.equal(
+    result.dropTable.askTotal,
+    result.dropTable.rows.reduce((sum, row) => sum + row.askValue, 0)
+  );
+  assert.equal(
+    result.dropTable.bidTotal,
+    result.dropTable.rows.reduce((sum, row) => sum + row.bidValue, 0)
+  );
+  const untaxedResult = service.calculate({
+    actionHrid: '/actions/combat/pirate_cove',
+    difficultyTier: 0,
+    clearMinutes: 1440,
+    applyMarketTax: false
+  });
+  assert.equal(result.dropTable.askTotal, untaxedResult.dropTable.askTotal);
+  assert.equal(result.dropTable.bidTotal, untaxedResult.dropTable.bidTotal);
+});
+
+test('掉落表按普通/精炼宝箱分节展示，精炼宝箱只产出精炼碎片且掉率为官方掉率', () => {
+  const Service = loadService();
+  const service = new Service(createMarketService(createCompleteMarketData()));
+  const result = service.calculate({actionHrid: '/actions/combat/pirate_cove', difficultyTier: 2, clearMinutes: 1440});
+  const essenceRows = result.dropTable.rows.filter((row) => row.itemHrid === '/items/pirate_essence');
+  const shardRows = result.dropTable.rows.filter((row) => row.itemHrid === '/items/pirate_refinement_shard');
+
+  assert.equal(result.normalQuantity, 1.295);
+  assert.equal(result.refinementQuantity, 1.295);
+  assert.equal(result.dropTable.normalQuantity, 1.295);
+  assert.equal(result.dropTable.refinementQuantity, 1.295);
+  // 普通专属物品掉率不受精炼箱稀释，仍显示官方掉率。
+  assert.equal(essenceRows.length, 2);
+  essenceRows.forEach((row) => assert.equal(row.chestType, 'normal'));
+  assert.ok(Math.abs(essenceRows[0].dropRate - 1) < 1e-12);
+  assert.ok(Math.abs(essenceRows[0].quantity - 777) < 1e-12);
+  assert.ok(Math.abs(essenceRows[1].dropRate - 0.05) < 1e-12);
+  // 精炼宝箱只产出精炼碎片，两条掉落（100%×1-2 与 5%×5-10）按官方条目展示。
+  assert.equal(shardRows.length, 2);
+  shardRows.forEach((row) => assert.equal(row.chestType, 'refinement'));
+  assert.ok(Math.abs(shardRows[0].dropRate - 1) < 1e-12);
+  assert.ok(Math.abs(shardRows[0].quantity - 1.9425) < 1e-12);
+  assert.ok(Math.abs(shardRows[1].dropRate - 0.05) < 1e-12);
+  assert.ok(Math.abs(shardRows[1].quantity - 0.485625) < 1e-12);
+  // 期望数量 = 每日精炼宝箱数量 × 掉率 × 平均掉落数量。
+  assert.ok(Math.abs(shardRows[0].quantity - 1.295 * 1 * ((1 + 2) / 2)) < 1e-12);
+  // 所有行都标记宝箱来源，合计等于各行折算价值之和。
+  result.dropTable.rows.forEach((row) => {
+    assert.ok(row.chestType === 'normal' || row.chestType === 'refinement');
+  });
+  assert.equal(
+    result.dropTable.askTotal,
+    result.dropTable.rows.reduce((sum, row) => sum + row.askValue, 0)
+  );
+  assert.equal(
+    result.dropTable.bidTotal,
+    result.dropTable.rows.reduce((sum, row) => sum + row.bidValue, 0)
+  );
+  // 两种宝箱并存时各节小计等于本小节各行折算价值之和。
+  assert.equal(
+    result.dropTable.normalAskSubtotal,
+    result.dropTable.rows.filter((row) => row.chestType === 'normal').reduce((sum, row) => sum + row.askValue, 0)
+  );
+  assert.equal(
+    result.dropTable.normalBidSubtotal,
+    result.dropTable.rows.filter((row) => row.chestType === 'normal').reduce((sum, row) => sum + row.bidValue, 0)
+  );
+  assert.equal(
+    result.dropTable.refinementAskSubtotal,
+    result.dropTable.rows.filter((row) => row.chestType === 'refinement').reduce((sum, row) => sum + row.askValue, 0)
+  );
+  assert.equal(
+    result.dropTable.refinementBidSubtotal,
+    result.dropTable.rows.filter((row) => row.chestType === 'refinement').reduce((sum, row) => sum + row.bidValue, 0)
+  );
+  assert.equal(result.dropTable.normalAskSubtotal + result.dropTable.refinementAskSubtotal, result.dropTable.askTotal);
+  assert.equal(result.dropTable.normalBidSubtotal + result.dropTable.refinementBidSubtotal, result.dropTable.bidTotal);
+});
+
+test('地下城结果区按 tab 切换收益结果与掉落物表格', () => {
+  assert.match(dungeonFeatureSource, /viewTab: 'result'/);
+  assert.match(dungeonFeatureSource, /i18n\.t\('dungeonResultTab'\)/);
+  assert.match(dungeonFeatureSource, /i18n\.t\('dungeonLootTab'\)/);
+  assert.match(dungeonFeatureSource, /i18n\.t\('dropItem'\)/);
+  assert.match(dungeonFeatureSource, /i18n\.t\('dropRate'\)/);
+  assert.match(dungeonFeatureSource, /i18n\.t\('expectedQuantity'\)/);
+  // 单价列复用技能模块的市场方向与合计文案，不新增重复全局键。
+  assert.equal(dungeonFeatureSource.match(/i18n\.t\('askPriceAndTotal'\)/g)?.length, 1);
+  assert.equal(dungeonFeatureSource.match(/i18n\.t\('bidPriceAndTotal'\)/g)?.length, 1);
+  assert.equal(dungeonFeatureSource.match(/i18n\.t\('total'\)/g)?.length, 1);
+  assert.match(dungeonFeatureSource, /feature\.state\.viewTab = 'result'/);
+  assert.match(dungeonFeatureSource, /feature\.state\.viewTab = 'loot'/);
+  assert.match(dungeonFeatureSource, /\.hidden=\$\{!showResult\}/);
+  assert.match(dungeonFeatureSource, /\.hidden=\$\{feature\.state\.viewTab !== 'loot'\}/);
+  assert.match(dungeonFeatureSource, /formatDropRate/);
+  assert.match(dungeonFeatureSource, /mst-dungeon-row-loot/);
+  assert.match(dungeonFeatureSource, /<tfoot>/);
+  // 掉落物表按官方宝箱直接掉落条目分节展示，普通/精炼宝箱各一小节。
+  assert.match(dungeonFeatureSource, /normalChestLoot/);
+  assert.match(dungeonFeatureSource, /refinementChestLoot/);
+  assert.match(dungeonFeatureSource, /chestType === 'normal'/);
+  assert.match(dungeonFeatureSource, /chestType === 'refinement'/);
+  assert.match(dungeonFeatureSource, /mst-dungeon-row-section/);
+  // uhtml 不支持嵌套数组插值：小节标题行与行数组必须展开为同一扁平数组，否则运行时渲染抛错。
+  assert.match(
+    dungeonFeatureSource,
+    /mst-dungeon-row-section[\s\S]*?<th colspan="3">\$\{label\}<\/th>[\s\S]*?<\/tr>`,[\s\S]*?\.\.\.rows\.map/
+  );
+  // 掉率单行展示，悬浮提示展示掉落数量区间；期望数量带悬浮提示展示计算公式与结果。
+  assert.match(dungeonFeatureSource, /mst-dungeon-loot-rule/);
+  assert.match(dungeonFeatureSource, /dropQuantityHint/);
+  assert.match(dungeonFeatureSource, /mst-dungeon-loot-quantity/);
+  assert.match(dungeonFeatureSource, /expectedQuantityFormula/);
+  assert.match(dungeonFeatureSource, /expectedQuantityResult/);
+  assert.match(dungeonFeatureSource, /quantityRange/);
+  // 新文案中英文齐全。
+  assert.match(dungeonMessagesSource, /dungeonResultTab: \{zh: '收益结果', en: 'Profit'\}/);
+  assert.match(dungeonMessagesSource, /dungeonLootTab: \{zh: '掉落物', en: 'Loot'\}/);
+  assert.match(dungeonMessagesSource, /dropItem: \{zh: '物品', en: 'Item'\}/);
+  assert.match(dungeonMessagesSource, /dropRate: \{zh: '掉率', en: 'Drop Rate'\}/);
+  assert.match(dungeonMessagesSource, /dropQuantityHint: \{zh: '掉落数量 \{0\}', en: 'Drop Quantity \{0\}'\}/);
+  assert.match(dungeonMessagesSource, /expectedQuantity: \{zh: '期望数量', en: 'Expected Quantity'\}/);
+  assert.match(dungeonMessagesSource, /normalChestLoot: \{zh: '普通宝箱掉落物', en: 'Normal Chest Drops'\}/);
+  assert.match(dungeonMessagesSource, /refinementChestLoot: \{zh: '精炼宝箱掉落物', en: 'Refined Chest Drops'\}/);
+  assert.match(dungeonMessagesSource, /chestDropsPerDay: \{zh: '\{0\} 个\/天', en: '\{0\} per day'\}/);
+  assert.match(dungeonMessagesSource, /expectedQuantityFormula:/);
+  assert.match(dungeonMessagesSource, /expectedQuantityResult:/);
+  // 掉落表样式与结果表分开定义，tab 与容器显式隐藏。
+  assert.match(integratedCssSource, /\.mst-dungeon-loot-table\s*\{[^}]*min-width:\s*36rem/s);
+  assert.match(integratedCssSource, /\.mst-dungeon-loot-col-item\s*\{[^}]*width:\s*26%/s);
+  assert.match(integratedCssSource, /\.mst-dungeon-loot-col-rate\s*\{[^}]*width:\s*14%/s);
+  assert.match(integratedCssSource, /\.mst-dungeon-loot-col-quantity\s*\{[^}]*width:\s*15%/s);
+  assert.match(integratedCssSource, /\.mst-dungeon-loot-rule\s*\{[^}]*white-space:\s*nowrap/s);
+  assert.match(integratedCssSource, /\.mst-dungeon-loot-quantity\s*\{[^}]*cursor:\s*help/s);
+  assert.match(integratedCssSource, /\.mst-dungeon-loot-quantity\s*\{[^}]*white-space:\s*nowrap/s);
+  assert.match(integratedCssSource, /\.mst-dungeon-loot-price\s*\{/);
+  assert.match(integratedCssSource, /\.mst-dungeon-tab-active\s*\{/);
+  assert.match(integratedCssSource, /\.mst-dungeon-table-wrap\[hidden\]\s*\{[^}]*display:\s*none/s);
+  // 掉落表不设置纵向滚动条，纵向滚动由整体弹窗容器承担。
+  assert.match(integratedCssSource, /\.mst-dungeon-table-wrap\s*\{[^}]*overflow-x:\s*auto/s);
+  assert.doesNotMatch(integratedCssSource, /\.mst-dungeon-table-wrap\s*\{[^}]*max-height/s);
+  // 物品单元格展示游戏图标 + 名称，图标宽度固定、名称自然换行。
+  assert.match(dungeonFeatureSource, /class="mst-dungeon-loot-item"[^>]*>\s*<svg/);
+  assert.match(dungeonFeatureSource, /getItemIconHref/);
+  assert.match(dungeonFeatureSource, /getSpriteUrl\?\.\('items'\)/);
+  assert.match(integratedCssSource, /\.mst-dungeon-loot-item\s*\{[^}]*display:\s*flex/s);
+  assert.match(integratedCssSource, /\.mst-dungeon-loot-item svg\s*\{[^}]*width:\s*1\.25rem/s);
+  // 掉落表固定按税前报价估值，宝箱行按展开内容估值并输出各节小计。
+  assert.match(dungeonCalculatorSource, /buildDropTable/);
+  assert.match(dungeonCalculatorSource, /valueExpectedDrops\(allDrops, tokenValues, undefined, missing, options\)/);
+  assert.match(dungeonCalculatorSource, /collectDirectEntries/);
+  assert.match(dungeonCalculatorSource, /expandChestItems/);
+  assert.match(dungeonCalculatorSource, /normalEntryTriggers/);
+  assert.match(dungeonCalculatorSource, /refinementEntryTriggers/);
+  assert.match(dungeonCalculatorSource, /normalAskSubtotal/);
+  assert.match(dungeonCalculatorSource, /refinementBidSubtotal/);
+  // 各节标题行右侧始终展示该节价值小计，不带额外文本；小计与合计都不含数量列。
+  assert.match(dungeonFeatureSource, /mst-dungeon-row-subtotal/);
+  assert.doesNotMatch(dungeonFeatureSource, /i18n\.t\('subtotal'\)/);
+  assert.match(dungeonFeatureSource, /colspan="3"/);
+  assert.match(dungeonFeatureSource, /formatMoney\(subtotalAsk\)/);
+  assert.match(integratedCssSource, /\.mst-dungeon-row-subtotal td\s*\{/);
+});
+
 test('队伍人数按官方公式缩放宝箱期望，默认 5 人且战斗掉落 Buff 与旧统计周期参数不参与', () => {
   const Service = loadService();
   const service = new Service(createMarketService(createCompleteMarketData()));

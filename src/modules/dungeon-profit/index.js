@@ -35,9 +35,10 @@ const dungeonProfitFormView = {
     };
     const result = feature.service.calculate(calculationInput);
     // option 模板不能带首尾空白，否则 uhtml 的 Fragment 锚点会被 select 重排并在下次更新时失效。
+    // 按官方地下城顺序（sortIndex）显示 D1-D4 序号前缀，方便对照游戏内地下城地图。
     const dungeonOptions = dungeons.map(
-      (action) =>
-        TemplateRenderer.html`<option value=${action.hrid} .selected=${action.hrid === feature.state.actionHrid}>${feature.getDungeonName(action)}</option>`
+      (action, index) =>
+        TemplateRenderer.html`<option value=${action.hrid} .selected=${action.hrid === feature.state.actionHrid}>D${index + 1}. ${feature.getDungeonName(action)}</option>`
     );
     const difficultyOptions = [
       0, 1, 2
@@ -467,11 +468,22 @@ const dungeonProfitView = {
     }
     const rows = dungeonProfitResultRows.getResultRows(result);
     const resultRows = rows.map((row) => this.renderResultRow(feature, result, row, TemplateRenderer, i18n));
+    const showResult = feature.state.viewTab !== 'loot';
     // 自定义模式保留六列 DOM 结构，但将末列作为零宽占位，使合并后的自定义结果只占一个有效价格列。
     return TemplateRenderer.html`
   ${dungeonProfitSummaryView.renderSummary(feature, result)}
   ${this.renderMissingPriceWarning(result, TemplateRenderer, i18n)}
-  <div class="mst-dungeon-table-wrap">
+  <div class="mst-dungeon-tabs">
+    <button type="button" class=${`mst-dungeon-tab${showResult ? ' mst-dungeon-tab-active' : ''}`} @click=${() => {
+      feature.state.viewTab = 'result';
+      feature.render();
+    }}>${i18n.t('dungeonResultTab')}</button>
+    <button type="button" class=${`mst-dungeon-tab${!showResult ? ' mst-dungeon-tab-active' : ''}`} @click=${() => {
+      feature.state.viewTab = 'loot';
+      feature.render();
+    }}>${i18n.t('dungeonLootTab')}</button>
+  </div>
+  <div class="mst-dungeon-table-wrap" .hidden=${!showResult}>
     <table class=${`mst-dungeon-table${result.customMode ? ' mst-dungeon-table-custom' : ''}`}>
       <colgroup>
         <col class="mst-dungeon-col-item">
@@ -497,7 +509,122 @@ const dungeonProfitView = {
       </tbody>
     </table>
   </div>
+  ${this.renderDropTable(feature, result, TemplateRenderer, i18n)}
     `;
+  },
+
+  renderDropTable(feature, result, TemplateRenderer, i18n) {
+    const {DataHub} = DungeonProfitCalculatorFeature.ctx;
+    const dropTable = result.dropTable;
+    const getItemName = (itemHrid) => DataHub.getLocalizedGameName('itemNames', itemHrid) || itemHrid;
+    // 掉落物表按官方宝箱直接掉落列表分节展示，各节标题行右侧同时展示该节价值小计。
+    const renderSection = (label, rows, chestDailyCount, chestLabel, subtotalAsk, subtotalBid) => [
+      TemplateRenderer.html`<tr class="mst-dungeon-row-section mst-dungeon-row-subtotal"><th colspan="3">${label}</th><td>${feature.formatMoney(subtotalAsk)}</td><td>${feature.formatMoney(subtotalBid)}</td></tr>`, ...rows.map((row) => this.renderDropTableRow(feature, row, getItemName, TemplateRenderer, i18n, chestDailyCount, chestLabel))
+    ];
+    const normalLabel = `${i18n.t('normalChestLoot')}（${i18n.t(
+      'chestDropsPerDay',
+      feature.formatCount(dropTable.normalQuantity)
+    )}）`;
+    const refinementLabel = `${i18n.t('refinementChestLoot')}（${i18n.t(
+      'chestDropsPerDay',
+      feature.formatCount(dropTable.refinementQuantity)
+    )}）`;
+    const normalSection = renderSection(
+      normalLabel,
+      dropTable.rows.filter((row) => row.chestType === 'normal'),
+      dropTable.normalQuantity,
+      i18n.t('normalChest'),
+      dropTable.normalAskSubtotal,
+      dropTable.normalBidSubtotal
+    );
+    const refinementSection =
+      dropTable.refinementQuantity > 0
+        ? renderSection(
+            refinementLabel,
+            dropTable.rows.filter((row) => row.chestType === 'refinement'),
+            dropTable.refinementQuantity,
+            i18n.t('refinementChest'),
+            dropTable.refinementAskSubtotal,
+            dropTable.refinementBidSubtotal
+          )
+        : [];
+    return TemplateRenderer.html`
+  <div class="mst-dungeon-table-wrap" .hidden=${feature.state.viewTab !== 'loot'}>
+    <table class="mst-dungeon-table mst-dungeon-loot-table">
+      <colgroup>
+        <col class="mst-dungeon-loot-col-item">
+        <col class="mst-dungeon-loot-col-rate">
+        <col class="mst-dungeon-loot-col-quantity">
+        <col class="mst-dungeon-loot-col-value">
+        <col class="mst-dungeon-loot-col-value">
+      </colgroup>
+      <thead>
+        <tr>
+          <th>${i18n.t('dropItem')}</th>
+          <th>${i18n.t('dropRate')}</th>
+          <th>${i18n.t('expectedQuantity')}</th>
+          <th>${i18n.t('askPriceAndTotal')}</th>
+          <th>${i18n.t('bidPriceAndTotal')}</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${normalSection}
+        ${refinementSection}
+      </tbody>
+      <tfoot>
+        <tr class="mst-dungeon-row-total">
+          <th scope="row" colspan="3">${i18n.t('total')}</th>
+          <td><div class="mst-dungeon-loot-price"><strong>${feature.formatMoney(dropTable.askTotal)}</strong></div></td>
+          <td><div class="mst-dungeon-loot-price"><strong>${feature.formatMoney(dropTable.bidTotal)}</strong></div></td>
+        </tr>
+      </tfoot>
+    </table>
+  </div>
+    `;
+  },
+
+  renderDropTableRow(feature, row, getItemName, TemplateRenderer, i18n, chestDailyCount, chestLabel) {
+    // 期望数量悬浮提示展示计算公式与结果：每日该宝箱数量 × 掉率 × 平均掉落数量，换行后给出结果。
+    const formulaTitle =
+      i18n.t(
+        'expectedQuantityFormula',
+        feature.formatCount(chestDailyCount),
+        chestLabel,
+        feature.formatDropRate(row.dropRate),
+        row.minCount,
+        row.maxCount
+      ) +
+      '\n' +
+      i18n.t('expectedQuantityResult', feature.formatCount(row.quantity));
+    const quantityRange = row.minCount === row.maxCount ? String(row.minCount) : `${row.minCount}-${row.maxCount}`;
+    return TemplateRenderer.html`
+  <tr class="mst-dungeon-row-loot">
+    <th scope="row">
+      <span class="mst-dungeon-loot-item">
+        <svg aria-hidden="true"><use href=${this.getItemIconHref(feature, row.itemHrid)}></use></svg>
+        <span>${getItemName(row.itemHrid)}</span>
+      </span>
+    </th>
+    <td>
+      <span class="mst-dungeon-loot-rule" title=${i18n.t('dropQuantityHint', quantityRange)}>
+        ${feature.formatDropRate(row.dropRate)}
+      </span>
+    </td>
+    <td><span class="mst-dungeon-loot-quantity" title=${formulaTitle}>${feature.formatCount(row.quantity)}</span></td>
+    <td><div class="mst-dungeon-loot-price"><span>${feature.formatMoney(
+      row.ask
+    )}</span><i>/</i><strong>${feature.formatMoney(row.askValue)}</strong></div></td>
+    <td><div class="mst-dungeon-loot-price"><span>${feature.formatMoney(
+      row.bid
+    )}</span><i>/</i><strong>${feature.formatMoney(row.bidValue)}</strong></div></td>
+  </tr>
+    `;
+  },
+
+  getItemIconHref(_feature, itemHrid) {
+    const {utils} = DungeonProfitCalculatorFeature.ctx;
+    const sprite = utils?.getSpriteUrl?.('items') || '/static/media/items_sprite.f58c9476.svg';
+    return `${sprite}#${utils?.substrLastSlash?.(itemHrid) || itemHrid}`;
   },
 
   renderMissingPriceWarning(result, TemplateRenderer, i18n) {
@@ -576,7 +703,8 @@ const dungeonProfitState = {
       customMode: false,
       customKeySource: 'materials',
       customBuySide: 'ask',
-      customSellSide: 'ask'
+      customSellSide: 'ask',
+      viewTab: 'result'
     };
   },
 
@@ -616,6 +744,13 @@ const dungeonProfitState = {
     const {utils} = DungeonProfitCalculatorFeature.ctx;
     const number = Number(value || 0);
     return Number.isFinite(number) ? utils.formatCompactNumber(number, 2) : '-';
+  },
+
+  formatDropRate(_feature, value) {
+    const {i18n} = DungeonProfitCalculatorFeature.ctx;
+    const rate = Number(value || 0);
+    if (!Number.isFinite(rate) || rate <= 0) return '0%';
+    return (rate * 100).toLocaleString(i18n.locale, {minimumFractionDigits: 0, maximumFractionDigits: 2}) + '%';
   },
 
   updateNumber(feature, field, value) {
@@ -663,6 +798,10 @@ export class DungeonProfitCalculatorFeature {
     return this.constructor.stateController.formatMoney(this, value);
   }
 
+  formatDropRate(value) {
+    return this.constructor.stateController.formatDropRate(this, value);
+  }
+
   updateNumber(field, value) {
     return this.constructor.stateController.updateNumber(this, field, value);
   }
@@ -688,12 +827,27 @@ export class DungeonProfitCalculatorFeature {
     const title = this.popup.querySelector('.swal2-title');
     const {i18n} = this.constructor.ctx;
     if (title) title.textContent = i18n.t('dungeonProfitCalculator');
-    this.helpController?.setContent(i18n.t('dungeonCalculatorHelp', marketTaxPercent, cowbellTaxPercent));
+    // textContent 赋值会清空标题子节点（含帮助按钮锚点），语言切换时重新挂载帮助按钮。
+    this.mountHelp();
     this.render();
   }
 
+  mountHelp() {
+    const {CalculatorHelpPopover, i18n} = this.constructor.ctx;
+    if (!this.popup) return null;
+    this.helpController?.cleanup();
+    this.helpController = CalculatorHelpPopover.mount({
+      popup: this.popup,
+      moduleName: 'dungeon',
+      title: i18n.t('dungeonCalculatorHelpTitle'),
+      heading: i18n.t('dungeonProfitCalculator'),
+      content: i18n.t('dungeonCalculatorHelp', marketTaxPercent, cowbellTaxPercent)
+    });
+    return this.helpController;
+  }
+
   async open() {
-    const {TemplateRenderer, CalculatorHelpPopover, Notifier, i18n} = this.constructor.ctx;
+    const {TemplateRenderer, Notifier, i18n} = this.constructor.ctx;
     if (!this.service.getDungeons().length) return Notifier.alert(i18n.t('noDungeonData'), 'warning');
     try {
       await this.marketService.load();
@@ -710,13 +864,7 @@ export class DungeonProfitCalculatorFeature {
         this.popup = popup;
         this.root = popup.querySelector('#mst-dungeon-calculator-root');
         this.render();
-        this.helpController = CalculatorHelpPopover.mount({
-          popup,
-          moduleName: 'dungeon',
-          title: i18n.t('dungeonCalculatorHelpTitle'),
-          heading: i18n.t('dungeonProfitCalculator'),
-          content: i18n.t('dungeonCalculatorHelp', marketTaxPercent, cowbellTaxPercent)
-        });
+        this.mountHelp();
       },
       willClose: () => {
         this.helpController?.cleanup();
