@@ -1686,13 +1686,102 @@
   color: var(--color-neutral-300, #b9bbca);
   text-align: center;
 }
+/* 掉落表不单独滚动，整体弹窗由 swal2 容器负责纵向滚动，此处只保留横向滚动。 */
 .mst-dungeon-table-wrap {
-  max-height: min(28rem, calc(100svh - 20rem));
-  overflow: auto;
+  overflow-x: auto;
   border: 1px solid var(--color-midnight-100, #454771);
   border-radius: var(--radius-sm, 0.25rem);
   scrollbar-color: var(--color-space-300, #98a7e9) transparent;
   scrollbar-width: thin;
+}
+/* 结果表/掉落表按 tab 切换，显式覆盖确保 uhtml 更新 hidden 后节点真正退出布局。 */
+.mst-dungeon-table-wrap[hidden] {
+  display: none;
+}
+.mst-dungeon-tabs {
+  display: flex;
+  gap: 0.35rem;
+}
+.mst-dungeon-tab {
+  height: var(--button-height-normal, 1.875rem);
+  box-sizing: border-box;
+  padding: 0 0.6rem;
+  border: 1px solid var(--color-midnight-100, #454771);
+  border-radius: var(--radius-sm, 0.25rem);
+  background: var(--color-midnight-500, #2c2e45);
+  color: var(--color-neutral-300, #b9bbca);
+  font:
+    var(--font-weight-semibold, 600) var(--font-size-small, 0.75rem)/1 Roboto,
+    Helvetica,
+    Arial,
+    sans-serif;
+  cursor: pointer;
+}
+.mst-dungeon-tab:hover {
+  border-color: var(--color-space-300, #98a7e9);
+}
+/* 选中页签用金底深字突出，悬停/未选中保持深色底，选中态清晰可辨。 */
+.mst-dungeon-tab-active {
+  border-color: var(--color-cowbell, #f6c95c);
+  background: var(--color-cowbell, #f6c95c);
+  color: var(--color-midnight-500, #2c2e45);
+  box-shadow:
+    0 0 0 1px rgba(246, 201, 92, 0.45),
+    0 2px 8px rgba(246, 201, 92, 0.3);
+}
+.mst-dungeon-loot-table {
+  min-width: 36rem;
+}
+.mst-dungeon-loot-table .mst-dungeon-loot-col-item {
+  width: 26%;
+}
+.mst-dungeon-loot-table .mst-dungeon-loot-col-rate {
+  width: 14%;
+}
+.mst-dungeon-loot-table .mst-dungeon-loot-col-quantity {
+  width: 15%;
+}
+.mst-dungeon-loot-table .mst-dungeon-loot-col-value {
+  width: 22.5%;
+}
+.mst-dungeon-loot-item {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  text-align: left;
+}
+.mst-dungeon-loot-item svg {
+  width: 1.25rem;
+  height: 1.25rem;
+  flex: 0 0 1.25rem;
+}
+/* 掉率单元格：掉率单行展示，悬浮提示查看掉落数量区间，虚线下划线只跟文字等宽。 */
+.mst-dungeon-loot-rule {
+  display: inline-block;
+  white-space: nowrap;
+  cursor: help;
+  border-bottom: 1px dotted var(--color-neutral-400, #999baa);
+}
+/* 期望数量带悬浮提示，虚线下划线提示可查看计算公式，宽度加大且不换行。 */
+.mst-dungeon-loot-quantity {
+  cursor: help;
+  white-space: nowrap;
+  border-bottom: 1px dotted var(--color-neutral-400, #999baa);
+}
+.mst-dungeon-loot-price {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.25rem;
+  white-space: nowrap;
+}
+.mst-dungeon-loot-price i {
+  color: var(--color-neutral-400, #999baa);
+  font-style: normal;
+}
+.mst-dungeon-loot-price strong {
+  color: var(--color-cowbell, #f6c95c);
+  font-weight: 600;
 }
 .mst-dungeon-table {
   width: 100%;
@@ -1757,6 +1846,13 @@
 .mst-dungeon-row-section th:nth-child(n + 2) {
   text-align: center !important;
 }
+/* 两种宝箱并存时各节标题行右侧展示该节价值小计，数值与节头同底色、右对齐。 */
+.mst-dungeon-row-subtotal td {
+  padding-top: 0.55rem;
+  background: var(--color-midnight-500, #2c2e45);
+  color: var(--color-space-200, #b6c0f2);
+  font-weight: 600;
+}
 .mst-dungeon-row-cost td:nth-child(n + 3) {
   color: var(--color-scarlet-300, #ef8f98);
 }
@@ -1767,6 +1863,21 @@
 .mst-dungeon-row-total td {
   border-top: 1px solid var(--color-space-400, #7686cc);
   font-weight: 600;
+}
+/* 掉落表合计行在 tfoot 中，标签跨列左对齐，汇总值保持右对齐。 */
+.mst-dungeon-row-total th {
+  color: var(--color-neutral-100, #ececf1);
+  text-align: left;
+}
+/* 掉落表合计行：深底金字封口，上下各一条强调边框，与节小计行的强调程度匹配。 */
+.mst-dungeon-loot-table .mst-dungeon-row-total th,
+.mst-dungeon-loot-table .mst-dungeon-row-total td {
+  border-top: 1px solid var(--color-space-400, #7686cc);
+  border-bottom: 1px solid var(--color-space-400, #7686cc);
+  background: var(--color-midnight-500, #2c2e45);
+}
+.mst-dungeon-loot-table .mst-dungeon-row-total th {
+  color: var(--color-cowbell, #f6c95c);
 }
 @media (max-width: 48rem) {
   .mst-ability-preset-controls {
@@ -1802,9 +1913,6 @@
   }
   .mst-calculator-table-wrap {
     max-height: calc(100svh - 20rem);
-  }
-  .mst-dungeon-table-wrap {
-    max-height: calc(100svh - 25rem);
   }
 }
 @media (max-width: 32rem) {

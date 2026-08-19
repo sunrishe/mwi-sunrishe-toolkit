@@ -96,6 +96,16 @@ const dungeonProfitCalculationMethods = {
       missingPrices,
       outputOptions
     );
+    // 宝箱掉落物表格：官方宝箱直接掉落条目，固定按税前报价估值，不递归展开嵌套宝箱。
+    const dropTable = this.buildDropTable(
+      expectation,
+      allDrops,
+      normalQuantity,
+      refinementQuantity,
+      pretaxTokenValues,
+      missingPrices,
+      outputOptions
+    );
     const createOpeningKeyQuantities = (dailyKeys, perRunKeys) =>
       [
         ...new Set([
@@ -259,6 +269,7 @@ const dungeonProfitCalculationMethods = {
       refinementChestOutputOptimistic: refinementPretaxOutput.askTotal,
       totalRevenueConservative,
       totalRevenueOptimistic,
+      dropTable,
       dailyConsumablesCost: dailyConsumablesCostCoins,
       costScenarios,
       customMode: Boolean(customMode),
@@ -412,16 +423,34 @@ const dungeonProfitExpectationMethods = {
     const itemMap = clientData.itemDetailMap || {};
     const normalDrops = new Map();
     const refinementDrops = new Map();
+    const normalEntryTriggers = new Map();
+    const refinementEntryTriggers = new Map();
     const openingKeys = new Map();
     const normalOpeningKeys = new Map();
     const refinementOpeningKeys = new Map();
     const addDrop = (target, itemHrid, quantity) => {
       target.set(itemHrid, Number(target.get(itemHrid) || 0) + quantity);
     };
+    // 掉落物表格按官方宝箱的掉落物列表直接展示，不递归展开：普通/精炼宝箱各自列出直接掉落条目
+    // （条目键 = 物品 + 生效掉率 + 数量区间，同一物品多条掉落分别成行），每条目记录期望触发次数。
+    // 递归展开（含嵌套宝箱）仍用于收益计算，与掉落表展示是两套口径。
+    const collectDirectEntries = (itemHrid, quantity, target) => {
+      const drops = itemHrid === '/items/bag_of_10_cowbells' ? null : lootMap[itemHrid];
+      if (!Array.isArray(drops)) {
+        addDrop(target, `${itemHrid}\u0000${1}\u0000${1}\u0000${1}`, quantity);
+        return;
+      }
+      drops.forEach((drop) => {
+        const dropRate = this.getDropRate(drop);
+        const triggers = quantity * dropRate;
+        if (triggers <= 0) return;
+        const dropKey = `${drop.itemHrid}\u0000${dropRate}\u0000${drop.minCount}\u0000${drop.maxCount}`;
+        addDrop(target, dropKey, triggers);
+      });
+    };
+    // 递归展开宝箱内容（嵌套宝箱继续展开）用于收益估值：按最终物品合并，牛铃袋不展开成牛铃。
     const expandChest = (itemHrid, quantity, target, targetOpeningKeys, stack = new Set()) => {
       if (!(quantity > 0)) return;
-      // 牛铃袋保留为直接市场估值，不递归展开成牛铃：牛铃再按牛铃袋折算会形成估值环，
-      // 牛铃袋缺价时会把两者都算成 0，与康康运气的口径一致。
       const drops = itemHrid === '/items/bag_of_10_cowbells' ? null : lootMap[itemHrid];
       if (!Array.isArray(drops)) {
         addDrop(target, itemHrid, quantity);
@@ -438,8 +467,11 @@ const dungeonProfitExpectationMethods = {
       }
       stack.add(itemHrid);
       drops.forEach((drop) => {
-        const expectedQuantity = quantity * this.getExpectedCount(drop);
-        if (expectedQuantity > 0) expandChest(drop.itemHrid, expectedQuantity, target, targetOpeningKeys, stack);
+        const dropRate = this.getDropRate(drop);
+        const expectedQuantity = quantity * dropRate * ((Number(drop.minCount || 0) + Number(drop.maxCount || 0)) / 2);
+        if (expectedQuantity > 0) {
+          expandChest(drop.itemHrid, expectedQuantity, target, targetOpeningKeys, stack);
+        }
       });
       stack.delete(itemHrid);
     };
@@ -447,10 +479,54 @@ const dungeonProfitExpectationMethods = {
     rewards.forEach((reward) => {
       const target = reward.isRefinement ? refinementDrops : normalDrops;
       const targetOpeningKeys = reward.isRefinement ? refinementOpeningKeys : normalOpeningKeys;
+      const entryTarget = reward.isRefinement ? refinementEntryTriggers : normalEntryTriggers;
+      collectDirectEntries(reward.itemHrid, reward.quantity, entryTarget);
       expandChest(reward.itemHrid, reward.quantity, target, targetOpeningKeys);
     });
 
-    return {normalDrops, refinementDrops, openingKeys, normalOpeningKeys, refinementOpeningKeys};
+    return {
+      normalDrops,
+      refinementDrops,
+      normalEntryTriggers,
+      refinementEntryTriggers,
+      openingKeys,
+      normalOpeningKeys,
+      refinementOpeningKeys
+    };
+  },
+
+  expandChestItems(itemHrid, quantity) {
+    // 递归展开宝箱内容（嵌套宝箱继续展开）用于掉落表宝箱行估值，牛铃袋不展开成牛铃。
+    const {DataHub} = this.ctx;
+    const clientData = DataHub.getClientData() || {};
+    const lootMap = clientData.openableLootDropMap || {};
+    const target = new Map();
+    const addDrop = (map, key, count) => {
+      map.set(key, Number(map.get(key) || 0) + count);
+    };
+    const expand = (chestHrid, count, stack = new Set()) => {
+      if (!(count > 0)) return;
+      const drops = chestHrid === '/items/bag_of_10_cowbells' ? null : lootMap[chestHrid];
+      if (!Array.isArray(drops)) {
+        addDrop(target, chestHrid, count);
+        return;
+      }
+      if (stack.has(chestHrid)) {
+        addDrop(target, chestHrid, count);
+        return;
+      }
+      stack.add(chestHrid);
+      drops.forEach((drop) => {
+        const dropRate = this.getDropRate(drop);
+        const expectedCount = count * dropRate * ((Number(drop.minCount || 0) + Number(drop.maxCount || 0)) / 2);
+        if (expectedCount > 0) {
+          expand(drop.itemHrid, expectedCount, stack);
+        }
+      });
+      stack.delete(chestHrid);
+    };
+    expand(itemHrid, quantity);
+    return target;
   },
 
   getTokenValues(applyMarketTax) {
@@ -486,6 +562,92 @@ const dungeonProfitExpectationMethods = {
     }
     this.valuationCache = {clientData, marketData, applyMarketTax, tokenValues};
     return tokenValues;
+  },
+
+  buildDropTable(expectation, allDrops, normalQuantity, refinementQuantity, tokenValues, missing, options = {}) {
+    // 单价完全按市场报价税前估值，不扣任何税，也不随“收益扣除市场税”选项变化。
+    const output = this.valueExpectedDrops(allDrops, tokenValues, undefined, missing, options);
+    // 先按物品合并估值，取出每种物品的税前单价，再按官方宝箱直接掉落条目分别成行。
+    const itemPriceMap = new Map(
+      output.items.map((item) => [
+        item.itemHrid, item
+      ])
+    );
+    const {DataHub} = this.ctx;
+    const clientData = DataHub.getClientData() || {};
+    const lootMap = clientData.openableLootDropMap || {};
+    // 宝箱行（本身仍出现在开箱掉落物列表中的物品）按展开后的最终物品税前估值，避免显示 0。
+    const chestValueCache = new Map();
+    const getChestUnitValue = (itemHrid) => {
+      if (!chestValueCache.has(itemHrid)) {
+        const expanded = this.expandChestItems(itemHrid, 1);
+        const valued = expanded.size
+          ? this.valueExpectedDrops(expanded, tokenValues, undefined, missing, options)
+          : {askTotal: 0, bidTotal: 0};
+        chestValueCache.set(itemHrid, {ask: valued.askTotal, bid: valued.bidTotal});
+      }
+      return chestValueCache.get(itemHrid);
+    };
+    // 掉率显示官方生效掉率（打开该宝箱的掉率），期望数量 = 期望触发次数 × 平均掉落数量。
+    const buildRows = (entryTriggers, chestType) =>
+      [
+        ...entryTriggers.entries()
+      ].map(
+        ([
+          dropKey, triggers
+        ]) => {
+          const parts = dropKey.split('\u0000');
+          const itemHrid = parts[0];
+          const dropRate = Number(parts[1] || 0);
+          const minCount = Number(parts[2] || 0);
+          const maxCount = Number(parts[3] || 0);
+          const quantity = triggers * ((minCount + maxCount) / 2);
+          const price = itemPriceMap.get(itemHrid) || {ask: 0, bid: 0};
+          const isNestedChest =
+            itemHrid !== '/items/bag_of_10_cowbells' &&
+            Array.isArray(lootMap[itemHrid]) &&
+            lootMap[itemHrid].length > 0;
+          const chestValue = isNestedChest ? getChestUnitValue(itemHrid) : null;
+          const ask = chestValue ? chestValue.ask : price.ask;
+          const bid = chestValue ? chestValue.bid : price.bid;
+          return {
+            chestType,
+            itemHrid,
+            dropRate,
+            minCount,
+            maxCount,
+            quantity,
+            ask,
+            bid,
+            askValue: quantity * ask,
+            bidValue: quantity * bid
+          };
+        }
+      );
+    const rows = [
+      ...buildRows(
+        expectation.normalEntryTriggers,
+        'normal'
+      ), ...buildRows(expectation.refinementEntryTriggers, 'refinement')
+    ];
+    // 合计与小计为该掉落列表的折算价值之和；宝箱行按展开内容估值。
+    const quantityTotal = rows.reduce((sum, row) => sum + row.quantity, 0);
+    const askTotal = rows.reduce((sum, row) => sum + row.askValue, 0);
+    const bidTotal = rows.reduce((sum, row) => sum + row.bidValue, 0);
+    const subtotalOf = (chestType, key) =>
+      rows.filter((row) => row.chestType === chestType).reduce((sum, row) => sum + row[key], 0);
+    return {
+      rows,
+      normalQuantity,
+      refinementQuantity,
+      normalAskSubtotal: subtotalOf('normal', 'askValue'),
+      normalBidSubtotal: subtotalOf('normal', 'bidValue'),
+      refinementAskSubtotal: subtotalOf('refinement', 'askValue'),
+      refinementBidSubtotal: subtotalOf('refinement', 'bidValue'),
+      quantityTotal,
+      askTotal,
+      bidTotal
+    };
   },
 
   valueExpectedDrops(drops, tokenValues, applyMarketTax, missing, options = {}) {

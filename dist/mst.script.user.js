@@ -3,7 +3,7 @@
 // @name:zh-CN         MWI Sunrishe 工具箱
 // @name:en            MWI Sunrishe Toolkit
 // @namespace          http://tampermonkey.net/
-// @version            2.11.1
+// @version            2.12.0
 // @description        MWI Sunrishe 综合工具箱：提供角色/队伍名片、技能/房屋/战斗升级规划、装备提升计算器、地下城收益、配装同步和市场伴侣增强。
 // @description:zh-CN  MWI Sunrishe 综合工具箱：提供角色/队伍名片、技能/房屋/战斗升级规划、装备提升计算器、地下城收益、配装同步和市场伴侣增强。
 // @description:en     MST toolkit for character/party cards, ability/house/combat upgrade planning, equipment comparison, dungeon profit, loadout sync, and Market Mate enhancements.
@@ -1859,8 +1859,8 @@
   const DUNGEON_CALCULATOR_MESSAGES = {
     dungeonCalculatorHelpTitle: {zh: '查看地下城收益说明', en: 'View dungeon profit instructions'},
     dungeonCalculatorHelp: {
-      zh: '使用：选择地下城、难度、队伍人数和单次耗时；每日固定按 24 小时计算。每日药品/饮料成本可留空，填写时单位为 M。工匠茶和暴饮之囊只影响制作钥匙成本，暴饮之囊需要勾选后才会按所选强化等级生效。\n\n期望：每日轮次 = 1440 ÷ 单次耗时，计算保留完整精度。普通宝箱按官方公式 5 ÷ 队伍人数 × (1 + 29.5% 战斗掉落数量)计算，5 人时每车 1.295 个；T0 不掉精炼宝箱，T1 精炼宝箱为每车普通宝箱 × 0.33，T2 为每车普通宝箱。门票数量等于普通宝箱期望数量，数量显示最多保留两位小数并去掉末尾 0。\n\n成本：默认同时展示制作钥匙和购买钥匙。制作钥匙读取官方配方并受工匠茶、暴饮之囊影响；购买钥匙读取门票和开箱钥匙的成品市场价。材料成本区只显示买入方向，预期产出区只显示卖出方向。自定义模式可选择钥匙来源、买入档位和卖出档位；左侧保留所选来源的区间，右侧显示自定义组合。\n\n收益：宝箱内容按官方掉落率和平均数量递归展开，重复物品会合并，嵌套宝箱会继续展开。每日普通/精炼宝箱产出完全按市场报价税前计算（不扣税）。“收益扣除市场税”默认勾选，卖出收入按市场税扣除（普通物品 {0}%、牛铃/牛铃袋 {1}%）；不勾选时所有物品都按市场报价直接计算，不扣任何税。勾选“披风不计算收益”后，所有背部装备产物按 0 估值。单个普通宝箱收益会扣除单箱分摊的门票和普通开箱钥匙成本；单个精炼宝箱收益只扣除精炼开箱钥匙成本。每日期望收益按单箱收益乘每日宝箱数量汇总后，再扣除每日药品/饮料成本；每车期望收益等于每日期望收益除以每日轮次。\n\n限制：通关耗时和队伍人数需要手动填写/选择，当前不会自动读取战斗耗时和队伍组成。结果是当前参数和市场价格下的确定性期望，不预测价格变化。完全缺价的物品按 0 估值并提示。',
-      en: 'Usage: Select a dungeon, tier, party size, and clear time. Every day uses a fixed 24-hour calculation. Daily food/drink cost is optional and entered in millions. Artisan Tea and Guzzling Pouch affect crafted-key costs only; Guzzling Pouch applies only when its checkbox is enabled and uses the selected enhancement level.\n\nExpectation: Daily runs = 1440 ÷ clear time, kept at full precision for calculation. Normal Chests use the official formula 5 ÷ Party Size × (1 + 29.5% Combat Drop Quantity); at Party Size 5 that is 1.295 per run. T0 has no Refinement Chest; T1 uses Normal Chests × 0.33 per run; T2 uses the Normal Chest expectation per run. Entry Ticket quantity equals expected Normal Chest quantity, and displayed quantities use at most two decimals and hide trailing zeros.\n\nCosts: Crafted Keys and Purchased Keys are shown by default. Crafted-key costs use official recipes and are affected by Artisan Tea and Guzzling Pouch; purchased-key costs use finished Entry Ticket and Chest Key market prices. The Material Costs section shows purchase sides only, and Expected Output shows sale sides only. Custom Mode selects the key source, buy side, and sell side; the left columns keep the selected source range, while the right column shows the custom combination.\n\nProfit: Chest contents recursively use official drop rates and average quantities; duplicate items are combined and nested chests are expanded. Daily Normal/Refinement Chest Output is valued at quoted market prices before tax (no tax deducted). Deduct Market Tax is enabled by default and sale revenue deducts the market tax (regular items {0}%, Cowbells and Cowbell Bags {1}%); when disabled, all items use quoted prices directly with no tax deducted. When Exclude Back Equipment Profit is enabled, all back-equipment output is valued at 0. Each Normal Chest Profit deducts allocated Entry Ticket and Normal Chest Key costs; each Refinement Chest Profit deducts its Refinement Chest Key cost. Daily Expected Profit multiplies per-chest profit by daily chest quantities, then deducts daily food/drink cost; Expected Profit per Run divides it by Daily Runs.\n\nLimits: Clear time is entered manually and party size is selected manually; they are not read from combat automatically. Results are deterministic expectations at current parameters and market prices and do not predict price changes. Items with no valid price are valued at 0 and reported.'
+      zh: '使用：选择地下城、难度、队伍人数和单次耗时；每日固定按 24 小时计算。每日药品/饮料成本可留空，填写时单位为 M。工匠茶和暴饮之囊只影响制作钥匙成本，暴饮之囊需要勾选后才会按所选强化等级生效。\n\n期望：每日轮次 = 1440 ÷ 单次耗时，计算保留完整精度。普通宝箱按官方公式 5 ÷ 队伍人数 × (1 + 29.5% 战斗掉落数量)计算，5 人时每车 1.295 个；T0 不掉精炼宝箱，T1 精炼宝箱为每车普通宝箱 × 0.33，T2 为每车普通宝箱。门票数量等于普通宝箱期望数量，数量显示最多保留两位小数并去掉末尾 0。\n\n成本：默认同时展示制作钥匙和购买钥匙。制作钥匙读取官方配方并受工匠茶、暴饮之囊影响；购买钥匙读取门票和开箱钥匙的成品市场价。材料成本区只显示买入方向，预期产出区只显示卖出方向。自定义模式可选择钥匙来源、买入档位和卖出档位；左侧保留所选来源的区间，右侧显示自定义组合。\n\n收益：宝箱内容按官方掉落率和平均数量递归展开，重复物品会合并，嵌套宝箱会继续展开。“掉落物”页签按官方宝箱的掉落物列表直接展示（不递归展开嵌套宝箱），普通/精炼宝箱各一小节，每行列出掉率/掉落数量、期望数量（悬浮查看计算公式）与按市场报价税前折算的价值。每日普通/精炼宝箱产出完全按市场报价税前计算（不扣税）。“收益扣除市场税”默认勾选，卖出收入按市场税扣除（普通物品 {0}%、牛铃/牛铃袋 {1}%）；不勾选时所有物品都按市场报价直接计算，不扣任何税。勾选“披风不计算收益”后，所有背部装备产物按 0 估值。单个普通宝箱收益会扣除单箱分摊的门票和普通开箱钥匙成本；单个精炼宝箱收益只扣除精炼开箱钥匙成本。每日期望收益按单箱收益乘每日宝箱数量汇总后，再扣除每日药品/饮料成本；每车期望收益等于每日期望收益除以每日轮次。\n\n限制：通关耗时和队伍人数需要手动填写/选择，当前不会自动读取战斗耗时和队伍组成。结果是当前参数和市场价格下的确定性期望，不预测价格变化。完全缺价的物品按 0 估值并提示。',
+      en: 'Usage: Select a dungeon, tier, party size, and clear time. Every day uses a fixed 24-hour calculation. Daily food/drink cost is optional and entered in millions. Artisan Tea and Guzzling Pouch affect crafted-key costs only; Guzzling Pouch applies only when its checkbox is enabled and uses the selected enhancement level.\n\nExpectation: Daily runs = 1440 ÷ clear time, kept at full precision for calculation. Normal Chests use the official formula 5 ÷ Party Size × (1 + 29.5% Combat Drop Quantity); at Party Size 5 that is 1.295 per run. T0 has no Refinement Chest; T1 uses Normal Chests × 0.33 per run; T2 uses the Normal Chest expectation per run. Entry Ticket quantity equals expected Normal Chest quantity, and displayed quantities use at most two decimals and hide trailing zeros.\n\nCosts: Crafted Keys and Purchased Keys are shown by default. Crafted-key costs use official recipes and are affected by Artisan Tea and Guzzling Pouch; purchased-key costs use finished Entry Ticket and Chest Key market prices. The Material Costs section shows purchase sides only, and Expected Output shows sale sides only. Custom Mode selects the key source, buy side, and sell side; the left columns keep the selected source range, while the right column shows the custom combination.\n\nProfit: Chest contents recursively use official drop rates and average quantities; duplicate items are combined and nested chests are expanded. The Loot tab lists the official chest drop entries directly (nested chests are not expanded), split into Normal and Refined Chest sections; each row shows drop rate / drop quantity, expected quantity (hover for the formula), and pretax value at quoted market prices. Daily Normal/Refinement Chest Output is valued at quoted market prices before tax (no tax deducted). Deduct Market Tax is enabled by default and sale revenue deducts the market tax (regular items {0}%, Cowbells and Cowbell Bags {1}%); when disabled, all items use quoted prices directly with no tax deducted. When Exclude Back Equipment Profit is enabled, all back-equipment output is valued at 0. Each Normal Chest Profit deducts allocated Entry Ticket and Normal Chest Key costs; each Refinement Chest Profit deducts its Refinement Chest Key cost. Daily Expected Profit multiplies per-chest profit by daily chest quantities, then deducts daily food/drink cost; Expected Profit per Run divides it by Daily Runs.\n\nLimits: Clear time is entered manually and party size is selected manually; they are not read from combat automatically. Results are deterministic expectations at current parameters and market prices and do not predict price changes. Items with no valid price are valued at 0 and reported.'
     },
     dungeon: {zh: '地下城', en: 'Dungeon'},
     dungeonNameChimericalDen: {zh: '奇幻洞穴', en: 'Chimerical Den'},
@@ -1919,7 +1919,23 @@
       en: '{0} item(s) have no market price; affected revenue or costs are currently valued at 0.'
     },
     invalidDungeonInput: {zh: '请输入大于 0 的单次耗时', en: 'Clear time must be greater than 0.'},
-    noDungeonData: {zh: '未找到官方地下城数据', en: 'Official dungeon data was not found.'}
+    noDungeonData: {zh: '未找到官方地下城数据', en: 'Official dungeon data was not found.'},
+    dungeonResultTab: {zh: '收益结果', en: 'Profit'},
+    dungeonLootTab: {zh: '掉落物', en: 'Loot'},
+    dropItem: {zh: '物品', en: 'Item'},
+    dropRate: {zh: '掉率', en: 'Drop Rate'},
+    dropQuantityHint: {zh: '掉落数量 {0}', en: 'Drop Quantity {0}'},
+    expectedQuantity: {zh: '期望数量', en: 'Expected Quantity'},
+    normalChestLoot: {zh: '普通宝箱掉落物', en: 'Normal Chest Drops'},
+    refinementChestLoot: {zh: '精炼宝箱掉落物', en: 'Refined Chest Drops'},
+    chestDropsPerDay: {zh: '{0} 个/天', en: '{0} per day'},
+    normalChest: {zh: '普通宝箱', en: 'Normal Chest'},
+    refinementChest: {zh: '精炼宝箱', en: 'Refined Chest'},
+    expectedQuantityFormula: {
+      zh: '期望数量 = {0} 个{1} × {2} × ({3}+{4})÷2',
+      en: 'Expected = {0} {1} × {2} × ({3}+{4})÷2'
+    },
+    expectedQuantityResult: {zh: '= {0}', en: '= {0}'}
   };
 
   // equipment-comparison-messages
@@ -11627,6 +11643,16 @@
         missingPrices,
         outputOptions
       );
+      // 宝箱掉落物表格：官方宝箱直接掉落条目，固定按税前报价估值，不递归展开嵌套宝箱。
+      const dropTable = this.buildDropTable(
+        expectation,
+        allDrops,
+        normalQuantity,
+        refinementQuantity,
+        pretaxTokenValues,
+        missingPrices,
+        outputOptions
+      );
       const createOpeningKeyQuantities = (dailyKeys, perRunKeys) =>
         [
           ...new Set([
@@ -11790,6 +11816,7 @@
         refinementChestOutputOptimistic: refinementPretaxOutput.askTotal,
         totalRevenueConservative,
         totalRevenueOptimistic,
+        dropTable,
         dailyConsumablesCost: dailyConsumablesCostCoins,
         costScenarios,
         customMode: Boolean(customMode),
@@ -11943,16 +11970,34 @@
       const itemMap = clientData.itemDetailMap || {};
       const normalDrops = new Map();
       const refinementDrops = new Map();
+      const normalEntryTriggers = new Map();
+      const refinementEntryTriggers = new Map();
       const openingKeys = new Map();
       const normalOpeningKeys = new Map();
       const refinementOpeningKeys = new Map();
       const addDrop = (target, itemHrid, quantity) => {
         target.set(itemHrid, Number(target.get(itemHrid) || 0) + quantity);
       };
+      // 掉落物表格按官方宝箱的掉落物列表直接展示，不递归展开：普通/精炼宝箱各自列出直接掉落条目
+      // （条目键 = 物品 + 生效掉率 + 数量区间，同一物品多条掉落分别成行），每条目记录期望触发次数。
+      // 递归展开（含嵌套宝箱）仍用于收益计算，与掉落表展示是两套口径。
+      const collectDirectEntries = (itemHrid, quantity, target) => {
+        const drops = itemHrid === '/items/bag_of_10_cowbells' ? null : lootMap[itemHrid];
+        if (!Array.isArray(drops)) {
+          addDrop(target, `${itemHrid}\u0000${1}\u0000${1}\u0000${1}`, quantity);
+          return;
+        }
+        drops.forEach((drop) => {
+          const dropRate = this.getDropRate(drop);
+          const triggers = quantity * dropRate;
+          if (triggers <= 0) return;
+          const dropKey = `${drop.itemHrid}\u0000${dropRate}\u0000${drop.minCount}\u0000${drop.maxCount}`;
+          addDrop(target, dropKey, triggers);
+        });
+      };
+      // 递归展开宝箱内容（嵌套宝箱继续展开）用于收益估值：按最终物品合并，牛铃袋不展开成牛铃。
       const expandChest = (itemHrid, quantity, target, targetOpeningKeys, stack = new Set()) => {
         if (!(quantity > 0)) return;
-        // 牛铃袋保留为直接市场估值，不递归展开成牛铃：牛铃再按牛铃袋折算会形成估值环，
-        // 牛铃袋缺价时会把两者都算成 0，与康康运气的口径一致。
         const drops = itemHrid === '/items/bag_of_10_cowbells' ? null : lootMap[itemHrid];
         if (!Array.isArray(drops)) {
           addDrop(target, itemHrid, quantity);
@@ -11969,8 +12014,11 @@
         }
         stack.add(itemHrid);
         drops.forEach((drop) => {
-          const expectedQuantity = quantity * this.getExpectedCount(drop);
-          if (expectedQuantity > 0) expandChest(drop.itemHrid, expectedQuantity, target, targetOpeningKeys, stack);
+          const dropRate = this.getDropRate(drop);
+          const expectedQuantity = quantity * dropRate * ((Number(drop.minCount || 0) + Number(drop.maxCount || 0)) / 2);
+          if (expectedQuantity > 0) {
+            expandChest(drop.itemHrid, expectedQuantity, target, targetOpeningKeys, stack);
+          }
         });
         stack.delete(itemHrid);
       };
@@ -11978,10 +12026,54 @@
       rewards.forEach((reward) => {
         const target = reward.isRefinement ? refinementDrops : normalDrops;
         const targetOpeningKeys = reward.isRefinement ? refinementOpeningKeys : normalOpeningKeys;
+        const entryTarget = reward.isRefinement ? refinementEntryTriggers : normalEntryTriggers;
+        collectDirectEntries(reward.itemHrid, reward.quantity, entryTarget);
         expandChest(reward.itemHrid, reward.quantity, target, targetOpeningKeys);
       });
 
-      return {normalDrops, refinementDrops, openingKeys, normalOpeningKeys, refinementOpeningKeys};
+      return {
+        normalDrops,
+        refinementDrops,
+        normalEntryTriggers,
+        refinementEntryTriggers,
+        openingKeys,
+        normalOpeningKeys,
+        refinementOpeningKeys
+      };
+    },
+
+    expandChestItems(itemHrid, quantity) {
+      // 递归展开宝箱内容（嵌套宝箱继续展开）用于掉落表宝箱行估值，牛铃袋不展开成牛铃。
+      const {DataHub} = this.ctx;
+      const clientData = DataHub.getClientData() || {};
+      const lootMap = clientData.openableLootDropMap || {};
+      const target = new Map();
+      const addDrop = (map, key, count) => {
+        map.set(key, Number(map.get(key) || 0) + count);
+      };
+      const expand = (chestHrid, count, stack = new Set()) => {
+        if (!(count > 0)) return;
+        const drops = chestHrid === '/items/bag_of_10_cowbells' ? null : lootMap[chestHrid];
+        if (!Array.isArray(drops)) {
+          addDrop(target, chestHrid, count);
+          return;
+        }
+        if (stack.has(chestHrid)) {
+          addDrop(target, chestHrid, count);
+          return;
+        }
+        stack.add(chestHrid);
+        drops.forEach((drop) => {
+          const dropRate = this.getDropRate(drop);
+          const expectedCount = count * dropRate * ((Number(drop.minCount || 0) + Number(drop.maxCount || 0)) / 2);
+          if (expectedCount > 0) {
+            expand(drop.itemHrid, expectedCount, stack);
+          }
+        });
+        stack.delete(chestHrid);
+      };
+      expand(itemHrid, quantity);
+      return target;
     },
 
     getTokenValues(applyMarketTax) {
@@ -12017,6 +12109,92 @@
       }
       this.valuationCache = {clientData, marketData, applyMarketTax, tokenValues};
       return tokenValues;
+    },
+
+    buildDropTable(expectation, allDrops, normalQuantity, refinementQuantity, tokenValues, missing, options = {}) {
+      // 单价完全按市场报价税前估值，不扣任何税，也不随“收益扣除市场税”选项变化。
+      const output = this.valueExpectedDrops(allDrops, tokenValues, undefined, missing, options);
+      // 先按物品合并估值，取出每种物品的税前单价，再按官方宝箱直接掉落条目分别成行。
+      const itemPriceMap = new Map(
+        output.items.map((item) => [
+          item.itemHrid, item
+        ])
+      );
+      const {DataHub} = this.ctx;
+      const clientData = DataHub.getClientData() || {};
+      const lootMap = clientData.openableLootDropMap || {};
+      // 宝箱行（本身仍出现在开箱掉落物列表中的物品）按展开后的最终物品税前估值，避免显示 0。
+      const chestValueCache = new Map();
+      const getChestUnitValue = (itemHrid) => {
+        if (!chestValueCache.has(itemHrid)) {
+          const expanded = this.expandChestItems(itemHrid, 1);
+          const valued = expanded.size
+            ? this.valueExpectedDrops(expanded, tokenValues, undefined, missing, options)
+            : {askTotal: 0, bidTotal: 0};
+          chestValueCache.set(itemHrid, {ask: valued.askTotal, bid: valued.bidTotal});
+        }
+        return chestValueCache.get(itemHrid);
+      };
+      // 掉率显示官方生效掉率（打开该宝箱的掉率），期望数量 = 期望触发次数 × 平均掉落数量。
+      const buildRows = (entryTriggers, chestType) =>
+        [
+          ...entryTriggers.entries()
+        ].map(
+          ([
+            dropKey, triggers
+          ]) => {
+            const parts = dropKey.split('\u0000');
+            const itemHrid = parts[0];
+            const dropRate = Number(parts[1] || 0);
+            const minCount = Number(parts[2] || 0);
+            const maxCount = Number(parts[3] || 0);
+            const quantity = triggers * ((minCount + maxCount) / 2);
+            const price = itemPriceMap.get(itemHrid) || {ask: 0, bid: 0};
+            const isNestedChest =
+              itemHrid !== '/items/bag_of_10_cowbells' &&
+              Array.isArray(lootMap[itemHrid]) &&
+              lootMap[itemHrid].length > 0;
+            const chestValue = isNestedChest ? getChestUnitValue(itemHrid) : null;
+            const ask = chestValue ? chestValue.ask : price.ask;
+            const bid = chestValue ? chestValue.bid : price.bid;
+            return {
+              chestType,
+              itemHrid,
+              dropRate,
+              minCount,
+              maxCount,
+              quantity,
+              ask,
+              bid,
+              askValue: quantity * ask,
+              bidValue: quantity * bid
+            };
+          }
+        );
+      const rows = [
+        ...buildRows(
+          expectation.normalEntryTriggers,
+          'normal'
+        ), ...buildRows(expectation.refinementEntryTriggers, 'refinement')
+      ];
+      // 合计与小计为该掉落列表的折算价值之和；宝箱行按展开内容估值。
+      const quantityTotal = rows.reduce((sum, row) => sum + row.quantity, 0);
+      const askTotal = rows.reduce((sum, row) => sum + row.askValue, 0);
+      const bidTotal = rows.reduce((sum, row) => sum + row.bidValue, 0);
+      const subtotalOf = (chestType, key) =>
+        rows.filter((row) => row.chestType === chestType).reduce((sum, row) => sum + row[key], 0);
+      return {
+        rows,
+        normalQuantity,
+        refinementQuantity,
+        normalAskSubtotal: subtotalOf('normal', 'askValue'),
+        normalBidSubtotal: subtotalOf('normal', 'bidValue'),
+        refinementAskSubtotal: subtotalOf('refinement', 'askValue'),
+        refinementBidSubtotal: subtotalOf('refinement', 'bidValue'),
+        quantityTotal,
+        askTotal,
+        bidTotal
+      };
     },
 
     valueExpectedDrops(drops, tokenValues, applyMarketTax, missing, options = {}) {
@@ -12110,9 +12288,10 @@
       };
       const result = feature.service.calculate(calculationInput);
       // option 模板不能带首尾空白，否则 uhtml 的 Fragment 锚点会被 select 重排并在下次更新时失效。
+      // 按官方地下城顺序（sortIndex）显示 D1-D4 序号前缀，方便对照游戏内地下城地图。
       const dungeonOptions = dungeons.map(
-        (action) =>
-          TemplateRenderer.html`<option value=${action.hrid} .selected=${action.hrid === feature.state.actionHrid}>${feature.getDungeonName(action)}</option>`
+        (action, index) =>
+          TemplateRenderer.html`<option value=${action.hrid} .selected=${action.hrid === feature.state.actionHrid}>D${index + 1}. ${feature.getDungeonName(action)}</option>`
       );
       const difficultyOptions = [
         0, 1, 2
@@ -12542,11 +12721,22 @@
       }
       const rows = dungeonProfitResultRows.getResultRows(result);
       const resultRows = rows.map((row) => this.renderResultRow(feature, result, row, TemplateRenderer, i18n));
+      const showResult = feature.state.viewTab !== 'loot';
       // 自定义模式保留六列 DOM 结构，但将末列作为零宽占位，使合并后的自定义结果只占一个有效价格列。
       return TemplateRenderer.html`
   ${dungeonProfitSummaryView.renderSummary(feature, result)}
   ${this.renderMissingPriceWarning(result, TemplateRenderer, i18n)}
-  <div class="mst-dungeon-table-wrap">
+  <div class="mst-dungeon-tabs">
+    <button type="button" class=${`mst-dungeon-tab${showResult ? ' mst-dungeon-tab-active' : ''}`} @click=${() => {
+      feature.state.viewTab = 'result';
+      feature.render();
+    }}>${i18n.t('dungeonResultTab')}</button>
+    <button type="button" class=${`mst-dungeon-tab${!showResult ? ' mst-dungeon-tab-active' : ''}`} @click=${() => {
+      feature.state.viewTab = 'loot';
+      feature.render();
+    }}>${i18n.t('dungeonLootTab')}</button>
+  </div>
+  <div class="mst-dungeon-table-wrap" .hidden=${!showResult}>
     <table class=${`mst-dungeon-table${result.customMode ? ' mst-dungeon-table-custom' : ''}`}>
       <colgroup>
         <col class="mst-dungeon-col-item">
@@ -12572,7 +12762,122 @@
       </tbody>
     </table>
   </div>
+  ${this.renderDropTable(feature, result, TemplateRenderer, i18n)}
     `;
+    },
+
+    renderDropTable(feature, result, TemplateRenderer, i18n) {
+      const {DataHub} = DungeonProfitCalculatorFeature.ctx;
+      const dropTable = result.dropTable;
+      const getItemName = (itemHrid) => DataHub.getLocalizedGameName('itemNames', itemHrid) || itemHrid;
+      // 掉落物表按官方宝箱直接掉落列表分节展示，各节标题行右侧同时展示该节价值小计。
+      const renderSection = (label, rows, chestDailyCount, chestLabel, subtotalAsk, subtotalBid) => [
+        TemplateRenderer.html`<tr class="mst-dungeon-row-section mst-dungeon-row-subtotal"><th colspan="3">${label}</th><td>${feature.formatMoney(subtotalAsk)}</td><td>${feature.formatMoney(subtotalBid)}</td></tr>`, ...rows.map((row) => this.renderDropTableRow(feature, row, getItemName, TemplateRenderer, i18n, chestDailyCount, chestLabel))
+      ];
+      const normalLabel = `${i18n.t('normalChestLoot')}（${i18n.t(
+      'chestDropsPerDay',
+      feature.formatCount(dropTable.normalQuantity)
+    )}）`;
+      const refinementLabel = `${i18n.t('refinementChestLoot')}（${i18n.t(
+      'chestDropsPerDay',
+      feature.formatCount(dropTable.refinementQuantity)
+    )}）`;
+      const normalSection = renderSection(
+        normalLabel,
+        dropTable.rows.filter((row) => row.chestType === 'normal'),
+        dropTable.normalQuantity,
+        i18n.t('normalChest'),
+        dropTable.normalAskSubtotal,
+        dropTable.normalBidSubtotal
+      );
+      const refinementSection =
+        dropTable.refinementQuantity > 0
+          ? renderSection(
+              refinementLabel,
+              dropTable.rows.filter((row) => row.chestType === 'refinement'),
+              dropTable.refinementQuantity,
+              i18n.t('refinementChest'),
+              dropTable.refinementAskSubtotal,
+              dropTable.refinementBidSubtotal
+            )
+          : [];
+      return TemplateRenderer.html`
+  <div class="mst-dungeon-table-wrap" .hidden=${feature.state.viewTab !== 'loot'}>
+    <table class="mst-dungeon-table mst-dungeon-loot-table">
+      <colgroup>
+        <col class="mst-dungeon-loot-col-item">
+        <col class="mst-dungeon-loot-col-rate">
+        <col class="mst-dungeon-loot-col-quantity">
+        <col class="mst-dungeon-loot-col-value">
+        <col class="mst-dungeon-loot-col-value">
+      </colgroup>
+      <thead>
+        <tr>
+          <th>${i18n.t('dropItem')}</th>
+          <th>${i18n.t('dropRate')}</th>
+          <th>${i18n.t('expectedQuantity')}</th>
+          <th>${i18n.t('askPriceAndTotal')}</th>
+          <th>${i18n.t('bidPriceAndTotal')}</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${normalSection}
+        ${refinementSection}
+      </tbody>
+      <tfoot>
+        <tr class="mst-dungeon-row-total">
+          <th scope="row" colspan="3">${i18n.t('total')}</th>
+          <td><div class="mst-dungeon-loot-price"><strong>${feature.formatMoney(dropTable.askTotal)}</strong></div></td>
+          <td><div class="mst-dungeon-loot-price"><strong>${feature.formatMoney(dropTable.bidTotal)}</strong></div></td>
+        </tr>
+      </tfoot>
+    </table>
+  </div>
+    `;
+    },
+
+    renderDropTableRow(feature, row, getItemName, TemplateRenderer, i18n, chestDailyCount, chestLabel) {
+      // 期望数量悬浮提示展示计算公式与结果：每日该宝箱数量 × 掉率 × 平均掉落数量，换行后给出结果。
+      const formulaTitle =
+        i18n.t(
+          'expectedQuantityFormula',
+          feature.formatCount(chestDailyCount),
+          chestLabel,
+          feature.formatDropRate(row.dropRate),
+          row.minCount,
+          row.maxCount
+        ) +
+        '\n' +
+        i18n.t('expectedQuantityResult', feature.formatCount(row.quantity));
+      const quantityRange = row.minCount === row.maxCount ? String(row.minCount) : `${row.minCount}-${row.maxCount}`;
+      return TemplateRenderer.html`
+  <tr class="mst-dungeon-row-loot">
+    <th scope="row">
+      <span class="mst-dungeon-loot-item">
+        <svg aria-hidden="true"><use href=${this.getItemIconHref(feature, row.itemHrid)}></use></svg>
+        <span>${getItemName(row.itemHrid)}</span>
+      </span>
+    </th>
+    <td>
+      <span class="mst-dungeon-loot-rule" title=${i18n.t('dropQuantityHint', quantityRange)}>
+        ${feature.formatDropRate(row.dropRate)}
+      </span>
+    </td>
+    <td><span class="mst-dungeon-loot-quantity" title=${formulaTitle}>${feature.formatCount(row.quantity)}</span></td>
+    <td><div class="mst-dungeon-loot-price"><span>${feature.formatMoney(
+      row.ask
+    )}</span><i>/</i><strong>${feature.formatMoney(row.askValue)}</strong></div></td>
+    <td><div class="mst-dungeon-loot-price"><span>${feature.formatMoney(
+      row.bid
+    )}</span><i>/</i><strong>${feature.formatMoney(row.bidValue)}</strong></div></td>
+  </tr>
+    `;
+    },
+
+    getItemIconHref(_feature, itemHrid) {
+      const {utils} = DungeonProfitCalculatorFeature.ctx;
+      const sprite = utils?.getSpriteUrl?.('items') || '/static/media/items_sprite.f58c9476.svg';
+      return `${sprite}#${utils?.substrLastSlash?.(itemHrid) || itemHrid}`;
     },
 
     renderMissingPriceWarning(result, TemplateRenderer, i18n) {
@@ -12651,7 +12956,8 @@
         customMode: false,
         customKeySource: 'materials',
         customBuySide: 'ask',
-        customSellSide: 'ask'
+        customSellSide: 'ask',
+        viewTab: 'result'
       };
     },
 
@@ -12691,6 +12997,13 @@
       const {utils} = DungeonProfitCalculatorFeature.ctx;
       const number = Number(value || 0);
       return Number.isFinite(number) ? utils.formatCompactNumber(number, 2) : '-';
+    },
+
+    formatDropRate(_feature, value) {
+      const {i18n} = DungeonProfitCalculatorFeature.ctx;
+      const rate = Number(value || 0);
+      if (!Number.isFinite(rate) || rate <= 0) return '0%';
+      return (rate * 100).toLocaleString(i18n.locale, {minimumFractionDigits: 0, maximumFractionDigits: 2}) + '%';
     },
 
     updateNumber(feature, field, value) {
@@ -12738,6 +13051,10 @@
       return this.constructor.stateController.formatMoney(this, value);
     }
 
+    formatDropRate(value) {
+      return this.constructor.stateController.formatDropRate(this, value);
+    }
+
     updateNumber(field, value) {
       return this.constructor.stateController.updateNumber(this, field, value);
     }
@@ -12763,12 +13080,27 @@
       const title = this.popup.querySelector('.swal2-title');
       const {i18n} = this.constructor.ctx;
       if (title) title.textContent = i18n.t('dungeonProfitCalculator');
-      this.helpController?.setContent(i18n.t('dungeonCalculatorHelp', marketTaxPercent, cowbellTaxPercent));
+      // textContent 赋值会清空标题子节点（含帮助按钮锚点），语言切换时重新挂载帮助按钮。
+      this.mountHelp();
       this.render();
     }
 
+    mountHelp() {
+      const {CalculatorHelpPopover, i18n} = this.constructor.ctx;
+      if (!this.popup) return null;
+      this.helpController?.cleanup();
+      this.helpController = CalculatorHelpPopover.mount({
+        popup: this.popup,
+        moduleName: 'dungeon',
+        title: i18n.t('dungeonCalculatorHelpTitle'),
+        heading: i18n.t('dungeonProfitCalculator'),
+        content: i18n.t('dungeonCalculatorHelp', marketTaxPercent, cowbellTaxPercent)
+      });
+      return this.helpController;
+    }
+
     async open() {
-      const {TemplateRenderer, CalculatorHelpPopover, Notifier, i18n} = this.constructor.ctx;
+      const {TemplateRenderer, Notifier, i18n} = this.constructor.ctx;
       if (!this.service.getDungeons().length) return Notifier.alert(i18n.t('noDungeonData'), 'warning');
       try {
         await this.marketService.load();
@@ -12785,13 +13117,7 @@
           this.popup = popup;
           this.root = popup.querySelector('#mst-dungeon-calculator-root');
           this.render();
-          this.helpController = CalculatorHelpPopover.mount({
-            popup,
-            moduleName: 'dungeon',
-            title: i18n.t('dungeonCalculatorHelpTitle'),
-            heading: i18n.t('dungeonProfitCalculator'),
-            content: i18n.t('dungeonCalculatorHelp', marketTaxPercent, cowbellTaxPercent)
-          });
+          this.mountHelp();
         },
         willClose: () => {
           this.helpController?.cleanup();
@@ -22478,7 +22804,24 @@
 .mst-dungeon-summary-market strong{color:var(--color-neutral-100, #ececf1);font-size:var(--font-size-small, .75rem);font-weight:500;line-height:1.2;overflow-wrap:anywhere}
 .mst-dungeon-warning{padding:.35rem .5rem;border:1px solid #866f38;border-left:3px solid var(--color-cowbell, #f6c95c);border-radius:var(--radius-sm, .25rem);background:#3a3324;color:#f5dda1;font-size:var(--font-size-small, .75rem);line-height:1.3}
 .mst-dungeon-empty{display:flex;min-height:8rem;align-items:center;justify-content:center;border:1px dashed var(--color-midnight-100, #454771);border-radius:var(--radius-sm, .25rem);color:var(--color-neutral-300, #b9bbca);text-align:center}
-.mst-dungeon-table-wrap{max-height:min(28rem,calc(100svh - 20rem));overflow:auto;border:1px solid var(--color-midnight-100, #454771);border-radius:var(--radius-sm, .25rem);scrollbar-color:var(--color-space-300, #98a7e9) transparent;scrollbar-width:thin}
+.mst-dungeon-table-wrap{overflow-x:auto;border:1px solid var(--color-midnight-100, #454771);border-radius:var(--radius-sm, .25rem);scrollbar-color:var(--color-space-300, #98a7e9) transparent;scrollbar-width:thin}
+.mst-dungeon-table-wrap[hidden]{display:none}
+.mst-dungeon-tabs{display:flex;gap:.35rem}
+.mst-dungeon-tab{height:var(--button-height-normal, 1.875rem);box-sizing:border-box;padding:0 .6rem;border:1px solid var(--color-midnight-100, #454771);border-radius:var(--radius-sm, .25rem);background:var(--color-midnight-500, #2c2e45);color:var(--color-neutral-300, #b9bbca);font:var(--font-weight-semibold, 600) var(--font-size-small, .75rem)/1 Roboto,Helvetica,Arial,sans-serif;cursor:pointer}
+.mst-dungeon-tab:hover{border-color:var(--color-space-300, #98a7e9)}
+.mst-dungeon-tab-active{border-color:var(--color-cowbell, #f6c95c);background:var(--color-cowbell, #f6c95c);color:var(--color-midnight-500, #2c2e45);box-shadow:0 0 0 1px #f6c95c73,0 2px 8px #f6c95c4d}
+.mst-dungeon-loot-table{min-width:36rem}
+.mst-dungeon-loot-table .mst-dungeon-loot-col-item{width:26%}
+.mst-dungeon-loot-table .mst-dungeon-loot-col-rate{width:14%}
+.mst-dungeon-loot-table .mst-dungeon-loot-col-quantity{width:15%}
+.mst-dungeon-loot-table .mst-dungeon-loot-col-value{width:22.5%}
+.mst-dungeon-loot-item{display:flex;align-items:center;gap:.35rem;text-align:left}
+.mst-dungeon-loot-item svg{width:1.25rem;height:1.25rem;flex:0 0 1.25rem}
+.mst-dungeon-loot-rule{display:inline-block;white-space:nowrap;cursor:help;border-bottom:1px dotted var(--color-neutral-400, #999baa)}
+.mst-dungeon-loot-quantity{cursor:help;white-space:nowrap;border-bottom:1px dotted var(--color-neutral-400, #999baa)}
+.mst-dungeon-loot-price{display:flex;align-items:center;justify-content:flex-end;gap:.25rem;white-space:nowrap}
+.mst-dungeon-loot-price i{color:var(--color-neutral-400, #999baa);font-style:normal}
+.mst-dungeon-loot-price strong{color:var(--color-cowbell, #f6c95c);font-weight:600}
 .mst-dungeon-table{width:100%;min-width:35rem;border-collapse:collapse;table-layout:fixed}
 .mst-dungeon-table th,.mst-dungeon-table td{box-sizing:border-box;padding:.38rem .45rem;border-bottom:1px solid var(--color-midnight-200, #3b3d60);line-height:1.2;text-align:right;vertical-align:middle}
 .mst-dungeon-table thead th{position:sticky;top:0;z-index:1;background:var(--color-midnight-500, #2c2e45);color:var(--color-neutral-100, #ececf1);font-weight:600;text-align:center}
@@ -22493,9 +22836,13 @@
 .mst-dungeon-row-section th{padding-top:.55rem;background:var(--color-midnight-500, #2c2e45);color:var(--color-space-200, #b6c0f2)!important;font-weight:600!important}
 .mst-dungeon-row-section th:first-child{text-align:left!important}
 .mst-dungeon-row-section th:nth-child(n+2){text-align:center!important}
+.mst-dungeon-row-subtotal td{padding-top:.55rem;background:var(--color-midnight-500, #2c2e45);color:var(--color-space-200, #b6c0f2);font-weight:600}
 .mst-dungeon-row-cost td:nth-child(n+3){color:var(--color-scarlet-300, #ef8f98)}
 .mst-dungeon-row-revenue td:nth-child(n+3){color:var(--color-jade-300, #86d7b1)}
 .mst-dungeon-row-total th,.mst-dungeon-row-total td{border-top:1px solid var(--color-space-400, #7686cc);font-weight:600}
+.mst-dungeon-row-total th{color:var(--color-neutral-100, #ececf1);text-align:left}
+.mst-dungeon-loot-table .mst-dungeon-row-total th,.mst-dungeon-loot-table .mst-dungeon-row-total td{border-top:1px solid var(--color-space-400, #7686cc);border-bottom:1px solid var(--color-space-400, #7686cc);background:var(--color-midnight-500, #2c2e45)}
+.mst-dungeon-loot-table .mst-dungeon-row-total th{color:var(--color-cowbell, #f6c95c)}
 @media(max-width:48rem){.mst-ability-preset-controls{min-width:100%;order:3}
 .mst-ability-market-time{max-width:calc(100% - 8rem);margin-left:auto}
 .mst-ability-upgrade-calculator .mst-ability-table-wrap{max-height:calc(100svh - 16rem)}
@@ -22506,7 +22853,6 @@
 .mst-calculator-toolbar .mst-calculator-reset{grid-column:1/-1}
 .mst-combat-profession-picker{grid-template-columns:repeat(4,minmax(0,1fr))}
 .mst-calculator-table-wrap{max-height:calc(100svh - 20rem)}
-.mst-dungeon-table-wrap{max-height:calc(100svh - 25rem)}
 }
 @media(max-width:32rem){.mst-equipment-compare-table-wrap{max-height:calc(100svh - 26rem)}
 .mst-equipment-compare-table{min-width:100%}

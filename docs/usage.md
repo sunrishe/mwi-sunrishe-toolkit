@@ -46,7 +46,7 @@ MST 是独立脚本，以下项目提供了参考或公开接口；参考类功�
 ## 地下城收益计算器
 
 - **入口**：工具箱。
-- **功能**：按地下城、难度、耗时、钥匙来源和市场价格，估算每日收益、每车收益、钥匙成本和宝箱产出。
+- **功能**：按地下城、难度、耗时、钥匙来源和市场价格，估算每日收益、每车收益、钥匙成本和宝箱产出；结果区可在“收益结果”与“掉落物”之间切换，“掉落物”页签按官方宝箱掉落物列表分普通、精炼宝箱展示物品、掉率、期望数量和左一/右一价格。
 
 ## 迷宫补充补给
 
@@ -123,7 +123,7 @@ Click **Toolkit** in the top character-info area. It is the main entry for cards
 ## Dungeon Profit Calculator
 
 - **Entry**: Toolkit.
-- **Does**: estimates daily profit, run profit, key costs, and chest output by dungeon, tier, run time, key source, and market prices.
+- **Does**: estimates daily profit, run profit, key costs, and chest output by dungeon, tier, run time, key source, and market prices. The result area switches between a Profit table and a Loot table that lists official chest drops by Normal and Refined Chest, showing item, drop rate, expected quantity, and Best Ask/Bid prices.
 
 ## Labyrinth Restock Supplies
 
@@ -159,6 +159,10 @@ Click **Toolkit** in the top character-info area. It is the main entry for cards
 - EDS 历史线保留 `1.x` 版本号，最后一个作为融合基础的版本是 `1.2.7`。
 - MST 从 `2.0.0` 开始，表示从装备数据同步脚本升级为综合工具箱。
 - 后续版本遵循语义化版本：不兼容变更提升主版本，向后兼容的新功能提升次版本，修复和兼容性调整提升补丁版本；开发构建使用 `-dev.<时间戳>` 后缀。
+
+## v2.12.0
+
+1. 地下城收益计算器增强：地下城下拉框增加 D1-D4 序号，方便对照游戏内地下城地图；结果区新增“掉落物”页签，按官方宝箱掉落物列表分普通、精炼宝箱逐条展示物品、掉率、期望数量和左一/右一价格，掉率和期望数量悬浮可查看详情，价格按市场报价税前计算。
 
 ## v2.11.1
 

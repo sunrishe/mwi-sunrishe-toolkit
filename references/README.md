@@ -11,9 +11,13 @@
 - `game-source/www.milkywayidle.com_v1.20260715.0/`：`2026-08-15` 更新前的旧版前端源码备份，用于新旧对比核对。
 - `legacy-scripts/eds/`：MST 融合前的 EDS 原始脚本，用于兼容逻辑和历史版本核对。
 - `legacy-scripts/mst/`：MST 历史基准脚本和备份脚本，仅用于核对，不参与构建。
+- `legacy-scripts/地牢计算器/`：旧版地下城收益计算脚本归档，用于地下城收益算法和数值口径核对。
 - `external-tools/mwi-tool/`：旧版配装与价格计算工具，当前用于方案和市场数据核对。
 - `vendor/sweetalert2-themes/`：第三方 SweetAlert2 主题样式素材，后续抽离 CSS 时可参考。
 - `combat-simulator/MWICombatSimulatorTest/`：装备提升模拟所参考的战斗模拟器构建产物。
+- `game-faq/milkywayidle-faq.md`：《银河牛奶放置》常见问题解答手册全文（飞书公开文档，2026-08-19 抓取），含市场/强化/炼金/效率等游戏规则原文。
+- `game-faq/milkywayidle-faq-calc.md`：上述手册中与计算、公式、收益、掉落等数值规则相关的摘录，供数值算法核对。
+- `game-faq/milkywayidle-faq-effective.md`：整理后的有效信息（含公式与数值规则，市场税率已更正为 5%），供 MST 数值与收益评估快速查阅。
 
 ## 使用约定
 
