@@ -68,6 +68,11 @@ MST 是独立脚本，以下项目提供了参考或公开接口；参考类功�
 - **入口**：游戏配装页、战斗配装详情、支持的利润网页面。
 - **功能**：在游戏、Milkonomy、hyhfish 和战斗模拟器之间复制或同步配装数据。
 
+## 战斗模拟器一键导入
+
+- **入口**：aiwwb 战斗模拟器页面“导入/导出”按钮下方。
+- **功能**：一键把当前角色与队伍数据填入模拟器。
+
 ## MWI 市场伴侣剪贴板导入
 
 - **入口**：MWI 市场伴侣清单面板。
@@ -145,6 +150,11 @@ Click **Toolkit** in the top character-info area. It is the main entry for cards
 - **Entry**: game loadout pages, combat loadout details, and supported profit sites.
 - **Does**: copies or syncs loadout data between the game, Milkonomy, hyhfish, and the combat simulator.
 
+## One-Click Combat Simulator Import
+
+- **Entry**: the aiwwb combat simulator page, below its "Import/Export" button.
+- **Does**: fills your current character and party data into the simulator.
+
 ## MWI Market Mate Clipboard Import
 
 - **Entry**: MWI Market Mate list panel.
@@ -159,6 +169,12 @@ Click **Toolkit** in the top character-info area. It is the main entry for cards
 - EDS 历史线保留 `1.x` 版本号，最后一个作为融合基础的版本是 `1.2.7`。
 - MST 从 `2.0.0` 开始，表示从装备数据同步脚本升级为综合工具箱。
 - 后续版本遵循语义化版本：不兼容变更提升主版本，向后兼容的新功能提升次版本，修复和兼容性调整提升补丁版本；开发构建使用 `-dev.<时间戳>` 后缀。
+
+## v2.13.0
+
+1. 新增战斗模拟器一键导入：在 aiwwb 模拟器页面填入当前角色与队伍数据并刷新价格，队友数据来自游戏内点开过的资料。
+2. 工具箱菜单新增“战斗模拟 aiwwb”入口（复用同一窗口）。
+3. 修复与 MWITools 同时使用时其头部按钮被挤到居中排列的问题。
 
 ## v2.12.0
 

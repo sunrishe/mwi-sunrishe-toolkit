@@ -3,7 +3,7 @@
 // @name:zh-CN         MWI Sunrishe 工具箱
 // @name:en            MWI Sunrishe Toolkit
 // @namespace          http://tampermonkey.net/
-// @version            2.12.0
+// @version            2.13.0
 // @description        MWI Sunrishe 综合工具箱：提供角色/队伍名片、技能/房屋/战斗升级规划、装备提升计算器、地下城收益、配装同步和市场伴侣增强。
 // @description:zh-CN  MWI Sunrishe 综合工具箱：提供角色/队伍名片、技能/房屋/战斗升级规划、装备提升计算器、地下城收益、配装同步和市场伴侣增强。
 // @description:en     MST toolkit for character/party cards, ability/house/combat upgrade planning, equipment comparison, dungeon profit, loadout sync, and Market Mate enhancements.
@@ -25,6 +25,7 @@
 // @match              https://www.milkywayidlecn.com/*
 // @match              https://milkonomy.pages.dev/*
 // @match              https://hyhfish.github.io/milkonomy/*
+// @match              https://aiwwb.github.io/milkywayidle_battle/*
 // @grant              unsafeWindow
 // @grant              GM_addValueChangeListener
 // @grant              GM.addValueChangeListener
@@ -89,7 +90,12 @@
     MARKET_CACHE: 'MST_HCCP_market',
     MARKET_CACHE_TIMESTAMP: 'MST_HCCP_marketTimestamp',
     MWITOOLS_MARKET_CACHE: 'MWITools_marketAPI_json',
-    MWITOOLS_MARKET_TIMESTAMP: 'MWITools_marketAPI_timestamp'
+    MWITOOLS_MARKET_TIMESTAMP: 'MWITools_marketAPI_timestamp',
+    // 战斗模拟器跨站导入（GM 存储按脚本共享，游戏站写入、模拟器站读取）。
+    SIM_CHARACTER_DATA: 'MST_SIM_characterData',
+    SIM_CLIENT_DATA: 'MST_SIM_clientData',
+    SIM_NEW_BATTLE: 'MST_SIM_newBattle',
+    SIM_PROFILES: 'MST_SIM_profiles'
   };
 
   function isClientData(data) {
@@ -1192,7 +1198,11 @@
       handleMessage(message) {
         const obj = this.safeParse(message);
         if (!obj || typeof obj !== 'object') return;
-        if (this.ignoredMessageTypes.has(obj.type)) return;
+        if (this.ignoredMessageTypes.has(obj.type)) {
+          // 战斗过程消息不进 DataHub，但战斗模拟导入需要 new_battle 快照，单独分发。
+          this.dispatch('mst:ws:battle-message', obj);
+          return;
+        }
         this.dispatch('mst:ws:message', obj);
         if (obj.type === 'init_client_data') {
           DataHub.initClientData(obj, 'ws');
@@ -2078,6 +2088,30 @@
     }
   };
 
+  // combat-sim-import-messages
+  const COMBAT_SIM_IMPORT_MESSAGES = {
+    combatSimImport: {
+      zh: '单人/组队导入(刷新游戏网页更新人物数据)',
+      en: 'Import solo/group (Refresh game page to update character data)'
+    },
+    combatSimImportTitle: {
+      zh: '把当前角色与队伍数据导入 aiwwb 战斗模拟器（含神龛生效等级）',
+      en: 'Import current character and party data into the aiwwb combat simulator (with effective shrine levels)'
+    },
+    combatSimImported: {zh: '已导入', en: 'Imported'},
+    combatSimNoCharacterData: {
+      zh: '未读取到游戏角色数据，请先刷新游戏网页再导入',
+      en: 'No character data found. Refresh the game page first.'
+    },
+    combatSimNeedProfile: {zh: '需要点开资料', en: 'Open profile in game'},
+    combatSimImportFailed: {zh: '战斗模拟器导入失败：{0}', en: 'Combat simulator import failed: {0}'},
+    combatSimSiteChanged: {
+      zh: '未找到模拟器导入输入框，页面结构可能已变化',
+      en: 'Simulator import input not found; the site layout may have changed'
+    },
+    combatSimAiwwb: {zh: '战斗模拟 aiwwb', en: 'Combat Sim aiwwb'}
+  };
+
   // messages
   const I18N_MESSAGE_GROUPS = {
     common: COMMON_MESSAGES,
@@ -2092,7 +2126,8 @@
     dungeonCalculator: DUNGEON_CALCULATOR_MESSAGES,
     equipmentComparison: EQUIPMENT_COMPARISON_MESSAGES,
     combatCalculator: COMBAT_CALCULATOR_MESSAGES,
-    abilityCalculator: ABILITY_CALCULATOR_MESSAGES
+    abilityCalculator: ABILITY_CALCULATOR_MESSAGES,
+    combatSimImport: COMBAT_SIM_IMPORT_MESSAGES
   };
 
   // style-service
@@ -8076,6 +8111,7 @@
 .mst-header-card-level-layout>[class*=Header_totalLevel]{flex:0 1 auto;white-space:nowrap}
 .mst-header-card-level-layout>.mst-my-character-card-btn{flex:0 0 auto;white-space:nowrap}
 .mst-header-card-level-layout>:not([class*=Header_totalLevel]):not(.mst-my-character-card-btn){flex:0 0 100%;text-align:right;white-space:nowrap}
+.mst-header-card-level-layout>#mwitools-header-tools{flex:0 0 100%;justify-content:flex-end;margin:2px 0 0 auto}
 .mst-download-section{text-align:center;margin-bottom:var(--spacing-sm-plus, .75rem)}
 .mst-download-card-btn,.mst-download-team-card-btn,.mst-copy-card-btn,.mst-copy-team-card-btn,.mst-reset-team-card-btn,.mst-reset-character-card-btn{display:inline-flex;align-items:center;justify-content:center;box-sizing:border-box;min-width:var(--button-min-width-normal, 5.25rem);height:var(--button-height-normal, 1.875rem);background:var(--color-primary, #4357af);color:var(--color-text-dark-mode, #e7e7e7);border:none;padding:0 var(--button-padding-x-normal, .625rem);border-radius:var(--radius-sm, .25rem);font-family:Roboto,Helvetica,Arial,sans-serif;font-size:var(--font-size-base, .875rem);font-weight:var(--font-weight-semibold, 600);line-height:1;cursor:pointer;transition:background-color .15s ease}
 .mst-download-card-btn:hover:not(:disabled),.mst-download-team-card-btn:hover:not(:disabled),.mst-copy-card-btn:hover:not(:disabled),.mst-copy-team-card-btn:hover:not(:disabled),.mst-reset-team-card-btn:hover:not(:disabled),.mst-reset-character-card-btn:hover:not(:disabled){background:var(--color-primary-hover, #344386)}
@@ -10309,6 +10345,580 @@
       else document.addEventListener('DOMContentLoaded', start, {once: true});
       LanguageEvents.subscribe(() => OriginalCharacterCardFeature.setLanguage());
       window.addEventListener('pagehide', OriginalCharacterCardFeature.cleanup, {once: true});
+    }
+  }
+
+  // 战斗模拟器导入的纯计算部分：把游戏角色快照 / 队友资料转换成 aiwwb 战斗模拟器的组队导入 JSON。
+  // 数据口径与 MWITools external-tools 保持一致，并按官方规则补充神龛字段：
+  // 神龛增益是永久性个人增益，实际生效等级 = min(个人对应增益等级, 公会对应神龛等级)。
+
+  // 模拟器只内置 5 个战斗神龛输入框（data-shrine-hrid），超出会找不到输入框导致导入报错，
+  // 因此这里静态维护“游戏公会增益 → 模拟器神龛”映射，生活向增益不参与战斗模拟。
+  const SIM_SHRINE_MAP = {
+    '/guild_buffs/force_combat': {simShrineHrid: '/shrines/power', gameShrineHrid: '/guild_shrines/force'},
+    '/guild_buffs/tempo_combat': {simShrineHrid: '/shrines/rhythm', gameShrineHrid: '/guild_shrines/tempo'},
+    '/guild_buffs/spirit_combat': {simShrineHrid: '/shrines/spirit', gameShrineHrid: '/guild_shrines/spirit'},
+    '/guild_buffs/rarity_combat': {simShrineHrid: '/shrines/rare', gameShrineHrid: '/guild_shrines/rarity'},
+    '/guild_buffs/scholar_combat': {simShrineHrid: '/shrines/scholar', gameShrineHrid: '/guild_shrines/scholar'}
+  };
+
+  const COMBAT_SKILL_KEYS = [
+    'stamina', 'intelligence', 'attack', 'melee', 'defense',
+    'ranged', 'magic'
+  ];
+
+  function toPositiveInt(value) {
+    const level = Number(value);
+    return Number.isSafeInteger(level) && level > 0 ? level : 0;
+  }
+
+  // 个人公会增益等级：兼容官方对象结构（hrid → {level}）与资料分享的数字结构（hrid → level）。
+  function readGuildBuffLevel(guildBuffMap, guildBuffHrid) {
+    const record = guildBuffMap?.[guildBuffHrid];
+    if (record == null) return 0;
+    return toPositiveInt(typeof record === 'object' ? record.level : record);
+  }
+
+  // 计算战斗神龛生效等级：min(个人增益等级, 公会神龛等级)。
+  // 公会神龛建筑等级缺失时（如跨公会拿不到对方公会数据）按 MWITools v26 口径退回个人等级。
+  function computeShrineLevels({characterGuildBuffMap, guildBuildingLevelMap}) {
+    const shrines = {};
+    if (!characterGuildBuffMap || typeof characterGuildBuffMap !== 'object') return shrines;
+    for (const [
+      guildBuffHrid, mapping
+    ] of Object.entries(SIM_SHRINE_MAP)) {
+      const buffLevel = readGuildBuffLevel(characterGuildBuffMap, guildBuffHrid);
+      if (!buffLevel) continue;
+      const shrineLevel = toPositiveInt(guildBuildingLevelMap?.[mapping.gameShrineHrid]);
+      const effectiveLevel = shrineLevel > 0 ? Math.min(buffLevel, shrineLevel) : buffLevel;
+      if (effectiveLevel > 0) shrines[mapping.simShrineHrid] = effectiveLevel;
+    }
+    return shrines;
+  }
+
+  function buildCombatLevels(characterSkills) {
+    const levels = {};
+    for (const skill of characterSkills || []) {
+      const hrid = String(skill?.skillHrid || '');
+      for (const key of COMBAT_SKILL_KEYS) {
+        if (hrid.includes(key)) levels[`${key}Level`] = skill.level;
+      }
+    }
+    return levels;
+  }
+
+  function buildConsumableSlots(slots) {
+    return (slots || []).map((slot) => ({itemHrid: slot?.itemHrid || ''}));
+  }
+
+  function buildAbilities(abilities, abilityDetailMap) {
+    const result = [
+      {
+        abilityHrid: '',
+        level: '1'
+      }, {abilityHrid: '', level: '1'}, {abilityHrid: '', level: '1'}, {abilityHrid: '', level: '1'}, {
+        abilityHrid: '',
+        level: '1'
+      }
+    ];
+    let normalIndex = 1;
+    for (const ability of abilities || []) {
+      if (!ability?.abilityHrid) continue;
+      if (abilityDetailMap?.[ability.abilityHrid]?.isSpecialAbility) {
+        result[0] = {abilityHrid: ability.abilityHrid, level: ability.level};
+      } else {
+        result[normalIndex++] = {abilityHrid: ability.abilityHrid, level: ability.level};
+      }
+    }
+    return result;
+  }
+
+  function buildHouseRooms(characterHouseRoomMap) {
+    const houseRooms = {};
+    for (const [
+      hrid, room
+    ] of Object.entries(characterHouseRoomMap || {})) {
+      // 兼容官方结构（hrid → {houseRoomHrid, level}）与存储裁剪后的紧凑结构（hrid → level）。
+      if (room && typeof room === 'object') {
+        if (room.houseRoomHrid) houseRooms[room.houseRoomHrid] = room.level;
+      } else if (String(hrid).startsWith('/house_rooms/')) {
+        houseRooms[hrid] = room;
+      }
+    }
+    return houseRooms;
+  }
+
+  function buildAchievements(characterAchievements) {
+    const achievements = {};
+    for (const achievement of Object.values(characterAchievements || {})) {
+      if (achievement?.achievementHrid) {
+        achievements[achievement.achievementHrid] = achievement.isCompleted;
+      }
+    }
+    return achievements;
+  }
+
+  // 本人：来自 init_character_data 完整快照；abilityDetailMap 取自客户端字典裁剪版。
+  function buildSelfPlayerExport(characterData, abilityDetailMap) {
+    const combatUnitAbilities = Array.isArray(characterData?.combatUnit?.combatAbilities)
+      ? characterData.combatUnit.combatAbilities
+      : characterData?.characterAbilities || [];
+    return {
+      player: {
+        ...buildCombatLevels(characterData?.characterSkills),
+        equipment: (characterData?.characterItems || [])
+          .filter((item) => !String(item?.itemLocationHrid || '').includes('/item_locations/inventory'))
+          .map((item) => ({
+            itemLocationHrid: item.itemLocationHrid,
+            itemHrid: item.itemHrid,
+            enhancementLevel: item.enhancementLevel
+          }))
+      },
+      food: {
+        '/action_types/combat': buildConsumableSlots(characterData?.actionTypeFoodSlotsMap?.['/action_types/combat'])
+      },
+      drinks: {
+        '/action_types/combat': buildConsumableSlots(characterData?.actionTypeDrinkSlotsMap?.['/action_types/combat'])
+      },
+      abilities: buildAbilities(combatUnitAbilities, abilityDetailMap),
+      triggerMap: {
+        ...characterData?.abilityCombatTriggersMap,
+        ...characterData?.consumableCombatTriggersMap
+      },
+      houseRooms: buildHouseRooms(characterData?.characterHouseRoomMap),
+      achievements: buildAchievements(characterData?.characterAchievements),
+      shrines: computeShrineLevels({
+        characterGuildBuffMap: characterData?.characterGuildBuffMap,
+        guildBuildingLevelMap: characterData?.guildBuildingLevelMap
+      })
+    };
+  }
+
+  // 无战斗快照时的默认消耗品：按主手/双手武器类型给一套通用配装（沿用 MWITools 兜底表）。
+  function guessConsumablesByWeapon(wearableItemMap) {
+    const weapon =
+      wearableItemMap?.['/item_locations/main_hand']?.itemHrid ||
+      wearableItemMap?.['/item_locations/two_hand']?.itemHrid ||
+      '';
+    const drinks = [
+      '/items/wisdom_coffee', '/items/super_melee_coffee', '/items/swiftness_coffee'
+    ];
+    const food = [
+      '/items/spaceberry_donut', '/items/spaceberry_cake', '/items/star_fruit_yogurt'
+    ];
+    if (weapon.includes('shooter') || weapon.includes('bow')) {
+      drinks.splice(1, 2, '/items/super_ranged_coffee', '/items/critical_coffee');
+    } else if (weapon.includes('boomstick') || weapon.includes('staff') || weapon.includes('trident')) {
+      drinks.splice(1, 2, '/items/super_magic_coffee', '/items/channeling_coffee');
+      food.splice(0, 1, '/items/star_fruit_gummy');
+    } else if (weapon.includes('bulwark')) {
+      drinks.splice(1, 2, '/items/super_defense_coffee', '/items/super_stamina_coffee');
+    }
+    return {
+      drinks: drinks.map((itemHrid) => ({itemHrid})),
+      food: food.map((itemHrid) => ({itemHrid}))
+    };
+  }
+
+  // 队友：来自 profile_shared 资料 + new_battle 战斗快照（唯一能拿到队友实际消耗品的来源）。
+  // shrineSource 覆盖默认神龛数据来源（同公会时用本人快照的公会建筑等级）。
+  function buildProfilePlayerExport(profile, battlePlayer, abilityDetailMap, shrineSource = null) {
+    const wearableItemMap = profile?.wearableItemMap || {};
+    const food = [];
+    const drinks = [];
+    if (Array.isArray(battlePlayer?.combatConsumables)) {
+      for (const consumable of battlePlayer.combatConsumables) {
+        const target = String(consumable?.itemHrid || '').includes('coffee') ? drinks : food;
+        target.push({itemHrid: consumable.itemHrid});
+      }
+    } else {
+      const guessed = guessConsumablesByWeapon(wearableItemMap);
+      drinks.push(...guessed.drinks);
+      food.push(...guessed.food);
+    }
+    return {
+      player: {
+        ...buildCombatLevels(profile?.characterSkills),
+        equipment: Object.values(wearableItemMap)
+          .filter((item) => item?.itemHrid)
+          .map((item) => ({
+            itemLocationHrid: item.itemLocationHrid,
+            itemHrid: item.itemHrid,
+            enhancementLevel: item.enhancementLevel
+          }))
+      },
+      food: {'/action_types/combat': food},
+      drinks: {'/action_types/combat': drinks},
+      abilities: buildAbilities(profile?.equippedAbilities, abilityDetailMap),
+      ...(profile?.abilityCombatTriggersMap && profile?.consumableCombatTriggersMap
+        ? {
+            triggerMap: {
+              ...profile.abilityCombatTriggersMap,
+              ...profile.consumableCombatTriggersMap
+            }
+          }
+        : {}),
+      houseRooms: buildHouseRooms(profile?.characterHouseRoomMap),
+      achievements: buildAchievements(profile?.characterAchievements),
+      shrines: computeShrineLevels(
+        shrineSource || {
+          characterGuildBuffMap: profile?.guildBuffLevelMap,
+          guildBuildingLevelMap: profile?.guildBuildingLevelMap
+        }
+      )
+    };
+  }
+
+  const BLANK_PLAYER_JSON =
+    '{"player":{"attackLevel":1,"magicLevel":1,"meleeLevel":1,"rangedLevel":1,"defenseLevel":1,"staminaLevel":1,"intelligenceLevel":1,"equipment":[]},"food":{"/action_types/combat":[{"itemHrid":""},{"itemHrid":""},{"itemHrid":""}]},"drinks":{"/action_types/combat":[{"itemHrid":""},{"itemHrid":""},{"itemHrid":""}]},"abilities":[{"abilityHrid":"","level":"1"},{"abilityHrid":"","level":"1"},{"abilityHrid":"","level":"1"},{"abilityHrid":"","level":"1"},{"abilityHrid":"","level":"1"}],"triggerMap":{},"zone":"/actions/combat/fly","simulationTime":"100","houseRooms":{},"achievements":{},"shrines":{}}';
+
+  // 组队导出总装：返回模拟器导入所需的全部信息。
+  // 队友神龛的“公会神龛等级”只有在与本人同公会时才可知（复用本人快照的公会建筑等级）；
+  // 跨公会拿不到对方公会数据，按 MWITools v26 口径退回个人增益等级。
+  function buildGroupExport({characterData, clientData, newBattle, profiles}) {
+    const exportObj = {
+      1: BLANK_PLAYER_JSON,
+      2: BLANK_PLAYER_JSON,
+      3: BLANK_PLAYER_JSON,
+      4: BLANK_PLAYER_JSON,
+      5: BLANK_PLAYER_JSON
+    };
+    const playerIDs = [
+      'Player 1', 'Player 2', 'Player 3', 'Player 4', 'Player 5'
+    ];
+    const importedPlayerPositions = [
+      false, false, false, false, false
+    ];
+    let isParty = false;
+    let zone = '/actions/combat/fly';
+    let isZoneDungeon = false;
+    let difficultyTier = 0;
+
+    const partySlotMap = characterData?.partyInfo?.partySlotMap;
+    const abilityDetailMap = clientData?.abilityDetailMap;
+    const ownGuildId = characterData?.guild?.id ?? null;
+    const ownGuildBuildingLevelMap = characterData?.guildBuildingLevelMap || {};
+    const resolveProfileShrineSource = (profile) => {
+      const sameGuild = profile?.guildId != null && profile.guildId === ownGuildId;
+      return {
+        characterGuildBuffMap: profile?.guildBuffLevelMap,
+        guildBuildingLevelMap: sameGuild ? ownGuildBuildingLevelMap : undefined
+      };
+    };
+    if (!partySlotMap || !Object.keys(partySlotMap).length) {
+      exportObj[1] = JSON.stringify(buildSelfPlayerExport(characterData, abilityDetailMap));
+      playerIDs[0] = characterData?.character?.name || playerIDs[0];
+      importedPlayerPositions[0] = true;
+      for (const action of characterData?.characterActions || []) {
+        if (action && String(action.actionHrid || '').includes('/actions/combat/')) {
+          zone = action.actionHrid;
+          difficultyTier = action.difficultyTier;
+          isZoneDungeon = Boolean(clientData?.actionDetailMap?.[zone]?.combatZoneInfo?.isDungeon);
+          break;
+        }
+      }
+    } else {
+      isParty = true;
+      let slot = 1;
+      for (const member of Object.values(partySlotMap)) {
+        if (member?.characterID) {
+          if (member.characterID === characterData?.character?.id) {
+            exportObj[slot] = JSON.stringify(buildSelfPlayerExport(characterData, abilityDetailMap));
+            playerIDs[slot - 1] = characterData?.character?.name || playerIDs[slot - 1];
+            importedPlayerPositions[slot - 1] = true;
+          } else {
+            const profile = profiles?.[String(member.characterID)] || null;
+            if (!profile) {
+              playerIDs[slot - 1] = 'NEED_PROFILE';
+            } else {
+              const battlePlayers = Array.isArray(newBattle?.players) ? newBattle.players : [];
+              const battlePlayer = battlePlayers.find((item) => item?.character?.id === member.characterID) ?? null;
+              exportObj[slot] = JSON.stringify(
+                buildProfilePlayerExport(
+                  profile.profile,
+                  battlePlayer,
+                  abilityDetailMap,
+                  resolveProfileShrineSource(profile.profile)
+                )
+              );
+              playerIDs[slot - 1] = profile.characterName || playerIDs[slot - 1];
+              importedPlayerPositions[slot - 1] = true;
+            }
+          }
+        }
+        slot++;
+      }
+      zone = characterData?.partyInfo?.party?.actionHrid || zone;
+      difficultyTier = characterData?.partyInfo?.party?.difficultyTier ?? difficultyTier;
+      isZoneDungeon = Boolean(clientData?.actionDetailMap?.[zone]?.combatZoneInfo?.isDungeon);
+    }
+    return {exportObj, playerIDs, importedPlayerPositions, zone, difficultyTier, isZoneDungeon, isParty};
+  }
+
+  // 队友资料缓存上限，与 MWITools profile_export_list 口径一致。
+  const SIM_PROFILE_LIMIT = 20;
+
+  // game-side-writer
+  // 游戏站侧把模拟器导入所需的数据快照写入 GM 存储（脚本级存储跨域共享）。
+  // 测试服数据与正式服不互通，测试服不写入（由 bootstrap 的 isTestServer 分流保证）。
+  const combatSimGameWriter = {
+    start(feature) {
+      const {DataHub, GmApi, STORAGE_KEYS} = feature.ctx;
+      const writer = {
+        writeCharacter(data) {
+          if (!data?.character) return;
+          GmApi.setValue(STORAGE_KEYS.SIM_CHARACTER_DATA, JSON.stringify(data));
+        },
+        // 客户端字典很大（约 2.6MB），只保留导入与导出用到的字段后写入。
+        writeClientData(raw) {
+          const abilityDetailMap = {};
+          for (const [
+            hrid, detail
+          ] of Object.entries(raw?.abilityDetailMap || {})) {
+            if (detail && typeof detail === 'object') {
+              abilityDetailMap[hrid] = {isSpecialAbility: Boolean(detail.isSpecialAbility)};
+            }
+          }
+          const actionDetailMap = {};
+          for (const [
+            hrid, detail
+          ] of Object.entries(raw?.actionDetailMap || {})) {
+            if (detail?.combatZoneInfo) {
+              actionDetailMap[hrid] = {combatZoneInfo: detail.combatZoneInfo};
+            }
+          }
+          GmApi.setValue(STORAGE_KEYS.SIM_CLIENT_DATA, JSON.stringify({abilityDetailMap, actionDetailMap}));
+        },
+        writeNewBattle(data) {
+          if (data?.type !== 'new_battle') return;
+          GmApi.setValue(STORAGE_KEYS.SIM_NEW_BATTLE, JSON.stringify(data));
+        },
+        async writeProfile(detail) {
+          const profile = detail?.profile;
+          const characterID = String(detail.characterID ?? profile?.characterSkills?.[0]?.characterID ?? '');
+          if (!characterID || !profile) return;
+          const stored = JSON.parse((await GmApi.getValue(STORAGE_KEYS.SIM_PROFILES, '{}')) || '{}');
+          stored[characterID] = {
+            characterID,
+            characterName: profile.sharableCharacter?.name || '',
+            timestamp: Date.now(),
+            profile: {
+              guildId: profile.guildId,
+              wearableItemMap: Object.fromEntries(
+                Object.entries(profile.wearableItemMap || {}).map(
+                  ([
+                    key, item
+                  ]) => [
+                    key, {
+                      itemLocationHrid: item?.itemLocationHrid,
+                      itemHrid: item?.itemHrid,
+                      enhancementLevel: item?.enhancementLevel
+                    }
+                  ]
+                )
+              ),
+              characterSkills: (profile.characterSkills || []).map((skill) => ({
+                skillHrid: skill?.skillHrid,
+                level: skill?.level
+              })),
+              equippedAbilities: (profile.equippedAbilities || []).map((ability) => ({
+                abilityHrid: ability?.abilityHrid,
+                level: ability?.level
+              })),
+              characterHouseRoomMap: profile.characterHouseRoomMap || {},
+              characterAchievements: profile.characterAchievements || {},
+              guildBuffLevelMap: profile.guildBuffLevelMap || {},
+              abilityCombatTriggersMap: profile.abilityCombatTriggersMap,
+              consumableCombatTriggersMap: profile.consumableCombatTriggersMap
+            }
+          };
+          // 超上限时淘汰最旧资料，避免 GM 存储无限增长。
+          let entries = Object.entries(stored);
+          if (entries.length > SIM_PROFILE_LIMIT) {
+            entries.sort((a, b) => Number(b[1].timestamp || 0) - Number(a[1].timestamp || 0));
+            GmApi.setValue(
+              STORAGE_KEYS.SIM_PROFILES,
+              JSON.stringify(Object.fromEntries(entries.slice(0, SIM_PROFILE_LIMIT)))
+            );
+            return;
+          }
+          GmApi.setValue(STORAGE_KEYS.SIM_PROFILES, JSON.stringify(stored));
+        },
+        install() {
+          window.addEventListener('mst:data:character-ready', (event) => writer.writeCharacter(event.detail));
+          window.addEventListener('mst:ws:init-client-data', (event) => writer.writeClientData(event.detail));
+          window.addEventListener('mst:ws:battle-message', (event) => writer.writeNewBattle(event.detail));
+          window.addEventListener('mst:ws:profile-shared', (event) => {
+            writer.writeProfile(event.detail).catch((error) => console.warn('[MST] 战斗模拟队友资料写入失败:', error));
+          });
+          // 页面刷新晚于 WebSocket 建连时补写一次已有快照，保证 GM 存储不落后于当前页面状态。
+          if (DataHub.characterData.raw) writer.writeCharacter(DataHub.characterData.raw);
+          if (DataHub.clientData.raw) writer.writeClientData(DataHub.clientData.raw);
+        }
+      };
+      writer.install();
+      feature.writer = writer;
+    }
+  };
+
+  // sim-site-controller
+  const combatSimSiteController = {
+    addImportButton(feature) {
+      const {i18n} = feature.ctx;
+      const anchor = document.getElementById('buttonImportExport');
+      if (!anchor || document.getElementById('mst-combat-sim-import')) return;
+      const button = document.createElement('button');
+      button.id = 'mst-combat-sim-import';
+      button.type = 'button';
+      button.textContent = i18n.t('combatSimImport');
+      button.title = i18n.t('combatSimImportTitle');
+      Object.assign(button.style, {
+        backgroundColor: '#4a90d9',
+        color: '#fff',
+        border: '0',
+        borderRadius: '4px',
+        padding: '5px 10px',
+        margin: '2px 0',
+        cursor: 'pointer'
+      });
+      button.addEventListener('click', () => feature.importIntoSimulator(button));
+      // 与 MWITools 一致：插到“导入/导出”按钮所在 row 的下一层外层容器内、该 row 之后，
+      // 按钮宽度按文案自适应并靠左，不占满整行。
+      const column = anchor.parentElement;
+      const row = column?.parentElement;
+      const outerContainer = row?.parentElement;
+      if (!column || !row || !outerContainer) return;
+      outerContainer.insertBefore(button, row.nextSibling);
+    },
+
+    startObserving(feature) {
+      const {utils} = feature.ctx;
+      utils.observeBody(() => {
+        this.addImportButton(feature);
+      });
+    },
+
+    setSelectValue(select, value, {numeric = false} = {}) {
+      if (!select || value == null) return false;
+      for (const option of select.options) {
+        const matches = numeric ? Number(option.value) === Number(value) : option.value === value;
+        if (matches) {
+          option.selected = true;
+          return true;
+        }
+      }
+      return false;
+    },
+
+    applyZoneAndDifficulty(feature, result) {
+      const dungeonToggle = document.getElementById('simDungeonToggle');
+      if (dungeonToggle) {
+        dungeonToggle.checked = result.isZoneDungeon;
+        dungeonToggle.dispatchEvent(new Event('change'));
+      }
+      const zoneSelect = document.getElementById(result.isZoneDungeon ? 'selectDungeon' : 'selectZone');
+      this.setSelectValue(zoneSelect, result.zone);
+      this.setSelectValue(document.getElementById('selectDifficulty'), result.difficultyTier, {numeric: true});
+    },
+
+    applyPlayerSelection(result) {
+      result.importedPlayerPositions.forEach((imported, index) => {
+        const checkbox = document.querySelector(`input#player${index + 1}.form-check-input.player-checkbox`);
+        if (!checkbox || checkbox.checked === imported) return;
+        checkbox.checked = imported;
+        checkbox.dispatchEvent(new Event('change'));
+      });
+    },
+
+    async import(feature, button) {
+      const {GmApi, STORAGE_KEYS, i18n, Notifier} = feature.ctx;
+      const [
+        characterRaw, clientRaw, battleRaw, profilesRaw
+      ] = await Promise.all([
+        GmApi.getValue(
+          STORAGE_KEYS.SIM_CHARACTER_DATA,
+          ''
+        ), GmApi.getValue(STORAGE_KEYS.SIM_CLIENT_DATA, ''), GmApi.getValue(STORAGE_KEYS.SIM_NEW_BATTLE, ''), GmApi.getValue(STORAGE_KEYS.SIM_PROFILES, '{}')
+      ]);
+      const characterData = JSON.parse(characterRaw || 'null');
+      if (!characterData?.character) {
+        Notifier.toast(i18n.t('combatSimNoCharacterData'), 'error');
+        return;
+      }
+      const result = buildGroupExport({
+        characterData,
+        clientData: JSON.parse(clientRaw || '{}'),
+        newBattle: battleRaw ? JSON.parse(battleRaw) : null,
+        profiles: JSON.parse(profilesRaw || '{}')
+      });
+
+      // 与 MWITools 一致：导入前先点模拟器的“获取价格”刷新行情，保证收益计算使用最新价格。
+      document.getElementById('buttonGetPrices')?.click();
+      document.querySelector('a#group-combat-tab')?.click();
+      const importInput = document.getElementById('inputSetGroupCombatAll');
+      if (!importInput) {
+        Notifier.toast(i18n.t('combatSimImportFailed', i18n.t('combatSimSiteChanged')), 'error');
+        return;
+      }
+      importInput.value = JSON.stringify(result.exportObj);
+      document.getElementById('buttonImportSet')?.click();
+
+      result.playerIDs.forEach((name, index) => {
+        const tab = document.getElementById(`player${index + 1}-tab`);
+        if (tab) tab.textContent = name === 'NEED_PROFILE' ? i18n.t('combatSimNeedProfile') : name;
+      });
+      this.applyZoneAndDifficulty(feature, result);
+      this.applyPlayerSelection(result);
+      const simulationTime = document.getElementById('inputSimulationTime');
+      if (simulationTime) simulationTime.value = 24;
+      // 导入完成后禁用按钮：避免再次点击重复触发“获取价格”的市场请求；
+      // 需要重新导入时刷新模拟器页面即可。
+      button.textContent = i18n.t('combatSimImported');
+      button.disabled = true;
+      button.style.cursor = 'not-allowed';
+      button.style.opacity = '0.7';
+      // 单人模式直接开始模拟；组队需要手动确认队伍配置后再开跑。
+      if (!result.isParty) {
+        setTimeout(() => document.getElementById('buttonStartSimulation')?.click(), 500);
+      }
+    }
+  };
+
+  // combat-sim-import-feature
+  class CombatSimImportFeature {
+    static ctx = null;
+    static gameWriter = combatSimGameWriter;
+    static siteController = combatSimSiteController;
+
+    static configure(ctx) {
+      this.ctx = ctx;
+    }
+
+    constructor() {
+      this.ctx = this.constructor.ctx;
+      this.writer = null;
+    }
+
+    init() {
+      const {CONFIG} = this.ctx;
+      if (CONFIG.isCombatSimSite) {
+        this.constructor.siteController.startObserving(this);
+        return;
+      }
+      // 测试服数据不写入战斗模拟同步存储，避免正式服/测试服快照互相覆盖。
+      if (!CONFIG.isGameSite || CONFIG.isTestServer) return;
+      this.constructor.gameWriter.start(this);
+    }
+
+    importIntoSimulator(button) {
+      const {i18n} = this.ctx;
+      console.log('[MST] 已点击战斗模拟器导入按钮。');
+      // 导入成功后按钮会被禁用；走到这里说明是失败后的重试，先恢复初始文案。
+      button.textContent = i18n.t('combatSimImport');
+      this.constructor.siteController.import(this, button).catch((error) => {
+        console.error('[MST] 战斗模拟器导入失败:', error);
+        this.ctx.Notifier.toast(i18n.t('combatSimImportFailed', error?.message || error), 'error');
+      });
     }
   }
 
@@ -22379,7 +22989,7 @@
           handler: () => this.abilityCalculator.open()
         }, {key: 'houseUpgradeCalculator', icon: 'house', handler: () => this.appController.openCalculator()}, {
           key: 'combatUpgradeCalculator',
-          icon: 'combat',
+          icon: 'experience',
           handler: () => this.combatCalculator.open()
         }, {
           key: 'equipmentComparison',
@@ -22387,6 +22997,10 @@
           handler: () => this.equipmentComparison.open()
         },
         {key: 'dungeonProfitCalculator', icon: 'loot_tracker', handler: () => this.dungeonCalculator.open()}, {
+          key: 'combatSimAiwwb',
+          icon: 'combat',
+          handler: () => this.openCombatSimulator()
+        }, {
           key: 'switchCharacter',
           icon: 'switch_character',
           handler: () => {
@@ -22394,6 +23008,11 @@
           }
         }
       ];
+    }
+
+    // 跳转 aiwwb 战斗模拟器；window.open 传固定 target 名，重复点击复用同一窗口不新开。
+    openCombatSimulator() {
+      window.open('https://aiwwb.github.io/milkywayidle_battle/dist/', 'mst-combat-sim-aiwwb');
     }
 
     refresh() {
@@ -22516,6 +23135,7 @@
     const OriginalCharacterCardFeature = createOriginalCharacterCardFeature(ctx);
     CharacterCardFeature.configure(ctx, OriginalCharacterCardFeature);
     CombatSimulatorConverter.configure(ctx);
+    CombatSimImportFeature.configure(ctx);
     DungeonProfitCalculatorFeature.configure(ctx);
     EdsMilkonomyFeature.configure(ctx, CombatSimulatorConverter);
     EquipmentComparisonService.configure(ctx, CombatSimulationService);
@@ -22528,6 +23148,7 @@
     ctx.BuildScoreService = BuildScoreService;
     ctx.CharacterCardFeature = CharacterCardFeature;
     ctx.CombatSimulationService = CombatSimulationService;
+    ctx.CombatSimImportFeature = CombatSimImportFeature;
     ctx.CombatUpgradeCalculatorFeature = CombatUpgradeCalculatorFeature;
     ctx.CombatSimulatorConverter = CombatSimulatorConverter;
     ctx.DungeonProfitCalculatorFeature = DungeonProfitCalculatorFeature;
@@ -23109,11 +23730,16 @@ to{transform:translateY(0);opacity:1}
 
   // bootstrap
   function installAppBootstrap(ctx) {
-    const {CONFIG, TemplateRenderer, EdsMilkonomyFeature} = ctx;
+    const {CONFIG, TemplateRenderer, EdsMilkonomyFeature, CombatSimImportFeature} = ctx;
 
     // Milkonomy 同步能力可在游戏站和外部利润站同时工作。
     if (CONFIG.isGameSite || CONFIG.isMilkonomySite) {
       new EdsMilkonomyFeature().init();
+    }
+
+    // 战斗模拟导入：游戏站负责写入数据快照（测试服除外），模拟器站负责注入导入按钮。
+    if ((CONFIG.isGameSite && !CONFIG.isTestServer) || CONFIG.isCombatSimSite) {
+      new CombatSimImportFeature().init();
     }
 
     if (CONFIG.isGameSite) {
@@ -23158,6 +23784,9 @@ to{transform:translateY(0);opacity:1}
       TOAST_MAX_COUNT,
       TOAST_DURATION,
       isGameSite: domainname === 'milkywayidle.com' || domainname === 'milkywayidlecn.com',
+      // 测试服（test.* 入口）数据与正式服不互通，战斗模拟导入等跨站同步在测试服一律停用。
+      isTestServer: hostname.startsWith('test.'),
+      isCombatSimSite: hostname === 'aiwwb.github.io',
       isMilkonomySite: hostname === 'milkonomy.pages.dev' || hostname === 'hyhfish.github.io'
     };
 

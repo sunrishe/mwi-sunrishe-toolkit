@@ -537,6 +537,30 @@ export const ABILITY_CALCULATOR_MESSAGES = {
   }
 };
 
+// combat-sim-import-messages
+export const COMBAT_SIM_IMPORT_MESSAGES = {
+  combatSimImport: {
+    zh: '单人/组队导入(刷新游戏网页更新人物数据)',
+    en: 'Import solo/group (Refresh game page to update character data)'
+  },
+  combatSimImportTitle: {
+    zh: '把当前角色与队伍数据导入 aiwwb 战斗模拟器（含神龛生效等级）',
+    en: 'Import current character and party data into the aiwwb combat simulator (with effective shrine levels)'
+  },
+  combatSimImported: {zh: '已导入', en: 'Imported'},
+  combatSimNoCharacterData: {
+    zh: '未读取到游戏角色数据，请先刷新游戏网页再导入',
+    en: 'No character data found. Refresh the game page first.'
+  },
+  combatSimNeedProfile: {zh: '需要点开资料', en: 'Open profile in game'},
+  combatSimImportFailed: {zh: '战斗模拟器导入失败：{0}', en: 'Combat simulator import failed: {0}'},
+  combatSimSiteChanged: {
+    zh: '未找到模拟器导入输入框，页面结构可能已变化',
+    en: 'Simulator import input not found; the site layout may have changed'
+  },
+  combatSimAiwwb: {zh: '战斗模拟 aiwwb', en: 'Combat Sim aiwwb'}
+};
+
 // messages
 export const I18N_MESSAGE_GROUPS = {
   common: COMMON_MESSAGES,
@@ -551,5 +575,6 @@ export const I18N_MESSAGE_GROUPS = {
   dungeonCalculator: DUNGEON_CALCULATOR_MESSAGES,
   equipmentComparison: EQUIPMENT_COMPARISON_MESSAGES,
   combatCalculator: COMBAT_CALCULATOR_MESSAGES,
-  abilityCalculator: ABILITY_CALCULATOR_MESSAGES
+  abilityCalculator: ABILITY_CALCULATOR_MESSAGES,
+  combatSimImport: COMBAT_SIM_IMPORT_MESSAGES
 };

@@ -46,6 +46,9 @@ export function runMst() {
     TOAST_MAX_COUNT,
     TOAST_DURATION,
     isGameSite: domainname === 'milkywayidle.com' || domainname === 'milkywayidlecn.com',
+    // 测试服（test.* 入口）数据与正式服不互通，战斗模拟导入等跨站同步在测试服一律停用。
+    isTestServer: hostname.startsWith('test.'),
+    isCombatSimSite: hostname === 'aiwwb.github.io',
     isMilkonomySite: hostname === 'milkonomy.pages.dev' || hostname === 'hyhfish.github.io'
   };
 
