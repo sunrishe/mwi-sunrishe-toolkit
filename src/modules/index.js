@@ -1,6 +1,7 @@
 import {AbilityUpgradeCalculatorFeature} from './ability-upgrade/index.js';
 import {BuildScoreService} from './character-card/build-score/index.js';
 import {CharacterCardFeature, createOriginalCharacterCardFeature} from './character-card/index.js';
+import {CombatSimImportFeature} from './combat-sim-import/index.js';
 import {CombatUpgradeCalculatorFeature} from './combat-upgrade/index.js';
 import {DungeonProfitCalculatorService} from './dungeon-profit/calculator.js';
 import {DungeonProfitCalculatorFeature} from './dungeon-profit/index.js';
@@ -20,6 +21,7 @@ export function installModules(ctx) {
   const OriginalCharacterCardFeature = createOriginalCharacterCardFeature(ctx);
   CharacterCardFeature.configure(ctx, OriginalCharacterCardFeature);
   CombatSimulatorConverter.configure(ctx);
+  CombatSimImportFeature.configure(ctx);
   DungeonProfitCalculatorFeature.configure(ctx);
   EdsMilkonomyFeature.configure(ctx, CombatSimulatorConverter);
   EquipmentComparisonService.configure(ctx, CombatSimulationService);
@@ -32,6 +34,7 @@ export function installModules(ctx) {
   ctx.BuildScoreService = BuildScoreService;
   ctx.CharacterCardFeature = CharacterCardFeature;
   ctx.CombatSimulationService = CombatSimulationService;
+  ctx.CombatSimImportFeature = CombatSimImportFeature;
   ctx.CombatUpgradeCalculatorFeature = CombatUpgradeCalculatorFeature;
   ctx.CombatSimulatorConverter = CombatSimulatorConverter;
   ctx.DungeonProfitCalculatorFeature = DungeonProfitCalculatorFeature;

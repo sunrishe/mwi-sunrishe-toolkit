@@ -702,6 +702,15 @@
   text-align: right;
   white-space: nowrap;
 }
+/* MWITools 会把它的头部工具宿主（#mwitools-header-tools）插到总等级元素紧后面，
+   而 MST 已把总等级移入本布局容器，宿主随之进入并命中上面的通配规则；
+   其自带样式是 justify-content:center + margin:auto（行内居中），
+   这里按更高特异性覆盖为靠右，保持与其单独运行时一致的观感。 */
+.mst-header-card-level-layout > #mwitools-header-tools {
+  flex: 0 0 100%;
+  justify-content: flex-end;
+  margin: 2px 0 0 auto;
+}
 .mst-download-section {
   text-align: center;
   margin-bottom: var(--spacing-sm-plus, 0.75rem);

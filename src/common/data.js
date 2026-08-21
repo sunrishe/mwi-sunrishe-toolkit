@@ -6,7 +6,12 @@ export const STORAGE_KEYS = {
   MARKET_CACHE: 'MST_HCCP_market',
   MARKET_CACHE_TIMESTAMP: 'MST_HCCP_marketTimestamp',
   MWITOOLS_MARKET_CACHE: 'MWITools_marketAPI_json',
-  MWITOOLS_MARKET_TIMESTAMP: 'MWITools_marketAPI_timestamp'
+  MWITOOLS_MARKET_TIMESTAMP: 'MWITools_marketAPI_timestamp',
+  // 战斗模拟器跨站导入（GM 存储按脚本共享，游戏站写入、模拟器站读取）。
+  SIM_CHARACTER_DATA: 'MST_SIM_characterData',
+  SIM_CLIENT_DATA: 'MST_SIM_clientData',
+  SIM_NEW_BATTLE: 'MST_SIM_newBattle',
+  SIM_PROFILES: 'MST_SIM_profiles'
 };
 
 function isClientData(data) {
@@ -1109,7 +1114,11 @@ export function createWebSocketService(ctx, DataHub) {
     handleMessage(message) {
       const obj = this.safeParse(message);
       if (!obj || typeof obj !== 'object') return;
-      if (this.ignoredMessageTypes.has(obj.type)) return;
+      if (this.ignoredMessageTypes.has(obj.type)) {
+        // 战斗过程消息不进 DataHub，但战斗模拟导入需要 new_battle 快照，单独分发。
+        this.dispatch('mst:ws:battle-message', obj);
+        return;
+      }
       this.dispatch('mst:ws:message', obj);
       if (obj.type === 'init_client_data') {
         DataHub.initClientData(obj, 'ws');

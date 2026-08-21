@@ -210,11 +210,16 @@ export class AppController {
 
 // bootstrap
 export function installAppBootstrap(ctx) {
-  const {CONFIG, TemplateRenderer, EdsMilkonomyFeature} = ctx;
+  const {CONFIG, TemplateRenderer, EdsMilkonomyFeature, CombatSimImportFeature} = ctx;
 
   // Milkonomy 同步能力可在游戏站和外部利润站同时工作。
   if (CONFIG.isGameSite || CONFIG.isMilkonomySite) {
     new EdsMilkonomyFeature().init();
+  }
+
+  // 战斗模拟导入：游戏站负责写入数据快照（测试服除外），模拟器站负责注入导入按钮。
+  if ((CONFIG.isGameSite && !CONFIG.isTestServer) || CONFIG.isCombatSimSite) {
+    new CombatSimImportFeature().init();
   }
 
   if (CONFIG.isGameSite) {

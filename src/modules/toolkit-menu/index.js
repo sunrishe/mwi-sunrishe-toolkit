@@ -29,7 +29,7 @@ export class ToolkitMenuFeature {
         handler: () => this.abilityCalculator.open()
       }, {key: 'houseUpgradeCalculator', icon: 'house', handler: () => this.appController.openCalculator()}, {
         key: 'combatUpgradeCalculator',
-        icon: 'combat',
+        icon: 'experience',
         handler: () => this.combatCalculator.open()
       }, {
         key: 'equipmentComparison',
@@ -37,6 +37,10 @@ export class ToolkitMenuFeature {
         handler: () => this.equipmentComparison.open()
       },
       {key: 'dungeonProfitCalculator', icon: 'loot_tracker', handler: () => this.dungeonCalculator.open()}, {
+        key: 'combatSimAiwwb',
+        icon: 'combat',
+        handler: () => this.openCombatSimulator()
+      }, {
         key: 'switchCharacter',
         icon: 'switch_character',
         handler: () => {
@@ -44,6 +48,11 @@ export class ToolkitMenuFeature {
         }
       }
     ];
+  }
+
+  // 跳转 aiwwb 战斗模拟器；window.open 传固定 target 名，重复点击复用同一窗口不新开。
+  openCombatSimulator() {
+    window.open('https://aiwwb.github.io/milkywayidle_battle/dist/', 'mst-combat-sim-aiwwb');
   }
 
   refresh() {

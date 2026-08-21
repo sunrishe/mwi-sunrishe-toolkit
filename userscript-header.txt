@@ -25,6 +25,7 @@
 // @match              https://www.milkywayidlecn.com/*
 // @match              https://milkonomy.pages.dev/*
 // @match              https://hyhfish.github.io/milkonomy/*
+// @match              https://aiwwb.github.io/milkywayidle_battle/*
 // @grant              unsafeWindow
 // @grant              GM_addValueChangeListener
 // @grant              GM.addValueChangeListener
