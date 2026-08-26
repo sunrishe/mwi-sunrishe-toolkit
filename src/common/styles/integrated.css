@@ -670,30 +670,36 @@
   display: inline-flex;
   margin: 0;
 }
+/* 技能页与库存/市场技能书悬浮菜单内的 MST 入口按钮：布局完全沿用游戏按钮类
+   （继承同菜单多数按钮的完整类集合，保证高度、边距、字号与其他按钮一致），
+   MST 只补充配色（space-600 蓝底，采样游戏主要操作按钮实测所得）——
+   variant 类才决定游戏按钮底色，MST 注入按钮不带 variant，因此必须由 MST 统一配色。 */
 .mst-ability-action-market,
-.mst-ability-action-calculator {
-  margin-top: 0.25rem;
-}
-.mst-ability-tooltip-calculator:not([class*='Button_button']) {
-  display: block;
-  width: 100%;
-  margin-top: 0.375rem;
-  padding: 0.25rem 0.5rem;
-  box-sizing: border-box;
-  border: 1px solid var(--color-midnight-100, #454771);
-  border-radius: var(--radius-sm, 0.25rem);
-  background: var(--color-midnight-500, #2c2e45);
+.mst-ability-action-calculator,
+.mst-ability-tooltip-calculator {
+  background: var(--color-space-600, #4357af);
   color: var(--color-text-dark-mode, #e7e7e7);
-  font: inherit;
-  font-size: var(--font-size-sm, 0.8125rem);
   cursor: pointer;
 }
-.mst-ability-tooltip-calculator:not([class*='Button_button']):hover {
-  border-color: var(--color-space-300, #98a7e9);
-  background: var(--color-midnight-400, #323450);
+.mst-ability-action-market:hover,
+.mst-ability-action-calculator:hover,
+.mst-ability-tooltip-calculator:hover {
+  background: var(--color-space-500, #5468c4);
 }
-/* 悬浮菜单内的入口带游戏按钮类（Button_button/Button_fullWidth）时沿用游戏外观，
-   上面的规则只在游戏按钮类缺失时兜底，避免覆盖游戏按钮样式。 */
+/* 游戏按钮类缺失时的兜底布局（菜单里没有可继承的按钮时仍可点击可用）。 */
+.mst-ability-action-market:not([class*='Button_']),
+.mst-ability-action-calculator:not([class*='Button_']),
+.mst-ability-tooltip-calculator:not([class*='Button_']) {
+  display: block;
+  width: 100%;
+  box-sizing: border-box;
+  margin-top: 0.375rem;
+  padding: 0.25rem 0.5rem;
+  border: 0;
+  border-radius: var(--radius-sm, 0.25rem);
+  font: inherit;
+  font-size: var(--font-size-sm, 0.8125rem);
+}
 /* 技能选择浮层在弹窗内容区内部覆盖（与装备提升选择装备一致），
    不遮挡弹窗边框；弹窗标题、关闭按钮和边框保持可见。 */
 .mst-ability-picker {
@@ -1578,7 +1584,8 @@
   min-width: 0;
   flex: 1;
 }
-.mst-dungeon-auto-buff {
+.mst-dungeon-auto-buff,
+.mst-dungeon-config-button {
   display: inline-flex;
   width: 100%;
   min-width: 0;
@@ -1600,7 +1607,14 @@
     sans-serif;
   cursor: pointer;
 }
-.mst-dungeon-auto-buff:hover {
+/* 恢复默认按钮与同排复选框文本观感一致：通用按钮规则的 font:inherit 会继承
+   .mst-dungeon-field 的 0.75rem 小字号，这里用更高特异性还原为与复选框相同的字号与字重。 */
+.mst-dungeon-field .mst-dungeon-config-button {
+  font-size: var(--font-size-base, 0.875rem);
+  font-weight: var(--font-weight-semibold, 600);
+}
+.mst-dungeon-auto-buff:hover,
+.mst-dungeon-config-button:hover {
   border-color: var(--color-space-300, #98a7e9);
 }
 .mst-dungeon-auto-buff:has(input:disabled) {
@@ -1698,36 +1712,59 @@
 .mst-dungeon-table-wrap[hidden] {
   display: none;
 }
+/* 页签复刻宿主站 MUI Tab（MuiTab-textColorPrimary / .Mui-selected）实测观感：
+   32px 高、顶部圆角实色块——未选中 midnight-500 底、选中 space-600 主色底，文字统一浅色不大写；
+   底部 2px 指示条与宿主 MuiTabs-indicator 一致用 MUI primary 蓝。
+   选择器带 .mst-dungeon-tabs 前缀抬高特异性，避免被上方 .mst-upgrade-calculator button 通用样式压制。 */
 .mst-dungeon-tabs {
   display: flex;
-  gap: 0.35rem;
 }
-.mst-dungeon-tab {
-  height: var(--button-height-normal, 1.875rem);
+.mst-dungeon-tabs .mst-dungeon-tab {
+  position: relative;
   box-sizing: border-box;
-  padding: 0 0.6rem;
-  border: 1px solid var(--color-midnight-100, #454771);
-  border-radius: var(--radius-sm, 0.25rem);
+  min-width: 3.125rem;
+  min-height: 2rem;
+  margin: 0;
+  border: 0;
+  border-radius: var(--radius-sm, 0.25rem) var(--radius-sm, 0.25rem) 0 0;
+  padding: 0.375rem;
   background: var(--color-midnight-500, #2c2e45);
-  color: var(--color-neutral-300, #b9bbca);
+  color: var(--color-text-dark-mode, #e7e7e7);
   font:
-    var(--font-weight-semibold, 600) var(--font-size-small, 0.75rem)/1 Roboto,
+    var(--font-weight-medium, 500) var(--font-size-base, 0.875rem)/1.25 Roboto,
     Helvetica,
     Arial,
     sans-serif;
+  letter-spacing: 0.02857em;
   cursor: pointer;
+  transition: background-color 250ms cubic-bezier(0.4, 0, 0.2, 1);
 }
-.mst-dungeon-tab:hover {
-  border-color: var(--color-space-300, #98a7e9);
+/* 底部指示条对应 MuiTabs-indicator：常态透明，选中时浮现。 */
+.mst-dungeon-tabs .mst-dungeon-tab::after {
+  content: '';
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  height: 2px;
+  background: transparent;
+  transition: background-color 300ms cubic-bezier(0.4, 0, 0.2, 1);
 }
-/* 选中页签用金底深字突出，悬停/未选中保持深色底，选中态清晰可辨。 */
-.mst-dungeon-tab-active {
-  border-color: var(--color-cowbell, #f6c95c);
-  background: var(--color-cowbell, #f6c95c);
-  color: var(--color-midnight-500, #2c2e45);
-  box-shadow:
-    0 0 0 1px rgba(246, 201, 92, 0.45),
-    0 2px 8px rgba(246, 201, 92, 0.3);
+/* 悬停/键盘聚焦底色微亮替代 MUI ripple 反馈；选中态悬停保持主色底不被通用按钮 hover 规则覆盖。 */
+.mst-dungeon-tabs .mst-dungeon-tab:not(.mst-dungeon-tab-active):hover,
+.mst-dungeon-tabs .mst-dungeon-tab:not(.mst-dungeon-tab-active):focus-visible {
+  background: var(--color-midnight-400, #323450);
+}
+.mst-dungeon-tabs .mst-dungeon-tab:focus-visible {
+  outline: none;
+}
+.mst-dungeon-tabs .mst-dungeon-tab-active:hover,
+.mst-dungeon-tabs .mst-dungeon-tab-active:focus-visible,
+.mst-dungeon-tabs .mst-dungeon-tab-active {
+  background: var(--color-space-600, #4357af);
+}
+.mst-dungeon-tabs .mst-dungeon-tab-active::after {
+  background: #1976d2;
 }
 .mst-dungeon-loot-table {
   min-width: 36rem;
@@ -1878,6 +1915,162 @@
 }
 .mst-dungeon-loot-table .mst-dungeon-row-total th {
   color: var(--color-cowbell, #f6c95c);
+}
+/* 单图/批量视图容器保持与计算器一致的纵向间距（0.6rem），避免嵌套后各区块挤在一起。
+   容器自身用 hidden 属性切换且带 display:flex 布局，必须显式覆盖 hidden 的默认 display:none，
+   否则勾选批量后单图区域仍会显示。 */
+.mst-dungeon-single-view,
+.mst-dungeon-batch-view {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+.mst-dungeon-single-view[hidden],
+.mst-dungeon-batch-view[hidden] {
+  display: none;
+}
+/* 批量第二行：四个地图卡片与市场数据时间块共 5 格，宽度完全一致。
+   卡片容器用 display:contents 让卡片直接参与外层 5 等分网格。 */
+.mst-dungeon-picker-row {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 0.35rem;
+  align-items: stretch;
+}
+.mst-dungeon-map-picker {
+  display: contents;
+}
+/* 地下城卡片参考战斗升级职业卡：图标 + 名称整卡可双击添加。 */
+.mst-dungeon-map-card {
+  display: flex !important;
+  min-width: 0;
+  min-height: 3.2rem !important;
+  box-sizing: border-box;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.25rem 0.45rem !important;
+  text-align: left;
+}
+.mst-dungeon-map-card svg {
+  width: 1.5rem;
+  height: 1.5rem;
+  flex: 0 0 1.5rem;
+}
+.mst-dungeon-map-card strong {
+  max-width: 100%;
+  overflow: hidden;
+  font-size: var(--font-size-small, 0.75rem);
+  line-height: 1.15;
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.mst-dungeon-market-tile {
+  display: flex;
+  width: 100%;
+  box-sizing: border-box;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 0.3rem 0.4rem;
+  border: 1px solid var(--color-midnight-100, #454771);
+  border-radius: var(--radius-sm, 0.25rem);
+  background: var(--color-midnight-600, #27283b);
+  text-align: center;
+}
+.mst-dungeon-market-tile small {
+  color: var(--color-neutral-300, #b9bbca);
+  font-size: var(--font-size-tiny, 0.6875rem);
+  line-height: 1.15;
+}
+.mst-dungeon-market-tile strong {
+  color: var(--color-neutral-100, #ececf1);
+  font-size: var(--font-size-small, 0.75rem);
+  font-weight: 500;
+  line-height: 1.2;
+  overflow-wrap: anywhere;
+}
+/* 批量表列多且逐行可编辑：布局改为自动列宽，表头不吸顶（纵向滚动由弹窗承担）。
+   弹窗批量宽度 66rem 时表格全部列展示完整；窄屏由容器横向滚动承接。 */
+.mst-dungeon-batch-table {
+  min-width: 56rem;
+  table-layout: auto;
+}
+.mst-dungeon-batch-table th,
+.mst-dungeon-batch-table td {
+  position: static;
+  text-align: center;
+  white-space: nowrap;
+}
+.mst-dungeon-batch-table .mst-dungeon-batch-sub-header th {
+  background: var(--color-midnight-400, #323450);
+  color: var(--color-neutral-200, #d2d3dc);
+  font-weight: 500;
+}
+.mst-dungeon-batch-table .mst-dungeon-batch-index {
+  width: 2.2rem;
+  color: var(--color-neutral-300, #b9bbca);
+  cursor: grab;
+  user-select: none;
+}
+.mst-dungeon-batch-table .mst-dungeon-batch-map {
+  min-width: 7rem;
+  text-align: left;
+}
+.mst-dungeon-batch-table select {
+  width: 100%;
+  min-width: 3.2rem;
+}
+.mst-dungeon-batch-table select[data-batch-field='difficultyTier'] {
+  min-width: 3.6rem;
+}
+.mst-dungeon-batch-table input[type='number'] {
+  width: 3.6rem;
+  text-align: center;
+}
+.mst-dungeon-batch-value div {
+  white-space: nowrap;
+}
+/* 每个价格格两行展示：上行每日总成本、下行每日期望收益，颜色与结果表成本/收益一致。 */
+.mst-dungeon-batch-line {
+  display: flex;
+  align-items: baseline;
+  justify-content: flex-end;
+  gap: 0.25rem;
+}
+.mst-dungeon-batch-line small {
+  color: var(--color-neutral-400, #999baa);
+  font-size: var(--font-size-tiny, 0.6875rem);
+}
+.mst-dungeon-batch-cost {
+  color: var(--color-scarlet-300, #ef8f98);
+}
+.mst-dungeon-batch-profit {
+  color: var(--color-jade-300, #86d7b1);
+}
+/* 期望数量两行展示：普通宝箱数量与精炼宝箱数量各自带小标签，无精炼时不出现第二行。 */
+.mst-dungeon-batch-expected {
+  color: var(--color-neutral-100, #ececf1);
+}
+.mst-dungeon-batch-action {
+  width: 2.4rem;
+}
+.mst-dungeon-batch-empty td {
+  padding: 1.2rem 1rem;
+  color: var(--color-neutral-300, #b9bbca);
+  text-align: center;
+}
+@media (max-width: 48rem) {
+  .mst-dungeon-picker-row {
+    grid-template-columns: 1fr;
+  }
+  .mst-dungeon-market-tile {
+    min-height: 2.8rem;
+  }
+  .mst-dungeon-map-card strong {
+    white-space: normal;
+  }
 }
 @media (max-width: 48rem) {
   .mst-ability-preset-controls {

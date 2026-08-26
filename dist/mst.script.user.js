@@ -3,7 +3,7 @@
 // @name:zh-CN         MWI Sunrishe 工具箱
 // @name:en            MWI Sunrishe Toolkit
 // @namespace          http://tampermonkey.net/
-// @version            2.13.0
+// @version            2.14.0
 // @description        MWI Sunrishe 综合工具箱：提供角色/队伍名片、技能/房屋/战斗升级规划、装备提升计算器、地下城收益、配装同步和市场伴侣增强。
 // @description:zh-CN  MWI Sunrishe 综合工具箱：提供角色/队伍名片、技能/房屋/战斗升级规划、装备提升计算器、地下城收益、配装同步和市场伴侣增强。
 // @description:en     MST toolkit for character/party cards, ability/house/combat upgrade planning, equipment comparison, dungeon profit, loadout sync, and Market Mate enhancements.
@@ -89,6 +89,8 @@
     MILKONOMY_PRESET: 'MST_EDS_preset',
     MARKET_CACHE: 'MST_HCCP_market',
     MARKET_CACHE_TIMESTAMP: 'MST_HCCP_marketTimestamp',
+    // 地下城收益配置：同一 key 下分 single/batch 两个模式小节，只存配置不存结果。
+    DUNGEON_PROFIT_CONFIG: 'MST_DUNGEON_config',
     MWITOOLS_MARKET_CACHE: 'MWITools_marketAPI_json',
     MWITOOLS_MARKET_TIMESTAMP: 'MWITools_marketAPI_timestamp',
     // 战斗模拟器跨站导入（GM 存储按脚本共享，游戏站写入、模拟器站读取）。
@@ -1058,6 +1060,19 @@
         return this.getCharacterAbilities().find((ability) => ability?.abilityHrid === abilityHrid) || null;
       },
 
+      // 当前战斗配装已装备的技能槽位（characterLoadoutMap 中战斗配装的 abilityMap，按槽位号排序）。
+      getEquippedAbilityHrids() {
+        const loadoutMap = this.raw?.characterLoadoutMap || DataHub.getGameState()?.characterLoadoutMap || {};
+        const combatLoadout = Object.values(loadoutMap).find(
+          (loadout) => loadout?.actionTypeHrid === '/action_types/combat'
+        );
+        const abilityMap = combatLoadout?.abilityMap || {};
+        return Object.keys(abilityMap)
+          .sort((left, right) => Number(left) - Number(right))
+          .map((slot) => abilityMap[slot])
+          .filter(Boolean);
+      },
+
       getLevelExperience(level) {
         const table = DataHub.getClientData()?.levelExperienceTable || [];
         const safeLevel = this.utils.clampLevel(level, 0, 200);
@@ -1869,8 +1884,8 @@
   const DUNGEON_CALCULATOR_MESSAGES = {
     dungeonCalculatorHelpTitle: {zh: '查看地下城收益说明', en: 'View dungeon profit instructions'},
     dungeonCalculatorHelp: {
-      zh: '使用：选择地下城、难度、队伍人数和单次耗时；每日固定按 24 小时计算。每日药品/饮料成本可留空，填写时单位为 M。工匠茶和暴饮之囊只影响制作钥匙成本，暴饮之囊需要勾选后才会按所选强化等级生效。\n\n期望：每日轮次 = 1440 ÷ 单次耗时，计算保留完整精度。普通宝箱按官方公式 5 ÷ 队伍人数 × (1 + 29.5% 战斗掉落数量)计算，5 人时每车 1.295 个；T0 不掉精炼宝箱，T1 精炼宝箱为每车普通宝箱 × 0.33，T2 为每车普通宝箱。门票数量等于普通宝箱期望数量，数量显示最多保留两位小数并去掉末尾 0。\n\n成本：默认同时展示制作钥匙和购买钥匙。制作钥匙读取官方配方并受工匠茶、暴饮之囊影响；购买钥匙读取门票和开箱钥匙的成品市场价。材料成本区只显示买入方向，预期产出区只显示卖出方向。自定义模式可选择钥匙来源、买入档位和卖出档位；左侧保留所选来源的区间，右侧显示自定义组合。\n\n收益：宝箱内容按官方掉落率和平均数量递归展开，重复物品会合并，嵌套宝箱会继续展开。“掉落物”页签按官方宝箱的掉落物列表直接展示（不递归展开嵌套宝箱），普通/精炼宝箱各一小节，每行列出掉率/掉落数量、期望数量（悬浮查看计算公式）与按市场报价税前折算的价值。每日普通/精炼宝箱产出完全按市场报价税前计算（不扣税）。“收益扣除市场税”默认勾选，卖出收入按市场税扣除（普通物品 {0}%、牛铃/牛铃袋 {1}%）；不勾选时所有物品都按市场报价直接计算，不扣任何税。勾选“披风不计算收益”后，所有背部装备产物按 0 估值。单个普通宝箱收益会扣除单箱分摊的门票和普通开箱钥匙成本；单个精炼宝箱收益只扣除精炼开箱钥匙成本。每日期望收益按单箱收益乘每日宝箱数量汇总后，再扣除每日药品/饮料成本；每车期望收益等于每日期望收益除以每日轮次。\n\n限制：通关耗时和队伍人数需要手动填写/选择，当前不会自动读取战斗耗时和队伍组成。结果是当前参数和市场价格下的确定性期望，不预测价格变化。完全缺价的物品按 0 估值并提示。',
-      en: 'Usage: Select a dungeon, tier, party size, and clear time. Every day uses a fixed 24-hour calculation. Daily food/drink cost is optional and entered in millions. Artisan Tea and Guzzling Pouch affect crafted-key costs only; Guzzling Pouch applies only when its checkbox is enabled and uses the selected enhancement level.\n\nExpectation: Daily runs = 1440 ÷ clear time, kept at full precision for calculation. Normal Chests use the official formula 5 ÷ Party Size × (1 + 29.5% Combat Drop Quantity); at Party Size 5 that is 1.295 per run. T0 has no Refinement Chest; T1 uses Normal Chests × 0.33 per run; T2 uses the Normal Chest expectation per run. Entry Ticket quantity equals expected Normal Chest quantity, and displayed quantities use at most two decimals and hide trailing zeros.\n\nCosts: Crafted Keys and Purchased Keys are shown by default. Crafted-key costs use official recipes and are affected by Artisan Tea and Guzzling Pouch; purchased-key costs use finished Entry Ticket and Chest Key market prices. The Material Costs section shows purchase sides only, and Expected Output shows sale sides only. Custom Mode selects the key source, buy side, and sell side; the left columns keep the selected source range, while the right column shows the custom combination.\n\nProfit: Chest contents recursively use official drop rates and average quantities; duplicate items are combined and nested chests are expanded. The Loot tab lists the official chest drop entries directly (nested chests are not expanded), split into Normal and Refined Chest sections; each row shows drop rate / drop quantity, expected quantity (hover for the formula), and pretax value at quoted market prices. Daily Normal/Refinement Chest Output is valued at quoted market prices before tax (no tax deducted). Deduct Market Tax is enabled by default and sale revenue deducts the market tax (regular items {0}%, Cowbells and Cowbell Bags {1}%); when disabled, all items use quoted prices directly with no tax deducted. When Exclude Back Equipment Profit is enabled, all back-equipment output is valued at 0. Each Normal Chest Profit deducts allocated Entry Ticket and Normal Chest Key costs; each Refinement Chest Profit deducts its Refinement Chest Key cost. Daily Expected Profit multiplies per-chest profit by daily chest quantities, then deducts daily food/drink cost; Expected Profit per Run divides it by Daily Runs.\n\nLimits: Clear time is entered manually and party size is selected manually; they are not read from combat automatically. Results are deterministic expectations at current parameters and market prices and do not predict price changes. Items with no valid price are valued at 0 and reported.'
+      zh: '使用：选择地下城、难度、队伍人数和单次耗时；每日固定按 24 小时计算。每日药品/饮料成本可留空，填写时单位为 M。工匠茶和暴饮之囊只影响制作钥匙成本，暴饮之囊需要勾选后才会按所选强化等级生效。\n\n期望：每日轮次 = 1440 ÷ 单次耗时，计算保留完整精度。普通宝箱按官方公式 5 ÷ 队伍人数 × (1 + 29.5% 战斗掉落数量)计算，5 人时每车 1.295 个；T0 不掉精炼宝箱，T1 精炼宝箱为每车普通宝箱 × 0.33，T2 为每车普通宝箱。门票数量等于普通宝箱期望数量，数量显示最多保留两位小数并去掉末尾 0。\n\n成本：默认同时展示制作钥匙和购买钥匙。制作钥匙读取官方配方并受工匠茶、暴饮之囊影响；购买钥匙读取门票和开箱钥匙的成品市场价。材料成本区只显示买入方向，预期产出区只显示卖出方向。自定义模式可选择钥匙来源、买入档位和卖出档位；左侧保留所选来源的区间，右侧显示自定义组合。\n\n收益：宝箱内容按官方掉落率和平均数量递归展开，重复物品会合并，嵌套宝箱会继续展开。“掉落物”页签按官方宝箱的掉落物列表直接展示（不递归展开嵌套宝箱），普通/精炼宝箱各一小节，每行列出掉率/掉落数量、期望数量（悬浮查看计算公式）与按市场报价税前折算的价值。每日普通/精炼宝箱产出完全按市场报价税前计算（不扣税）。“收益扣除市场税”默认勾选，卖出收入按市场税扣除（普通物品 {0}%、牛铃/牛铃袋 {1}%）；不勾选时所有物品都按市场报价直接计算，不扣任何税。勾选“披风不计算收益”后，所有背部装备产物按 0 估值。单个普通宝箱收益会扣除单箱分摊的门票和普通开箱钥匙成本；单个精炼宝箱收益只扣除精炼开箱钥匙成本。每日期望收益按单箱收益乘每日宝箱数量汇总后，再扣除每日药品/饮料成本；每车期望收益等于每日期望收益除以每日轮次。\n\n限制：通关耗时和队伍人数需要手动填写/选择，当前不会自动读取战斗耗时和队伍组成。结果是当前参数和市场价格下的确定性期望，不预测价格变化。完全缺价的物品按 0 估值并提示。\n\n批量模拟：勾选顶部的“批量模拟”复选框进入批量模拟，取消勾选回到单图模拟。批量第一行选项与单图模拟从“使用工匠茶”开始的选项一致，对列表内全部地图生效；第二行双击地下城卡片把地图加入列表，右侧展示市场数据时间；列表每行单独设置难度、队伍人数、单次耗时和每日药品/饮料成本，期望数量按“普通宝箱 / 精炼宝箱”分两行展示；“制作钥匙”与“购买钥匙”各分“左买/右卖”“右买/左卖”两列，单元格上行是每日总成本、下行是每日期望收益。序号列可拖动排序，列表默认展示四个地下城。勾选自定义模式后，“购买钥匙”区域直接改为按所选钥匙来源和买卖档位计算的自定义结果。单图和批量各自的参数都会随调整自动保存到本地（共用同一个存储键、两个模式分别保存），结果始终按当前市场数据重新计算，不会读取已保存的计算结果；恢复默认清空当前模式的已存配置并回到默认参数（批量恢复为四个默认地图）。',
+      en: 'Usage: Select a dungeon, tier, party size, and clear time. Every day uses a fixed 24-hour calculation. Daily food/drink cost is optional and entered in millions. Artisan Tea and Guzzling Pouch affect crafted-key costs only; Guzzling Pouch applies only when its checkbox is enabled and uses the selected enhancement level.\n\nExpectation: Daily runs = 1440 ÷ clear time, kept at full precision for calculation. Normal Chests use the official formula 5 ÷ Party Size × (1 + 29.5% Combat Drop Quantity); at Party Size 5 that is 1.295 per run. T0 has no Refinement Chest; T1 uses Normal Chests × 0.33 per run; T2 uses the Normal Chest expectation per run. Entry Ticket quantity equals expected Normal Chest quantity, and displayed quantities use at most two decimals and hide trailing zeros.\n\nCosts: Crafted Keys and Purchased Keys are shown by default. Crafted-key costs use official recipes and are affected by Artisan Tea and Guzzling Pouch; purchased-key costs use finished Entry Ticket and Chest Key market prices. The Material Costs section shows purchase sides only, and Expected Output shows sale sides only. Custom Mode selects the key source, buy side, and sell side; the left columns keep the selected source range, while the right column shows the custom combination.\n\nProfit: Chest contents recursively use official drop rates and average quantities; duplicate items are combined and nested chests are expanded. The Loot tab lists the official chest drop entries directly (nested chests are not expanded), split into Normal and Refined Chest sections; each row shows drop rate / drop quantity, expected quantity (hover for the formula), and pretax value at quoted market prices. Daily Normal/Refinement Chest Output is valued at quoted market prices before tax (no tax deducted). Deduct Market Tax is enabled by default and sale revenue deducts the market tax (regular items {0}%, Cowbells and Cowbell Bags {1}%); when disabled, all items use quoted prices directly with no tax deducted. When Exclude Back Equipment Profit is enabled, all back-equipment output is valued at 0. Each Normal Chest Profit deducts allocated Entry Ticket and Normal Chest Key costs; each Refinement Chest Profit deducts its Refinement Chest Key cost. Daily Expected Profit multiplies per-chest profit by daily chest quantities, then deducts daily food/drink cost; Expected Profit per Run divides it by Daily Runs.\n\nLimits: Clear time is entered manually and party size is selected manually; they are not read from combat automatically. Results are deterministic expectations at current parameters and market prices and do not predict price changes. Items with no valid price are valued at 0 and reported.\n\nBatch simulation: tick the Batch Simulation checkbox on top to switch modes; untick it to return to Single Map. Its first option row mirrors the Single Map options starting from Use Artisan Tea and applies to every map in the list. Double-click a dungeon card in the second row to add a map; the market data time sits on the right. Each list row has its own tier, party size, clear time, and daily food/drink cost, and expected quantity lists Normal and Refined chests on two lines. Craft Keys and Buy Keys each split into Ask Buy/Bid Sell and Bid Buy/Ask Sell columns; every cell shows the daily total cost on the first line and the daily expected profit on the second line. Drag the Sequence cell to reorder rows, and the list defaults to all four dungeons. With Custom Mode enabled, the Buy Keys area directly shows the custom result for the selected key source and trade sides. Parameters of both modes are saved locally automatically as you adjust them (one shared storage key with separate sections for Single Map and Batch), and results are always recalculated from the current market data; saved results are never reused. Restore Defaults removes the stored config of the currently active mode and returns to default parameters (Batch restores the four default dungeons).'
     },
     dungeon: {zh: '地下城', en: 'Dungeon'},
     dungeonNameChimericalDen: {zh: '奇幻洞穴', en: 'Chimerical Den'},
@@ -1945,7 +1960,21 @@
       zh: '期望数量 = {0} 个{1} × {2} × ({3}+{4})÷2',
       en: 'Expected = {0} {1} × {2} × ({3}+{4})÷2'
     },
-    expectedQuantityResult: {zh: '= {0}', en: '= {0}'}
+    expectedQuantityResult: {zh: '= {0}', en: '= {0}'},
+    simTabBatch: {zh: '批量模拟', en: 'Batch Simulation'},
+    leftBuyRightSell: {zh: '左买/右卖', en: 'Ask Buy/Bid Sell'},
+    rightBuyLeftSell: {zh: '右买/左卖', en: 'Bid Buy/Ask Sell'},
+    batchEmptyHint: {zh: '双击上方地下城卡片添加到列表', en: 'Double-click a dungeon card above to add it to the list.'},
+    batchCostShort: {zh: '成本', en: 'Cost'},
+    batchProfitShort: {zh: '收益', en: 'Profit'},
+    batchNormalShort: {zh: '普通', en: 'Normal'},
+    batchRefinedShort: {zh: '精炼', en: 'Refined'},
+    clearTimeMinutesShort: {zh: '单次耗时', en: 'Clear Time'},
+    unitMinutes: {zh: '（分钟）', en: '(min)'},
+    dailyConsumablesCostLine1: {zh: '每日药品', en: 'Daily Food'},
+    dailyConsumablesCostLine2: {zh: '饮料成本（M）', en: 'Drink Cost (M)'},
+    restoreDefaultConfig: {zh: '恢复默认', en: 'Restore Defaults'},
+    configRestored: {zh: '已恢复默认配置', en: 'Default configuration restored'}
   };
 
   // equipment-comparison-messages
@@ -2207,6 +2236,7 @@
         items: '/static/media/items_sprite.f58c9476.svg',
         skills: '/static/media/skills_sprite.3bb4d936.svg',
         abilities: '/static/media/abilities_sprite.fdd1b4de.svg',
+        actions: '/static/media/actions_sprite.e6388cbc.svg',
         misc: '/static/media/misc_sprite.cfad291b.svg',
         chatIcons: '/static/media/chat_icons_sprite.628944de.svg'
       },
@@ -2214,6 +2244,7 @@
         items: 'items_sprite',
         skills: 'skills_sprite',
         abilities: 'abilities_sprite',
+        actions: 'actions_sprite',
         misc: 'misc_sprite',
         chatIcons: 'chat_icons_sprite'
       },
@@ -4476,7 +4507,8 @@
       button.type = 'button';
       button.className = utils.getGameButtonClass() + ' mst-ability-calculator-trigger';
       button.textContent = i18n.t('upgradeCalculator');
-      button.addEventListener('click', () => feature.open());
+      // 从技能页打开时预填当前战斗配装已装备的全部技能。
+      button.addEventListener('click', () => feature.open(feature.getEquippedAbilityHrids()));
       container.appendChild(button);
       title.insertAdjacentElement('afterend', container);
       return panel;
@@ -4510,18 +4542,19 @@
       const {CharacterDataService, GameNavigationService, Notifier, i18n, utils} = feature.ctx;
       const menu = document.querySelector('[class*="Ability_actionMenu"]');
       if (!menu || !feature.lastClickedAbilityHrid) return;
-      const reference = menu.querySelector('button');
       const abilityHrid = feature.lastClickedAbilityHrid;
+      // 布局类取菜单内多数游戏按钮的类集合，保证注入按钮高度、边距、字号与同菜单其他按钮一致。
+      const menuClasses = this.getMenuButtonClasses(menu) || utils.getGameButtonClass();
       let calculatorButton = menu.querySelector('.mst-ability-action-calculator');
       if (!calculatorButton) {
         calculatorButton = document.createElement('button');
         calculatorButton.type = 'button';
-        calculatorButton.className =
-          (reference?.className || utils.getGameButtonClass()) + ' mst-ability-action-calculator';
+        calculatorButton.className = menuClasses + ' mst-ability-action-calculator';
         calculatorButton.textContent = i18n.t('upgradeCalculator');
         calculatorButton.addEventListener('click', (event) => {
           event.preventDefault();
           event.stopPropagation();
+          this.closeInteractiveMenu();
           feature.open(abilityHrid);
         });
         menu.appendChild(calculatorButton);
@@ -4530,11 +4563,12 @@
       if (!menu.querySelector('.mst-ability-action-market')) {
         const marketButton = document.createElement('button');
         marketButton.type = 'button';
-        marketButton.className = (reference?.className || utils.getGameButtonClass()) + ' mst-ability-action-market';
+        marketButton.className = menuClasses + ' mst-ability-action-market';
         marketButton.textContent = i18n.t('openMarket');
         marketButton.addEventListener('click', (event) => {
           event.preventDefault();
           event.stopPropagation();
+          this.closeInteractiveMenu();
           const book = CharacterDataService.getAbilityBook(abilityHrid);
           if (!book || !GameNavigationService.openMarketplace(book.hrid, 0)) {
             Notifier.toast(i18n.t('navigationUnavailable'), 'warning');
@@ -4542,6 +4576,28 @@
         });
         calculatorButton.before(marketButton);
       }
+    },
+
+    // 取菜单内大多数游戏按钮使用的类集合；注入按钮复制它，布局与同菜单其他按钮保持一致。
+    getMenuButtonClasses(menu) {
+      const counts = new Map();
+      menu.querySelectorAll('button').forEach((button) => {
+        const classes = String(button.className || '')
+          .replace(/\s*mst-\S+/g, '')
+          .trim();
+        if (!classes) return;
+        counts.set(classes, (counts.get(classes) || 0) + 1);
+      });
+      return [
+          ...counts.entries()
+        ].sort((left, right) => right[1] - left[1])[0]?.[0] || '';
+    },
+
+    // 注入按钮的点击被 stopPropagation 拦截，游戏自身的“点击菜单外关闭”不会触发；
+    // 这里向 document 派发一次 mousedown，让 MUI ClickAway/Tooltip 关闭悬浮层，
+    // 避免 MST 弹窗打开后游戏悬浮框仍然挂在页面上。
+    closeInteractiveMenu() {
+      document.dispatchEvent(new MouseEvent('mousedown', {bubbles: true, cancelable: true}));
     },
 
     // 市场技能书交易详情页：点击技能书图标后，游戏通过 MUI Tooltip 在 body 下
@@ -4567,15 +4623,17 @@
       const existing = popper.querySelector('.mst-ability-tooltip-calculator');
       if (existing?.dataset.abilityHrid === book.abilityHrid) return;
       existing?.remove();
-      const reference = actionMenu.querySelector('button');
+      // 布局类取菜单内多数游戏按钮的类集合，保证与其他按钮高度、边距、字号一致。
+      const menuClasses = this.getMenuButtonClasses(actionMenu);
       const button = document.createElement('button');
       button.type = 'button';
-      button.className = (reference?.className || '') + ' mst-ability-tooltip-calculator';
+      button.className = (menuClasses ? menuClasses + ' ' : '') + 'mst-ability-tooltip-calculator';
       button.dataset.abilityHrid = book.abilityHrid;
       button.textContent = i18n.t('upgradeCalculator');
       button.addEventListener('click', (event) => {
         event.preventDefault();
         event.stopPropagation();
+        this.closeInteractiveMenu();
         feature.open(book.abilityHrid);
       });
       actionMenu.appendChild(button);
@@ -4745,11 +4803,18 @@
       this.marketActions.openAbilityBookMarket(this, row);
     }
 
+    // 当前战斗配装已装备的技能槽（按槽位顺序）。
+    getEquippedAbilityHrids() {
+      const {CharacterDataService} = this.ctx;
+      return CharacterDataService.getEquippedAbilityHrids();
+    }
+
     addAbilityBooksToCart(row) {
       this.marketActions.addAbilityBooksToCart(this, row);
     }
 
-    async open(initialAbilityHrid = '') {
+    // 打开技能升级计算器并预填技能：字符串按单个技能处理，数组按列表逐项添加（已装备技能）。
+    async open(initialAbilityHrids = []) {
       const {DataHub, Notifier, i18n} = this.ctx;
       if (!DataHub.getClientData()?.levelExperienceTable || !this.getAbilityRows().length) {
         return Notifier.alert(i18n.t('calculatorDataNotReady'), 'warning');
@@ -4761,7 +4826,10 @@
       }
       this.rows = [];
       this.nextRowId = 0;
-      if (initialAbilityHrid) this.addAbility(initialAbilityHrid, false);
+      const abilityList = Array.isArray(initialAbilityHrids) ? initialAbilityHrids : initialAbilityHrids ? [
+              initialAbilityHrids
+            ] : [];
+      abilityList.forEach((abilityHrid) => this.addAbility(abilityHrid, false));
       return Notifier.html({
         title: i18n.t('abilityUpgradeCalculator'),
         html: this.getDialogHtml(),
@@ -12921,10 +12989,27 @@
           TemplateRenderer.html`<option value=${String(level)} .selected=${String(level) === feature.state.guzzlingLevel}>+${level}</option>`
       );
       // 自定义控件始终保留在模板中，仅用 hidden 切换，避免 uhtml 因节点数量变化抛出 InvalidNodeTypeError。
+      // 单图/批量两个视图容器常驻模板并用 hidden 切换；批量视图内容由字符串模板单独渲染，
+      // 避免把逐行输入的表格交给 uhtml 增量更新。批量开关是与选项一致的复选框，默认不勾选（单图模拟）。
       TemplateRenderer.render(
         () => TemplateRenderer.html`
   <div class="mst-upgrade-calculator mst-dungeon-calculator">
+    <div class="mst-dungeon-single-view" .hidden=${Boolean(feature.batchEnabled)}>
     <div class="mst-dungeon-toolbar">
+      <div class="mst-dungeon-field mst-dungeon-toggle-field">
+        <label class="mst-dungeon-auto-buff">
+          <input
+            type="checkbox"
+            .checked=${Boolean(feature.batchEnabled)}
+            @change=${(event) => {
+              feature.batchEnabled = event.target.checked;
+              feature.applyDialogWidth();
+              feature.render();
+            }}
+          >
+          <span>${i18n.t('simTabBatch')}</span>
+        </label>
+      </div>
       <label class="mst-dungeon-field">
         <span>${i18n.t('dungeon')}</span>
         <select
@@ -13105,8 +13190,15 @@
           <option value="bid" .selected=${feature.state.customSellSide === 'bid'}>${i18n.t('rightSell')}</option>
         </select>
       </label>
+      <div class="mst-dungeon-field mst-dungeon-toggle-field">
+        <button type="button" class="mst-dungeon-config-button" data-dungeon-config="restore">
+          ${i18n.t('restoreDefaultConfig')}
+        </button>
+      </div>
     </div>
     <div class="mst-dungeon-results"></div>
+    </div>
+    <div class="mst-dungeon-batch-view" .hidden=${!feature.batchEnabled}></div>
   </div>
       `,
         feature.root
@@ -13114,8 +13206,661 @@
       // 结果表单独渲染，避免表单重绘时复用已经脱离 DOM 的表格节点，造成自定义列停止更新。
       const resultRoot = feature.root.querySelector('.mst-dungeon-results');
       if (resultRoot) TemplateRenderer.render(() => feature.renderResult(result), resultRoot);
+      // 批量视图只在勾选时渲染；行内输入走局部刷新，不触发整棵模板重绘。
+      if (feature.batchEnabled) {
+        const batchRoot = feature.root.querySelector('.mst-dungeon-batch-view');
+        if (batchRoot) feature.renderBatchView(batchRoot);
+      }
+      // 所有选项与列表调整都经过 render 收口，配置随调整自动保存。
+      dungeonProfitBatchView.autosave(feature);
     }
   };
+
+  // dungeon-profit-batch-view
+  const dungeonProfitBatchView = {
+    // 批量模拟选项与单图共享同一份 state（从“使用工匠茶”开始），两个模式的口径保持一致。
+    OPTION_CONTROLS: Object.freeze([
+      'useArtisanTea', 'useGuzzlingPouch', 'guzzlingLevel', 'applyMarketTax', 'excludeBackEquipmentValue',
+      'customMode', 'customKeySource', 'customBuySide', 'customSellSide'
+    ]),
+    ROW_FIELDS: Object.freeze([
+      'difficultyTier', 'partySize', 'clearMinutes', 'dailyConsumablesCost'
+    ]),
+
+    getViewHtml(feature) {
+      const {i18n} = DungeonProfitCalculatorFeature.ctx;
+      const missingCount = this.getMissingPriceCount(feature);
+      return `
+  <div class="mst-dungeon-toolbar mst-dungeon-batch-options">${this.getOptionsHtml(feature)}</div>
+  <div class="mst-dungeon-picker-row">
+    <div class="mst-dungeon-map-picker">${this.getMapCardsHtml(feature)}</div>
+    <div class="mst-dungeon-market-tile">
+      <small>${escapeHtmlText(i18n.t('marketDataTime'))}</small>
+      <strong>${escapeHtmlText(feature.marketService.getUpdatedText())}</strong>
+    </div>
+  </div>
+  ${missingCount > 0 ? this.getWarningHtml(feature, missingCount) : ''}
+  <div class="mst-dungeon-table-wrap">
+    <table class="mst-dungeon-table mst-dungeon-batch-table">
+      ${this.getTableHeadHtml(feature)}
+      <tbody>${this.getTableBodyHtml(feature)}</tbody>
+    </table>
+  </div>`;
+    },
+
+    getConfigButtonsHtml(_feature) {
+      const {i18n} = DungeonProfitCalculatorFeature.ctx;
+      return `
+    <div class="mst-dungeon-field mst-dungeon-toggle-field">
+      <button type="button" class="mst-dungeon-config-button" data-dungeon-config="restore">${escapeHtmlText(
+        i18n.t('restoreDefaultConfig')
+      )}</button>
+    </div>`;
+    },
+
+    getBatchToggleHtml(feature) {
+      const {i18n} = DungeonProfitCalculatorFeature.ctx;
+      return `
+    <div class="mst-dungeon-field mst-dungeon-toggle-field">
+      <label class="mst-dungeon-auto-buff">
+        <input type="checkbox" data-batch-toggle${feature.batchEnabled ? ' checked' : ''}>
+        <span>${escapeHtmlText(i18n.t('simTabBatch'))}</span>
+      </label>
+    </div>`;
+    },
+
+    getOptionsHtml(feature) {
+      const {i18n} = DungeonProfitCalculatorFeature.ctx;
+      const state = feature.state;
+      const marketTaxPercent = Math.round(MARKET_TAX_RATE * 100);
+      const cowbellTaxPercent = Math.round(COWBELL_TAX_RATE * 100);
+      const checkboxField = (option, labelKey, title) => `
+    <div class="mst-dungeon-field mst-dungeon-toggle-field">
+      <label class="mst-dungeon-auto-buff"${title ? ` title="${title}"` : ''}>
+        <input type="checkbox" data-batch-option="${option}"${state[option] ? ' checked' : ''}>
+        <span>${escapeHtmlText(i18n.t(labelKey))}</span>
+      </label>
+    </div>`;
+      const guzzlingOptions = Array.from(
+        {length: 21},
+        (_, level) =>
+          `<option value="${level}"${String(level) === String(state.guzzlingLevel) ? ' selected' : ''}>+${level}</option>`
+      ).join('');
+      return `
+    ${this.getBatchToggleHtml(feature)}
+    ${checkboxField('useArtisanTea', 'artisanTea')}
+    <label class="mst-dungeon-field">
+      <span>${escapeHtmlText(i18n.t('guzzlingLevel'))}</span>
+      <span class="mst-dungeon-guzzling-control">
+        <label class="mst-dungeon-guzzling-toggle" title="${escapeHtmlText(i18n.t('useGuzzlingPouch'))}">
+          <input type="checkbox" data-batch-option="useGuzzlingPouch" aria-label="${escapeHtmlText(
+            i18n.t('useGuzzlingPouch')
+          )}"${state.useGuzzlingPouch ? ' checked' : ''}>
+        </label>
+        <select data-batch-option="guzzlingLevel"${state.useGuzzlingPouch ? '' : ' disabled'}>${guzzlingOptions}</select>
+      </span>
+    </label>
+    ${checkboxField(
+      'applyMarketTax',
+      'applyMarketTax',
+      escapeHtmlText(i18n.t('applyMarketTaxHint', marketTaxPercent, cowbellTaxPercent))
+    )}
+    ${checkboxField('excludeBackEquipmentValue', 'excludeBackEquipmentValue')}
+    ${checkboxField('customMode', 'customMode')}
+    <label class="mst-dungeon-field"${state.customMode ? '' : ' hidden'}>
+      <span>${escapeHtmlText(i18n.t('keySource'))}</span>
+      <select data-batch-option="customKeySource">
+        <option value="materials"${state.customKeySource === 'materials' ? ' selected' : ''}>${escapeHtmlText(
+          i18n.t('craftedKeys')
+        )}</option>
+        <option value="market"${state.customKeySource === 'market' ? ' selected' : ''}>${escapeHtmlText(
+          i18n.t('purchasedKeys')
+        )}</option>
+      </select>
+    </label>
+    <label class="mst-dungeon-field"${state.customMode ? '' : ' hidden'}>
+      <span>${escapeHtmlText(
+        i18n.t(state.customKeySource === 'materials' ? 'keyMaterialPurchaseMethod' : 'keyPurchaseMethod')
+      )}</span>
+      <select data-batch-option="customBuySide">
+        <option value="ask"${state.customBuySide === 'ask' ? ' selected' : ''}>${escapeHtmlText(i18n.t('leftBuy'))}</option>
+        <option value="bid"${state.customBuySide === 'bid' ? ' selected' : ''}>${escapeHtmlText(i18n.t('rightBuy'))}</option>
+      </select>
+    </label>
+    <label class="mst-dungeon-field"${state.customMode ? '' : ' hidden'}>
+      <span>${escapeHtmlText(i18n.t('goodsSaleMethod'))}</span>
+      <select data-batch-option="customSellSide">
+        <option value="ask"${state.customSellSide === 'ask' ? ' selected' : ''}>${escapeHtmlText(i18n.t('leftSell'))}</option>
+        <option value="bid"${state.customSellSide === 'bid' ? ' selected' : ''}>${escapeHtmlText(i18n.t('rightSell'))}</option>
+      </select>
+    </label>${this.getConfigButtonsHtml(feature)}`;
+    },
+
+    // 地下城图标与游戏战斗面板一致：action 无输入/产出/刷怪信息时使用 actions 精灵图（游戏 getActionIconSrc 同源）。
+    getMapIconHref(_feature, actionHrid) {
+      const {utils} = DungeonProfitCalculatorFeature.ctx;
+      const sprite = utils?.getSpriteUrl?.('actions') || '/static/media/actions_sprite.e6388cbc.svg';
+      return `${sprite}#${utils?.substrLastSlash?.(actionHrid) || actionHrid}`;
+    },
+
+    getMapCardsHtml(feature) {
+      const {i18n} = DungeonProfitCalculatorFeature.ctx;
+      return feature.service
+        .getDungeons()
+        .map((action, index) => {
+          return `
+    <button type="button" class="mst-dungeon-map-card" data-dungeon-add="${escapeHtmlText(action.hrid)}" title="${escapeHtmlText(
+      i18n.t('doubleClickToAdd')
+    )}">
+      <svg aria-hidden="true"><use href="${escapeHtmlText(this.getMapIconHref(feature, action.hrid))}"></use></svg>
+      <strong>D${index + 1}. ${escapeHtmlText(feature.getDungeonName(action))}</strong>
+    </button>`;
+        })
+        .join('');
+    },
+
+    getWarningHtml(feature, missingCount) {
+      const {i18n} = DungeonProfitCalculatorFeature.ctx;
+      return `<div class="mst-dungeon-warning" data-batch-warning>${escapeHtmlText(
+      i18n.t('missingMarketPrices', missingCount)
+    )}</div>`;
+    },
+
+    getTableHeadHtml(feature) {
+      const {i18n} = DungeonProfitCalculatorFeature.ctx;
+      const customMode = Boolean(feature.state.customMode);
+      // 单位换行展示并缩短列宽：单次耗时/每日药品饮料成本的主文案与单位分两行。
+      const twoLineHeader = (labelKey, unitKey) =>
+        `<th rowspan="2">${escapeHtmlText(i18n.t(labelKey))}<br>${escapeHtmlText(i18n.t(unitKey))}</th>`;
+      const rowSpanColumns = [
+        `<th rowspan="2">${escapeHtmlText(i18n.t('order'))}</th>`, `<th rowspan="2">${escapeHtmlText(i18n.t('dungeon'))}</th>`, `<th rowspan="2">${escapeHtmlText(i18n.t('difficultyTier'))}</th>`, `<th rowspan="2">${escapeHtmlText(i18n.t('partySize'))}</th>`, twoLineHeader('clearTimeMinutesShort', 'unitMinutes'),
+        twoLineHeader(
+          'dailyConsumablesCostLine1',
+          'dailyConsumablesCostLine2'
+        ), `<th rowspan="2">${escapeHtmlText(i18n.t('expectedQuantity'))}</th>`
+      ].join('');
+      const customGroupLabel = `${i18n.t('customResult')}·${i18n.t(
+      feature.state.customKeySource === 'materials' ? 'craftedKeys' : 'purchasedKeys'
+    )}`;
+      const secondGroupHeader = customMode
+        ? `<th colspan="2">${escapeHtmlText(customGroupLabel)}</th>`
+        : `<th colspan="2">${escapeHtmlText(i18n.t('purchasedKeys'))}</th>`;
+      const directionPair = `<th>${escapeHtmlText(i18n.t('leftBuyRightSell'))}</th><th>${escapeHtmlText(
+      i18n.t('rightBuyLeftSell')
+    )}</th>`;
+      const customDirectionLabel = `${i18n.t(feature.state.customBuySide === 'ask' ? 'leftBuy' : 'rightBuy')}/${i18n.t(
+      feature.state.customSellSide === 'ask' ? 'leftSell' : 'rightSell'
+    )}`;
+      const secondGroupDirections = customMode
+        ? `<th colspan="2">${escapeHtmlText(customDirectionLabel)}</th>`
+        : directionPair;
+      return `
+      <thead>
+        <tr class="mst-dungeon-table-group-header">
+          ${rowSpanColumns}
+          <th colspan="2">${escapeHtmlText(i18n.t('craftedKeys'))}</th>
+          ${secondGroupHeader}
+          <th rowspan="2" class="mst-dungeon-batch-col-action"></th>
+        </tr>
+        <tr class="mst-dungeon-batch-sub-header">
+          ${directionPair}
+          ${secondGroupDirections}
+        </tr>
+      </thead>`;
+    },
+
+    getTableBodyHtml(feature) {
+      const {i18n} = DungeonProfitCalculatorFeature.ctx;
+      if (!feature.batchRows.length) {
+        return `<tr class="mst-dungeon-batch-empty"><td colspan="12">${escapeHtmlText(
+        i18n.t('batchEmptyHint')
+      )}</td></tr>`;
+      }
+      return feature.batchRows.map((row, index) => this.getRowHtml(feature, row, index + 1)).join('');
+    },
+
+    getRowHtml(feature, row, sequence) {
+      const {i18n, utils} = DungeonProfitCalculatorFeature.ctx;
+      const action = feature.service.getDungeons().find((dungeon) => dungeon.hrid === row.actionHrid);
+      // 列表行内地图名与卡片一致带 D 序号（官方 sortIndex 顺序）。
+      const dungeonIndex = feature.service.getDungeons().findIndex((dungeon) => dungeon.hrid === row.actionHrid);
+      const mapLabel = action ? `D${dungeonIndex + 1}. ${feature.getDungeonName(action)}` : '-';
+      const difficultyOptions = [
+        0, 1, 2
+      ]
+        .map(
+          (tier) =>
+            `<option value="${tier}"${Number(tier) === Number(row.difficultyTier) ? ' selected' : ''}>T${tier}</option>`
+        )
+        .join('');
+      const partySizeOptions = [
+        1, 2, 3, 4, 5
+      ]
+        .map(
+          (size) => `<option value="${size}"${Number(size) === Number(row.partySize) ? ' selected' : ''}>${size}</option>`
+        )
+        .join('');
+      const customMode = Boolean(feature.state.customMode);
+      const miscSprite = utils?.getSpriteUrl?.('misc') || '/static/media/misc_sprite.cfad291b.svg';
+      return `
+  <tr data-batch-row-id="${row.id}">
+    <td class="mst-sequence-cell mst-dungeon-batch-index" draggable="true" title="${escapeHtmlText(
+      i18n.t('dragToSort')
+    )}"><svg aria-hidden="true"><use href="${escapeHtmlText(`${miscSprite}#drag_handle`)}"></use></svg><span>${sequence}</span></td>
+    <td class="mst-dungeon-batch-map"><span class="mst-dungeon-loot-item"><svg aria-hidden="true"><use href="${escapeHtmlText(
+      this.getMapIconHref(feature, row.actionHrid)
+    )}"></use></svg><span>${escapeHtmlText(mapLabel)}</span></span></td>
+    <td><select data-batch-field="difficultyTier">${difficultyOptions}</select></td>
+    <td><select data-batch-field="partySize">${partySizeOptions}</select></td>
+    <td><input type="number" min="0.1" step="1" data-batch-field="clearMinutes" value="${escapeHtmlText(
+      String(row.clearMinutes ?? '')
+    )}"></td>
+    <td><input type="number" min="0" step="1" placeholder="0" data-batch-field="dailyConsumablesCost" value="${escapeHtmlText(
+      String(row.dailyConsumablesCost ?? '')
+    )}"></td>
+    <td data-batch-result="expected">-</td>
+    <td class="mst-dungeon-batch-value" data-batch-result="craftAB">-</td>
+    <td class="mst-dungeon-batch-value" data-batch-result="craftBA">-</td>
+    ${
+      customMode
+        ? '<td class="mst-dungeon-batch-value" colspan="2" data-batch-result="custom">-</td>'
+        : '<td class="mst-dungeon-batch-value" data-batch-result="marketAB">-</td><td class="mst-dungeon-batch-value" data-batch-result="marketBA">-</td>'
+    }
+    <td class="mst-dungeon-batch-action"><button type="button" class="mst-row-remove mst-dungeon-batch-remove" title="${escapeHtmlText(
+      i18n.t('remove')
+    )}" aria-label="${escapeHtmlText(i18n.t('remove'))}">&times;</button></td>
+  </tr>`;
+    },
+
+    getTwoLineCellHtml(feature, values) {
+      const {i18n} = DungeonProfitCalculatorFeature.ctx;
+      if (!values) return '-';
+      return `<div class="mst-dungeon-batch-line mst-dungeon-batch-cost" title="${escapeHtmlText(
+      i18n.t('totalDailyCost')
+    )}"><small>${escapeHtmlText(i18n.t('batchCostShort'))}</small>${feature.formatMoney(values.cost)}</div>
+  <div class="mst-dungeon-batch-line mst-dungeon-batch-profit" title="${escapeHtmlText(i18n.t('netProfit'))}"><small>${escapeHtmlText(
+    i18n.t('batchProfitShort')
+  )}</small>${feature.formatMoney(values.profit)}</div>`;
+    },
+
+    // 期望数量分两行：上行普通宝箱数量、下行精炼宝箱数量；没有精炼宝箱时只展示普通一行。
+    getExpectedQuantityCellHtml(feature, computed) {
+      const {i18n} = DungeonProfitCalculatorFeature.ctx;
+      if (!computed) return '-';
+      const normalLine = `<div class="mst-dungeon-batch-line mst-dungeon-batch-expected" title="${escapeHtmlText(
+      i18n.t('normalChest')
+    )}"><small>${escapeHtmlText(i18n.t('batchNormalShort'))}</small>${feature.formatCount(
+      computed.normalQuantity
+    )}</div>`;
+      if (!(computed.refinementQuantity > 0)) return normalLine;
+      return `${normalLine}
+  <div class="mst-dungeon-batch-line mst-dungeon-batch-expected" title="${escapeHtmlText(
+    i18n.t('refinementChest')
+  )}"><small>${escapeHtmlText(i18n.t('batchRefinedShort'))}</small>${feature.formatCount(
+    computed.refinementQuantity
+  )}</div>`;
+    },
+
+    computeRowResult(feature, row) {
+      const state = feature.state;
+      const result = feature.service.calculate({
+        actionHrid: row.actionHrid,
+        difficultyTier: row.difficultyTier,
+        partySize: Number(row.partySize),
+        clearMinutes: row.clearMinutes,
+        dailyConsumablesCost: row.dailyConsumablesCost,
+        useArtisanTea: state.useArtisanTea,
+        useGuzzlingPouch: state.useGuzzlingPouch,
+        guzzlingLevel: state.guzzlingLevel,
+        excludeBackEquipmentValue: state.excludeBackEquipmentValue,
+        applyMarketTax: state.applyMarketTax,
+        customMode: state.customMode,
+        customKeySource: state.customKeySource,
+        customBuySide: state.customBuySide,
+        customSellSide: state.customSellSide
+      });
+      if (!result) return null;
+      const materials = result.costScenarios.materials;
+      const market = result.costScenarios.market;
+      return {
+        normalQuantity: result.normalQuantity,
+        refinementQuantity: result.refinementQuantity,
+        missingPrices: result.missingPrices,
+        craftAB: {cost: materials.totalCostConservative, profit: materials.profitConservative},
+        craftBA: {cost: materials.totalCostOptimistic, profit: materials.profitOptimistic},
+        marketAB: {cost: market.totalCostConservative, profit: market.profitConservative},
+        marketBA: {cost: market.totalCostOptimistic, profit: market.profitOptimistic},
+        custom: {cost: result.customScenario.totalCost, profit: result.customScenario.profit}
+      };
+    },
+
+    getMissingPriceCount(feature) {
+      const missing = new Set();
+      feature.batchRows.forEach((row) => {
+        this.computeRowResult(feature, row)?.missingPrices.forEach((itemHrid) => missing.add(itemHrid));
+      });
+      return missing.size;
+    },
+
+    render(feature, batchRoot) {
+      const {TemplateRenderer} = DungeonProfitCalculatorFeature.ctx;
+      // 行模板不内联计算结果，渲染后统一由 refreshResults 填充，保证添加行、选项变化后的数值口径一致。
+      TemplateRenderer.renderHtml(() => this.getViewHtml(feature), batchRoot);
+      this.refreshResults(feature);
+    },
+
+    refreshResults(feature) {
+      const batchRoot = feature.root?.querySelector?.('.mst-dungeon-batch-view');
+      if (!batchRoot) return;
+      feature.batchRows.forEach((row) => {
+        const rowElement = batchRoot.querySelector(`[data-batch-row-id="${row.id}"]`);
+        if (!rowElement) return;
+        const computed = this.computeRowResult(feature, row);
+        const expectedCell = rowElement.querySelector('[data-batch-result="expected"]');
+        if (expectedCell) expectedCell.innerHTML = this.getExpectedQuantityCellHtml(feature, computed);
+        [
+          'craftAB', 'craftBA', 'marketAB', 'marketBA', 'custom'
+        ].forEach((key) => {
+          const cell = rowElement.querySelector(`[data-batch-result="${key}"]`);
+          if (cell) cell.innerHTML = this.getTwoLineCellHtml(feature, computed?.[key]);
+        });
+      });
+      this.refreshWarning(feature, batchRoot);
+    },
+
+    refreshWarning(feature, batchRoot) {
+      const missingCount = this.getMissingPriceCount(feature);
+      const existing = batchRoot.querySelector('[data-batch-warning]');
+      if (missingCount > 0) {
+        const html = this.getWarningHtml(feature, missingCount);
+        if (existing) existing.outerHTML = html;
+        else batchRoot.querySelector('.mst-dungeon-table-wrap')?.insertAdjacentHTML('beforebegin', html);
+        return;
+      }
+      existing?.remove();
+    },
+
+    bind(feature, popup, listenerOptions = {}) {
+      popup.addEventListener(
+        'dblclick',
+        (event) => {
+          const card = event.target.closest('[data-dungeon-add]');
+          if (!card) return;
+          feature.batchRows.push(this.createBatchRow(feature, card.dataset.dungeonAdd));
+          this.render(feature, feature.root.querySelector('.mst-dungeon-batch-view'));
+        },
+        listenerOptions
+      );
+      popup.addEventListener(
+        'click',
+        (event) => {
+          const configButton = event.target.closest('[data-dungeon-config="restore"]');
+          if (configButton) {
+            this.restoreDefaults(feature);
+            return;
+          }
+          const removeButton = event.target.closest('.mst-dungeon-batch-remove');
+          if (!removeButton) return;
+          const rowId = Number(removeButton.closest('[data-batch-row-id]')?.dataset.batchRowId);
+          feature.batchRows = feature.batchRows.filter((row) => row.id !== rowId);
+          this.render(feature, feature.root.querySelector('.mst-dungeon-batch-view'));
+        },
+        listenerOptions
+      );
+      // 批量/单图共用一个批量复选框：出现在批量选项行第一项，单图操作区第一项由 uhtml 模板直接处理。
+      popup.addEventListener(
+        'change',
+        (event) => {
+          const batchToggle = event.target.closest('[data-batch-toggle]');
+          if (batchToggle) {
+            feature.batchEnabled = batchToggle.checked;
+            feature.applyDialogWidth();
+            feature.render();
+            return;
+          }
+          const control = event.target.closest('[data-batch-option]');
+          if (control) {
+            this.syncOptionControl(feature, control);
+            this.render(feature, feature.root.querySelector('.mst-dungeon-batch-view'));
+            return;
+          }
+          this.syncRowField(feature, event.target);
+        },
+        listenerOptions
+      );
+      popup.addEventListener(
+        'input',
+        (event) => {
+          this.syncRowField(feature, event.target);
+        },
+        listenerOptions
+      );
+      this.bindDragEvents(feature, popup, listenerOptions);
+    },
+
+    // 序号列拖动排序：只允许从序号单元格拖动，松手时按目标行中线决定插入位置（同战斗升级计算器）。
+    bindDragEvents(feature, popup, listenerOptions) {
+      let draggedRowId = 0;
+      popup.addEventListener(
+        'dragstart',
+        (event) => {
+          const dragHandle = event.target.closest('.mst-sequence-cell[draggable="true"]');
+          const rowElement = dragHandle?.closest('[data-batch-row-id]');
+          if (!dragHandle || !rowElement) {
+            event.preventDefault();
+            return;
+          }
+          draggedRowId = Number(rowElement.dataset.batchRowId);
+          rowElement.classList.add('mst-row-dragging');
+          event.dataTransfer.effectAllowed = 'move';
+          event.dataTransfer.setData('text/plain', String(draggedRowId));
+        },
+        listenerOptions
+      );
+      popup.addEventListener(
+        'dragover',
+        (event) => {
+          if (!draggedRowId || !event.target.closest('[data-batch-row-id]')) return;
+          event.preventDefault();
+          event.dataTransfer.dropEffect = 'move';
+        },
+        listenerOptions
+      );
+      popup.addEventListener(
+        'drop',
+        (event) => {
+          const targetElement = event.target.closest('[data-batch-row-id]');
+          if (!draggedRowId || !targetElement) return;
+          event.preventDefault();
+          const targetId = Number(targetElement.dataset.batchRowId);
+          const sourceIndex = feature.batchRows.findIndex((row) => row.id === draggedRowId);
+          let insertIndex = feature.batchRows.findIndex((row) => row.id === targetId);
+          draggedRowId = 0;
+          if (sourceIndex < 0 || insertIndex < 0 || sourceIndex === insertIndex) return;
+          const insertAfter = event.clientY > targetElement.getBoundingClientRect().top + targetElement.offsetHeight / 2;
+          const [
+            movedRow
+          ] = feature.batchRows.splice(sourceIndex, 1);
+          if (sourceIndex < insertIndex) insertIndex--;
+          if (insertAfter) insertIndex++;
+          feature.batchRows.splice(insertIndex, 0, movedRow);
+          this.render(feature, feature.root.querySelector('.mst-dungeon-batch-view'));
+        },
+        listenerOptions
+      );
+      popup.addEventListener(
+        'dragend',
+        () => {
+          draggedRowId = 0;
+          popup.querySelectorAll('.mst-row-dragging').forEach((row) => row.classList.remove('mst-row-dragging'));
+        },
+        listenerOptions
+      );
+    },
+
+    createBatchRow(feature, actionHrid, overrides = {}) {
+      return {
+        id: ++feature.batchNextRowId,
+        actionHrid,
+        difficultyTier: 0,
+        partySize: '5',
+        clearMinutes: '30',
+        dailyConsumablesCost: '',
+        ...overrides
+      };
+    },
+
+    // 首次打开（无保存配置）时批量列表默认展示四个官方地图。
+    seedDefaultRows(feature) {
+      feature.batchRows = feature.service.getDungeons().map((dungeon) => this.createBatchRow(feature, dungeon.hrid));
+      feature.batchInitialized = true;
+    },
+
+    syncOptionControl(feature, control) {
+      const option = control.dataset.batchOption;
+      if (!this.OPTION_CONTROLS.includes(option)) return;
+      feature.state[option] = control.type === 'checkbox' ? control.checked : control.value;
+    },
+
+    syncRowField(feature, target) {
+      const field = target.dataset?.batchField;
+      if (!field || !this.ROW_FIELDS.includes(field)) return;
+      const rowElement = target.closest('[data-batch-row-id]');
+      if (!rowElement) return;
+      const row = feature.batchRows.find((item) => item.id === Number(rowElement.dataset.batchRowId));
+      if (!row) return;
+      row[field] = field === 'difficultyTier' ? Number(target.value) : target.value;
+      this.refreshResults(feature);
+      // 行内输入不触发整块重绘，配置随行参数调整自动保存。
+      this.autosave(feature);
+    },
+
+    // 配置持久化：同一 localStorage key 下分 single/batch 两个小节，只存输入参数，结果每次重新计算。
+    SINGLE_CONFIG_FIELDS: Object.freeze([
+      'actionHrid', 'difficultyTier', 'partySize', 'clearMinutes', 'dailyConsumablesCost',
+      'useArtisanTea', 'useGuzzlingPouch', 'guzzlingLevel', 'excludeBackEquipmentValue', 'applyMarketTax',
+      'customMode', 'customKeySource', 'customBuySide', 'customSellSide'
+    ]),
+
+    readConfigStore() {
+      const {STORAGE_KEYS} = DungeonProfitCalculatorFeature.ctx;
+      try {
+        const parsed = JSON.parse(localStorage.getItem(STORAGE_KEYS.DUNGEON_PROFIT_CONFIG) || '{}');
+        return parsed && typeof parsed === 'object' ? parsed : {};
+      } catch (error) {
+        console.warn('[MST] 地下城收益配置读取失败:', error);
+        return {};
+      }
+    },
+
+    writeConfigStore(store) {
+      const {STORAGE_KEYS} = DungeonProfitCalculatorFeature.ctx;
+      try {
+        localStorage.setItem(STORAGE_KEYS.DUNGEON_PROFIT_CONFIG, JSON.stringify(store));
+        return true;
+      } catch (error) {
+        console.warn('[MST] 地下城收益配置保存失败:', error);
+        return false;
+      }
+    },
+
+    // 配置自动保存：同一 localStorage key 下分 single/batch 两个小节，只存输入参数，结果每次重新计算。
+    // 批量模拟勾选状态作为共享开关存在同一存储的顶层字段，重开计算器（含重新加载游戏网站）后恢复。
+    // 用户每次调整（选项、行参数、列表增删与排序）后随渲染自动写回；恢复默认会暂停一次自动保存，
+    // 保证“清除存储 + 回到默认参数”的语义不被随后的默认态渲染写回覆盖。
+    autosave(feature) {
+      if (feature.autosavePaused) {
+        feature.autosavePaused = false;
+        return;
+      }
+      const store = this.readConfigStore();
+      store.batchEnabled = Boolean(feature.batchEnabled);
+      if (feature.batchEnabled) {
+        store.batch = {
+          options: Object.fromEntries(
+            this.OPTION_CONTROLS.map((key) => [
+              key, feature.state[key]
+            ])
+          ),
+          rows: feature.batchRows.map((row) => ({
+            actionHrid: row.actionHrid,
+            difficultyTier: row.difficultyTier,
+            partySize: row.partySize,
+            clearMinutes: row.clearMinutes,
+            dailyConsumablesCost: row.dailyConsumablesCost
+          }))
+        };
+      } else {
+        store.single = Object.fromEntries(
+          this.SINGLE_CONFIG_FIELDS.map((key) => [
+            key, feature.state[key]
+          ])
+        );
+      }
+      this.writeConfigStore(store);
+    },
+
+    restoreDefaults(feature) {
+      const {Notifier, i18n} = DungeonProfitCalculatorFeature.ctx;
+      const store = this.readConfigStore();
+      delete store[feature.batchEnabled ? 'batch' : 'single'];
+      this.writeConfigStore(store);
+      // 恢复默认会重建共享选项（暴饮之囊按角色持有重新检测）；批量列表恢复为四个官方地图。
+      feature.resetState();
+      feature.autosavePaused = true;
+      if (feature.batchEnabled) {
+        this.seedDefaultRows(feature);
+        const batchRoot = feature.root?.querySelector?.('.mst-dungeon-batch-view');
+        if (batchRoot) this.render(feature, batchRoot);
+      } else {
+        feature.render();
+      }
+      Notifier.toast(i18n.t('configRestored'), 'success');
+    },
+
+    // 打开弹窗时应用已保存配置：先恢复批量勾选状态，再单图字段，再批量快照（选项 + 行），
+    // 两者都缺失时批量默认四地图。
+    loadSavedConfigs(feature) {
+      const store = this.readConfigStore();
+      if (typeof store.batchEnabled === 'boolean') feature.batchEnabled = store.batchEnabled;
+      const single = store.single;
+      if (single && typeof single === 'object') {
+        this.SINGLE_CONFIG_FIELDS.forEach((key) => {
+          if (single[key] !== undefined && single[key] !== null) feature.state[key] = single[key];
+        });
+      }
+      const batch = store.batch;
+      if (batch && typeof batch === 'object') {
+        if (batch.options && typeof batch.options === 'object') {
+          this.OPTION_CONTROLS.forEach((key) => {
+            if (batch.options[key] !== undefined && batch.options[key] !== null) feature.state[key] = batch.options[key];
+          });
+        }
+        if (Array.isArray(batch.rows) && batch.rows.length) {
+          feature.batchRows = batch.rows
+            .filter((row) => row && typeof row.actionHrid === 'string' && row.actionHrid)
+            .map((row) =>
+              this.createBatchRow(feature, row.actionHrid, {
+                difficultyTier: Number(row.difficultyTier) || 0,
+                partySize: String(row.partySize ?? '5'),
+                clearMinutes: String(row.clearMinutes ?? '30'),
+                dailyConsumablesCost: String(row.dailyConsumablesCost ?? '')
+              })
+            );
+          feature.batchInitialized = true;
+          return;
+        }
+      }
+      if (!feature.batchRows.length) this.seedDefaultRows(feature);
+    }
+  };
+
+  // 批量视图按字符串拼接 HTML，属性值一律经过转义，避免游戏内名称破坏结构。
+  function escapeHtmlText(value) {
+    const {utils} = DungeonProfitCalculatorFeature.ctx;
+    const text = String(value ?? '');
+    return utils?.escapeHtml ? utils.escapeHtml(text) : text.replace(/[&<>"']/g, (char) => `&#${char.charCodeAt(0)};`);
+  }
 
   // dungeon-profit-result-rows
   const dungeonProfitResultRows = {
@@ -13634,6 +14379,7 @@
       this.formView = dungeonProfitFormView;
       this.stateController = dungeonProfitState;
       this.view = dungeonProfitView;
+      this.batchView = dungeonProfitBatchView;
     }
 
     constructor(marketService) {
@@ -13643,6 +14389,24 @@
       this.root = null;
       this.helpController = null;
       this.state = null;
+      // 批量开关是复选框，默认不勾选进入单图模拟；批量列表在弹窗关闭后保留，重新打开时按保存配置或默认四地图恢复。
+      this.batchEnabled = false;
+      this.batchRows = [];
+      this.batchNextRowId = 0;
+      this.batchInitialized = false;
+      // 恢复默认后暂停一次自动保存，避免默认态渲染把清空的配置写回。
+      this.autosavePaused = false;
+      this.bindController = null;
+    }
+
+    applyDialogWidth() {
+      // 单图保持原 38rem；批量默认放宽到能容纳表格全部列，窄屏时随 100vw 收缩并出现横向滚动。
+      if (!this.popup) return;
+      this.popup.style.width = this.batchEnabled ? 'min(66rem, calc(100vw - 1rem))' : 'min(38rem, calc(100vw - 1rem))';
+    }
+
+    renderBatchView(batchRoot) {
+      return dungeonProfitBatchView.render(this, batchRoot);
     }
 
     resetState() {
@@ -13718,6 +14482,8 @@
         console.warn('[MST] 地下城收益计算器市场数据加载失败:', error);
       }
       this.resetState();
+      // 校验并恢复本地保存的配置（单图字段与批量快照共用同一 localStorage key 的两个小节）。
+      dungeonProfitBatchView.loadSavedConfigs(this);
       return Notifier.html({
         title: i18n.t('dungeonProfitCalculator'),
         html: () => TemplateRenderer.html`<div id="mst-dungeon-calculator-root"></div>`,
@@ -13726,10 +14492,17 @@
         didOpen: (popup) => {
           this.popup = popup;
           this.root = popup.querySelector('#mst-dungeon-calculator-root');
+          // 批量视图的事件统一委托到弹窗节点，重绘批量区域不需要重新绑定。
+          this.bindController?.abort();
+          this.bindController = new AbortController();
+          dungeonProfitBatchView.bind(this, popup, {signal: this.bindController.signal});
+          this.applyDialogWidth();
           this.render();
           this.mountHelp();
         },
         willClose: () => {
+          this.bindController?.abort();
+          this.bindController = null;
           this.helpController?.cleanup();
           this.helpController = null;
           this.root = null;
@@ -23268,9 +24041,9 @@
 .mst-calculator-empty{grid-column:1/-1;padding:1rem;text-align:center;color:var(--color-neutral-300, #b9bbca)}
 .mst-ability-calculator-button-container{display:flex;align-items:center;justify-content:center;flex-wrap:wrap;gap:.625rem;margin:.5rem 0 .25rem}
 .mst-ability-calculator-trigger{display:inline-flex;margin:0}
-.mst-ability-action-market,.mst-ability-action-calculator{margin-top:.25rem}
-.mst-ability-tooltip-calculator:not([class*=Button_button]){display:block;width:100%;margin-top:.375rem;padding:.25rem .5rem;box-sizing:border-box;border:1px solid var(--color-midnight-100, #454771);border-radius:var(--radius-sm, .25rem);background:var(--color-midnight-500, #2c2e45);color:var(--color-text-dark-mode, #e7e7e7);font:inherit;font-size:var(--font-size-sm, .8125rem);cursor:pointer}
-.mst-ability-tooltip-calculator:not([class*=Button_button]):hover{border-color:var(--color-space-300, #98a7e9);background:var(--color-midnight-400, #323450)}
+.mst-ability-action-market,.mst-ability-action-calculator,.mst-ability-tooltip-calculator{background:var(--color-space-600, #4357af);color:var(--color-text-dark-mode, #e7e7e7);cursor:pointer}
+.mst-ability-action-market:hover,.mst-ability-action-calculator:hover,.mst-ability-tooltip-calculator:hover{background:var(--color-space-500, #5468c4)}
+.mst-ability-action-market:not([class*=Button_]),.mst-ability-action-calculator:not([class*=Button_]),.mst-ability-tooltip-calculator:not([class*=Button_]){display:block;width:100%;box-sizing:border-box;margin-top:.375rem;padding:.25rem .5rem;border:0;border-radius:var(--radius-sm, .25rem);font:inherit;font-size:var(--font-size-sm, .8125rem)}
 .mst-ability-picker{position:absolute;inset:0;z-index:5;display:flex;align-items:flex-start;justify-content:center;padding:0;background:#0e0f18eb}
 .mst-ability-picker[hidden]{display:none}
 .mst-ability-picker-panel{display:flex;width:100%;height:100%;min-height:0;box-sizing:border-box;flex-direction:column;gap:.4rem;padding:.5rem;border:1px solid var(--color-midnight-100, #454771);border-radius:var(--radius-sm, .25rem);background:var(--color-midnight-600, #27283b);box-shadow:var(--shadow-md, 0 .35rem 1rem rgba(0, 0, 0, .4))}
@@ -23410,8 +24183,9 @@
 .mst-dungeon-guzzling-toggle:hover{border-color:var(--color-space-300, #98a7e9)}
 .mst-dungeon-guzzling-toggle input{width:1rem!important;height:1rem!important;margin:0;flex:0 0 1rem;accent-color:var(--color-space-300, #98a7e9);cursor:pointer}
 .mst-dungeon-guzzling-control select{min-width:0;flex:1}
-.mst-dungeon-auto-buff{display:inline-flex;width:100%;min-width:0;height:var(--button-height-normal, 1.875rem);box-sizing:border-box;align-items:center;justify-content:center;gap:.3rem;padding:0 .5rem;border:1px solid var(--color-midnight-100, #454771);border-radius:var(--radius-sm, .25rem);background:var(--color-midnight-500, #2c2e45);color:var(--color-text-dark-mode, #e7e7e7);font:var(--font-weight-semibold, 600) var(--font-size-base, .875rem)/1 Roboto,Helvetica,Arial,sans-serif;cursor:pointer}
-.mst-dungeon-auto-buff:hover{border-color:var(--color-space-300, #98a7e9)}
+.mst-dungeon-auto-buff,.mst-dungeon-config-button{display:inline-flex;width:100%;min-width:0;height:var(--button-height-normal, 1.875rem);box-sizing:border-box;align-items:center;justify-content:center;gap:.3rem;padding:0 .5rem;border:1px solid var(--color-midnight-100, #454771);border-radius:var(--radius-sm, .25rem);background:var(--color-midnight-500, #2c2e45);color:var(--color-text-dark-mode, #e7e7e7);font:var(--font-weight-semibold, 600) var(--font-size-base, .875rem)/1 Roboto,Helvetica,Arial,sans-serif;cursor:pointer}
+.mst-dungeon-field .mst-dungeon-config-button{font-size:var(--font-size-base, .875rem);font-weight:var(--font-weight-semibold, 600)}
+.mst-dungeon-auto-buff:hover,.mst-dungeon-config-button:hover{border-color:var(--color-space-300, #98a7e9)}
 .mst-dungeon-auto-buff:has(input:disabled){opacity:.55;cursor:not-allowed}
 .mst-dungeon-auto-buff input{width:1rem!important;height:1rem!important;margin:0;flex:0 0 1rem;cursor:inherit}
 .mst-dungeon-toggle-field{align-self:stretch;justify-content:flex-end}
@@ -23427,10 +24201,13 @@
 .mst-dungeon-empty{display:flex;min-height:8rem;align-items:center;justify-content:center;border:1px dashed var(--color-midnight-100, #454771);border-radius:var(--radius-sm, .25rem);color:var(--color-neutral-300, #b9bbca);text-align:center}
 .mst-dungeon-table-wrap{overflow-x:auto;border:1px solid var(--color-midnight-100, #454771);border-radius:var(--radius-sm, .25rem);scrollbar-color:var(--color-space-300, #98a7e9) transparent;scrollbar-width:thin}
 .mst-dungeon-table-wrap[hidden]{display:none}
-.mst-dungeon-tabs{display:flex;gap:.35rem}
-.mst-dungeon-tab{height:var(--button-height-normal, 1.875rem);box-sizing:border-box;padding:0 .6rem;border:1px solid var(--color-midnight-100, #454771);border-radius:var(--radius-sm, .25rem);background:var(--color-midnight-500, #2c2e45);color:var(--color-neutral-300, #b9bbca);font:var(--font-weight-semibold, 600) var(--font-size-small, .75rem)/1 Roboto,Helvetica,Arial,sans-serif;cursor:pointer}
-.mst-dungeon-tab:hover{border-color:var(--color-space-300, #98a7e9)}
-.mst-dungeon-tab-active{border-color:var(--color-cowbell, #f6c95c);background:var(--color-cowbell, #f6c95c);color:var(--color-midnight-500, #2c2e45);box-shadow:0 0 0 1px #f6c95c73,0 2px 8px #f6c95c4d}
+.mst-dungeon-tabs{display:flex}
+.mst-dungeon-tabs .mst-dungeon-tab{position:relative;box-sizing:border-box;min-width:3.125rem;min-height:2rem;margin:0;border:0;border-radius:var(--radius-sm, .25rem) var(--radius-sm, .25rem) 0 0;padding:.375rem;background:var(--color-midnight-500, #2c2e45);color:var(--color-text-dark-mode, #e7e7e7);font:var(--font-weight-medium, 500) var(--font-size-base, .875rem)/1.25 Roboto,Helvetica,Arial,sans-serif;letter-spacing:.02857em;cursor:pointer;transition:background-color .25s cubic-bezier(.4,0,.2,1)}
+.mst-dungeon-tabs .mst-dungeon-tab:after{content:"";position:absolute;right:0;bottom:0;left:0;height:2px;background:transparent;transition:background-color .3s cubic-bezier(.4,0,.2,1)}
+.mst-dungeon-tabs .mst-dungeon-tab:not(.mst-dungeon-tab-active):hover,.mst-dungeon-tabs .mst-dungeon-tab:not(.mst-dungeon-tab-active):focus-visible{background:var(--color-midnight-400, #323450)}
+.mst-dungeon-tabs .mst-dungeon-tab:focus-visible{outline:none}
+.mst-dungeon-tabs .mst-dungeon-tab-active:hover,.mst-dungeon-tabs .mst-dungeon-tab-active:focus-visible,.mst-dungeon-tabs .mst-dungeon-tab-active{background:var(--color-space-600, #4357af)}
+.mst-dungeon-tabs .mst-dungeon-tab-active:after{background:#1976d2}
 .mst-dungeon-loot-table{min-width:36rem}
 .mst-dungeon-loot-table .mst-dungeon-loot-col-item{width:26%}
 .mst-dungeon-loot-table .mst-dungeon-loot-col-rate{width:14%}
@@ -23464,6 +24241,36 @@
 .mst-dungeon-row-total th{color:var(--color-neutral-100, #ececf1);text-align:left}
 .mst-dungeon-loot-table .mst-dungeon-row-total th,.mst-dungeon-loot-table .mst-dungeon-row-total td{border-top:1px solid var(--color-space-400, #7686cc);border-bottom:1px solid var(--color-space-400, #7686cc);background:var(--color-midnight-500, #2c2e45)}
 .mst-dungeon-loot-table .mst-dungeon-row-total th{color:var(--color-cowbell, #f6c95c)}
+.mst-dungeon-single-view,.mst-dungeon-batch-view{display:flex;min-width:0;flex-direction:column;gap:.6rem}
+.mst-dungeon-single-view[hidden],.mst-dungeon-batch-view[hidden]{display:none}
+.mst-dungeon-picker-row{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:.35rem;align-items:stretch}
+.mst-dungeon-map-picker{display:contents}
+.mst-dungeon-map-card{display:flex!important;min-width:0;min-height:3.2rem!important;box-sizing:border-box;align-items:center;gap:.35rem;padding:.25rem .45rem!important;text-align:left}
+.mst-dungeon-map-card svg{width:1.5rem;height:1.5rem;flex:0 0 1.5rem}
+.mst-dungeon-map-card strong{max-width:100%;overflow:hidden;font-size:var(--font-size-small, .75rem);line-height:1.15;text-align:left;text-overflow:ellipsis;white-space:nowrap}
+.mst-dungeon-market-tile{display:flex;width:100%;box-sizing:border-box;flex-direction:column;align-items:center;justify-content:center;padding:.3rem .4rem;border:1px solid var(--color-midnight-100, #454771);border-radius:var(--radius-sm, .25rem);background:var(--color-midnight-600, #27283b);text-align:center}
+.mst-dungeon-market-tile small{color:var(--color-neutral-300, #b9bbca);font-size:var(--font-size-tiny, .6875rem);line-height:1.15}
+.mst-dungeon-market-tile strong{color:var(--color-neutral-100, #ececf1);font-size:var(--font-size-small, .75rem);font-weight:500;line-height:1.2;overflow-wrap:anywhere}
+.mst-dungeon-batch-table{min-width:56rem;table-layout:auto}
+.mst-dungeon-batch-table th,.mst-dungeon-batch-table td{position:static;text-align:center;white-space:nowrap}
+.mst-dungeon-batch-table .mst-dungeon-batch-sub-header th{background:var(--color-midnight-400, #323450);color:var(--color-neutral-200, #d2d3dc);font-weight:500}
+.mst-dungeon-batch-table .mst-dungeon-batch-index{width:2.2rem;color:var(--color-neutral-300, #b9bbca);cursor:grab;user-select:none}
+.mst-dungeon-batch-table .mst-dungeon-batch-map{min-width:7rem;text-align:left}
+.mst-dungeon-batch-table select{width:100%;min-width:3.2rem}
+.mst-dungeon-batch-table select[data-batch-field=difficultyTier]{min-width:3.6rem}
+.mst-dungeon-batch-table input[type=number]{width:3.6rem;text-align:center}
+.mst-dungeon-batch-value div{white-space:nowrap}
+.mst-dungeon-batch-line{display:flex;align-items:baseline;justify-content:flex-end;gap:.25rem}
+.mst-dungeon-batch-line small{color:var(--color-neutral-400, #999baa);font-size:var(--font-size-tiny, .6875rem)}
+.mst-dungeon-batch-cost{color:var(--color-scarlet-300, #ef8f98)}
+.mst-dungeon-batch-profit{color:var(--color-jade-300, #86d7b1)}
+.mst-dungeon-batch-expected{color:var(--color-neutral-100, #ececf1)}
+.mst-dungeon-batch-action{width:2.4rem}
+.mst-dungeon-batch-empty td{padding:1.2rem 1rem;color:var(--color-neutral-300, #b9bbca);text-align:center}
+@media(max-width:48rem){.mst-dungeon-picker-row{grid-template-columns:1fr}
+.mst-dungeon-market-tile{min-height:2.8rem}
+.mst-dungeon-map-card strong{white-space:normal}
+}
 @media(max-width:48rem){.mst-ability-preset-controls{min-width:100%;order:3}
 .mst-ability-market-time{max-width:calc(100% - 8rem);margin-left:auto}
 .mst-ability-upgrade-calculator .mst-ability-table-wrap{max-height:calc(100svh - 16rem)}

@@ -75,6 +75,7 @@ export function createSpriteService() {
       items: '/static/media/items_sprite.f58c9476.svg',
       skills: '/static/media/skills_sprite.3bb4d936.svg',
       abilities: '/static/media/abilities_sprite.fdd1b4de.svg',
+      actions: '/static/media/actions_sprite.e6388cbc.svg',
       misc: '/static/media/misc_sprite.cfad291b.svg',
       chatIcons: '/static/media/chat_icons_sprite.628944de.svg'
     },
@@ -82,6 +83,7 @@ export function createSpriteService() {
       items: 'items_sprite',
       skills: 'skills_sprite',
       abilities: 'abilities_sprite',
+      actions: 'actions_sprite',
       misc: 'misc_sprite',
       chatIcons: 'chat_icons_sprite'
     },

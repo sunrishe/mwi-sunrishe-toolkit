@@ -1071,7 +1071,8 @@ test('地下城操作区保留基础参数并按需展示自定义价格参数',
   assert.doesNotMatch(dungeonFeatureSource, /\.disabled=\$\{!feature\.state\.useArtisanTea/);
   assert.doesNotMatch(dungeonFeatureSource, /manualDrop|CharacterDrop|i18n\.t\('combatDrop/);
   // 单次耗时与每日成本输入 step=1：加减按钮按整数步进，手动输入仍可保留一位小数（无表单校验拦截）。
-  assert.equal(dungeonFeatureSource.match(/step="1"/g)?.length, 2);
+  // 单图操作区两处 + 批量列表每行的单次耗时/每日成本模板各一处，合计 4 处字面量。
+  assert.equal(dungeonFeatureSource.match(/step="1"/g)?.length, 4);
   assert.doesNotMatch(dungeonFeatureSource, /step="0\.1"/);
 });
 
@@ -1121,7 +1122,11 @@ test('地下城结果明确分为材料成本和预期产出并并列两种钥�
   );
   assert.match(dungeonFeatureSource, /priceDirection: 'buy'/);
   assert.match(dungeonFeatureSource, /priceDirection: 'sell'/);
-  assert.doesNotMatch(dungeonFeatureSource, /<th rowspan="2">/);
+  // 单图结果表保持单层表头，不出现第二层价格方向表头；rowspan 两行表头只由批量表头的跨行列模板生成
+  // （序号/地图/难度/队伍人数 + 两个两行单位列 + 期望数量，共 6 个跨行列模板字面量）。
+  assert.equal(dungeonFeatureSource.match(/<th rowspan="2">/g)?.length, 6);
+  assert.match(dungeonFeatureSource, /rowSpanColumns/);
+  assert.doesNotMatch(dungeonFeatureSource, /dungeon-profit-result-rows[\s\S]*?<th rowspan="2">/);
   assert.match(dungeonMessagesSource, /leftBuy: \{zh: '左买', en: 'Ask Buy'\}/);
   assert.match(dungeonMessagesSource, /rightBuy: \{zh: '右买', en: 'Bid Buy'\}/);
   assert.match(dungeonMessagesSource, /leftSell: \{zh: '左卖', en: 'Ask Sell'\}/);
@@ -1369,7 +1374,8 @@ test('地下城只计算 1 日期望并展示每日净利润', () => {
     i18n: {t: (key) => key}
   });
   const feature = new Feature({});
-  feature.root = {querySelector: () => ({})};
+  // 单图视图与结果表是嵌套容器：querySelector 需要支持两层查找，批量容器在单图页签下不渲染。
+  feature.root = {querySelector: () => ({querySelector: () => ({})})};
   feature.resetState();
   feature.renderResult = (result) => {
     renderedResult = result;
@@ -1448,6 +1454,318 @@ test('分析文档列明宝箱数量公式、递归开箱和门票规则', () =>
   assert.match(analysisSource, /门票.*普通宝箱/);
   assert.doesNotMatch(analysisSource, /个人产量倍率|不受队伍人数/);
   assert.doesNotMatch(analysisSource, /## 5\. 历史利润/);
+});
+
+test('地下城收益用复选框切换批量模拟并按三行布局展示', () => {
+  // 批量视图文案中英文齐全，单图不再有页签文案。
+  assert.doesNotMatch(dungeonMessagesSource, /simTabSingle/);
+  assert.match(dungeonMessagesSource, /simTabBatch: \{zh: '批量模拟', en: 'Batch Simulation'\}/);
+  assert.match(dungeonMessagesSource, /leftBuyRightSell: \{zh: '左买\/右卖', en: 'Ask Buy\/Bid Sell'\}/);
+  assert.match(dungeonMessagesSource, /rightBuyLeftSell: \{zh: '右买\/左卖', en: 'Bid Buy\/Ask Sell'\}/);
+  assert.match(dungeonMessagesSource, /batchEmptyHint:/);
+  assert.match(dungeonMessagesSource, /batchCostShort: \{zh: '成本', en: 'Cost'\}/);
+  assert.match(dungeonMessagesSource, /batchProfitShort: \{zh: '收益', en: 'Profit'\}/);
+  assert.match(dungeonMessagesSource, /batchNormalShort: \{zh: '普通', en: 'Normal'\}/);
+  assert.match(dungeonMessagesSource, /batchRefinedShort: \{zh: '精炼', en: 'Refined'\}/);
+  assert.match(dungeonMessagesSource, /clearTimeMinutesShort: \{zh: '单次耗时', en: 'Clear Time'\}/);
+  assert.match(dungeonMessagesSource, /unitMinutes: \{zh: '（分钟）', en: '\(min\)'\}/);
+  assert.match(dungeonMessagesSource, /dailyConsumablesCostLine1: \{zh: '每日药品', en: 'Daily Food'\}/);
+  assert.match(dungeonMessagesSource, /dailyConsumablesCostLine2: \{zh: '饮料成本（M）', en: 'Drink Cost \(M\)'\}/);
+  assert.doesNotMatch(dungeonMessagesSource, /saveConfig|configSaved|dailyConsumablesCostShort|unitMillion/);
+  assert.match(dungeonMessagesSource, /restoreDefaultConfig: \{zh: '恢复默认', en: 'Restore Defaults'\}/);
+  // 帮助文案改为复选框表述，并说明默认四地图、拖动排序与自动保存。
+  assert.match(dungeonMessagesSource, /勾选顶部的“批量模拟”复选框进入批量模拟/);
+  assert.match(dungeonMessagesSource, /tick the Batch Simulation checkbox on top/);
+  assert.match(dungeonMessagesSource, /随调整自动保存/);
+  assert.match(dungeonMessagesSource, /saved locally automatically as you adjust them/);
+  // 批量开关是与选项一致的复选框（单图操作区与批量选项行各一个），默认不勾选（单图模拟）。
+  assert.match(dungeonFeatureSource, /data-batch-toggle/);
+  assert.match(dungeonFeatureSource, /getBatchToggleHtml/);
+  assert.match(dungeonFeatureSource, /i18n\.t\('simTabBatch'\)/);
+  assert.match(dungeonFeatureSource, /feature\.batchEnabled = event\.target\.checked/);
+  assert.match(dungeonFeatureSource, /feature\.batchEnabled = batchToggle\.checked/);
+  assert.match(dungeonFeatureSource, /\.hidden=\$\{Boolean\(feature\.batchEnabled\)\}/);
+  assert.match(dungeonFeatureSource, /\.hidden=\$\{!feature\.batchEnabled\}/);
+  assert.match(dungeonFeatureSource, /mst-dungeon-single-view/);
+  assert.match(dungeonFeatureSource, /mst-dungeon-batch-view/);
+  assert.doesNotMatch(dungeonFeatureSource, /mst-dungeon-sim-tabs|simTabSingle|mst-dungeon-batch-toggle/);
+  // 勾选批量时弹窗加宽到默认容纳表格全部列（66rem，窄屏收缩出滚动）；单图保持原 38rem。
+  assert.match(dungeonFeatureSource, /applyDialogWidth/);
+  assert.match(dungeonFeatureSource, /min\(66rem, calc\(100vw - 1rem\)\)/);
+  assert.match(dungeonFeatureSource, /width: 'min\(38rem, calc\(100vw - 1rem\)\)'/);
+  assert.match(dungeonFeatureSource, /this\.batchEnabled \? 'min\(66rem/);
+  // 第一行选项与单图共享 state（从使用工匠茶开始），逐项列出全部共享选项；选项行保留恢复默认按钮。
+  [
+    'useArtisanTea', 'useGuzzlingPouch', 'guzzlingLevel', 'applyMarketTax', 'excludeBackEquipmentValue',
+    'customMode', 'customKeySource', 'customBuySide', 'customSellSide'
+  ].forEach((option) => assert.ok(dungeonFeatureSource.includes(`'${option}'`), `缺少共享选项 ${option}`));
+  assert.doesNotMatch(dungeonFeatureSource, /data-dungeon-config="save"/);
+  assert.match(dungeonFeatureSource, /data-dungeon-config="restore"/);
+  assert.match(dungeonFeatureSource, /getConfigButtonsHtml/);
+  assert.match(dungeonFeatureSource, /i18n\.t\('restoreDefaultConfig'\)/);
+  // 第二行：双击地下城卡片添加到列表，右侧展示市场数据时间；图标与游戏一致用 actions 精灵图。
+  assert.match(dungeonFeatureSource, /data-dungeon-add/);
+  assert.match(dungeonFeatureSource, /'dblclick'/);
+  assert.match(dungeonFeatureSource, /doubleClickToAdd/);
+  assert.match(dungeonFeatureSource, /mst-dungeon-market-tile/);
+  assert.match(dungeonFeatureSource, /getUpdatedText\(\)/);
+  assert.match(dungeonFeatureSource, /getMapIconHref/);
+  assert.match(dungeonFeatureSource, /getSpriteUrl\?\.\('actions'\)/);
+  assert.match(dungeonFeatureSource, /actions_sprite\.e6388cbc\.svg/);
+  assert.doesNotMatch(dungeonFeatureSource, /getMapIconHref[\s\S]*keyItemHrid/);
+  // 第三行列表：序号（可拖动排序）/地图/难度/队伍人数/单次耗时/每日药品饮料成本/期望数量 + 多行表头价格区。
+  assert.match(dungeonFeatureSource, /data-batch-row-id/);
+  assert.match(dungeonFeatureSource, /data-batch-field="difficultyTier"/);
+  assert.match(dungeonFeatureSource, /data-batch-field="partySize"/);
+  assert.match(dungeonFeatureSource, /data-batch-field="clearMinutes"/);
+  assert.match(dungeonFeatureSource, /data-batch-field="dailyConsumablesCost"/);
+  assert.match(dungeonFeatureSource, /mst-sequence-cell[\s\S]*dragToSort/);
+  assert.match(dungeonFeatureSource, /draggable="true"/);
+  assert.match(dungeonFeatureSource, /bindDragEvents/);
+  assert.match(dungeonFeatureSource, /<th colspan="2">\$\{escapeHtmlText\(i18n\.t\('craftedKeys'\)\)\}<\/th>/);
+  assert.match(dungeonFeatureSource, /<th colspan="2">\$\{escapeHtmlText\(i18n\.t\('purchasedKeys'\)\)\}<\/th>/);
+  assert.match(dungeonFeatureSource, /<th colspan="2">\$\{escapeHtmlText\(customGroupLabel\)\}<\/th>/);
+  assert.match(dungeonFeatureSource, /i18n\.t\('leftBuyRightSell'\)/);
+  assert.match(dungeonFeatureSource, /i18n\.t\('rightBuyLeftSell'\)/);
+  assert.match(dungeonFeatureSource, /twoLineHeader\('clearTimeMinutesShort', 'unitMinutes'\)/);
+  assert.match(
+    dungeonFeatureSource,
+    /twoLineHeader\(\s*'dailyConsumablesCostLine1',\s*'dailyConsumablesCostLine2'\s*\)/
+  );
+  // 价格格分两行：上行每日总成本、下行每日期望收益；期望数量两行展示普通/精炼，无精炼时只一行。
+  assert.match(dungeonFeatureSource, /mst-dungeon-batch-cost/);
+  assert.match(dungeonFeatureSource, /mst-dungeon-batch-profit/);
+  assert.match(dungeonFeatureSource, /i18n\.t\('totalDailyCost'\)/);
+  assert.match(dungeonFeatureSource, /title="\$\{escapeHtmlText\(i18n\.t\('netProfit'\)\)\}"/);
+  assert.match(dungeonFeatureSource, /getExpectedQuantityCellHtml/);
+  assert.match(dungeonFeatureSource, /batchNormalShort/);
+  assert.match(dungeonFeatureSource, /batchRefinedShort/);
+  assert.match(dungeonFeatureSource, /computed\.refinementQuantity > 0/);
+  // 自定义模式把购买钥匙区域合并为自定义结果列；空列表提示双击添加；行可移除。
+  assert.match(dungeonFeatureSource, /colspan="2" data-batch-result="custom"/);
+  assert.match(dungeonFeatureSource, /data-batch-result="craftAB"/);
+  assert.match(dungeonFeatureSource, /data-batch-result="craftBA"/);
+  assert.match(dungeonFeatureSource, /data-batch-result="marketAB"/);
+  assert.match(dungeonFeatureSource, /data-batch-result="marketBA"/);
+  assert.match(dungeonFeatureSource, /batchEmptyHint/);
+  assert.match(dungeonFeatureSource, /mst-dungeon-batch-remove/);
+  // 行内输入走局部刷新，不整块重绘导致焦点丢失；批量列表首次默认四个官方地图。
+  assert.match(dungeonFeatureSource, /this\.refreshResults\(feature\)/);
+  assert.match(dungeonFeatureSource, /syncRowField\(feature, event\.target\)/);
+  assert.match(dungeonFeatureSource, /seedDefaultRows/);
+  assert.match(dungeonFeatureSource, /createBatchRow\(feature, dungeon\.hrid\)/);
+  // 列表行内地图名与卡片一致带 D 序号。
+  assert.match(dungeonFeatureSource, /mapLabel = action \? `D\$\{dungeonIndex \+ 1\}\./);
+  // 配置自动保存：同一 localStorage key 分 single/batch 小节，只存配置不存结果；恢复默认暂停一次自动保存。
+  assert.match(dungeonFeatureSource, /DUNGEON_PROFIT_CONFIG/);
+  assert.match(dungeonFeatureSource, /readConfigStore/);
+  assert.match(dungeonFeatureSource, /writeConfigStore/);
+  assert.match(dungeonFeatureSource, /loadSavedConfigs/);
+  assert.match(dungeonFeatureSource, /autosave\(feature\)/);
+  assert.match(dungeonFeatureSource, /autosavePaused/);
+  assert.match(dungeonFeatureSource, /restoreDefaults\(feature\)/);
+  assert.match(dungeonFeatureSource, /store\[feature\.batchEnabled \? 'batch' : 'single'\]/);
+  assert.match(dungeonFeatureSource, /SINGLE_CONFIG_FIELDS/);
+  assert.doesNotMatch(dungeonFeatureSource, /saveConfig\(feature\)|configSaved/);
+  // 样式：视图容器间距与 hidden 显式隐藏、地图卡片四等分、市场时间块、批量表自动列宽、两行单元格颜色与结果表一致。
+  assert.match(integratedCssSource, /\.mst-dungeon-single-view,\s*\n\.mst-dungeon-batch-view\s*\{[^}]*gap:\s*0\.6rem/s);
+  assert.match(
+    integratedCssSource,
+    /\.mst-dungeon-single-view\[hidden\],\s*\n\.mst-dungeon-batch-view\[hidden\]\s*\{[^}]*display:\s*none/s
+  );
+  assert.match(integratedCssSource, /\.mst-dungeon-auto-buff,\s*\n\.mst-dungeon-config-button\s*\{/);
+  assert.match(integratedCssSource, /\.mst-dungeon-picker-row\s*\{[^}]*repeat\(5, minmax\(0, 1fr\)\)/s);
+  assert.match(integratedCssSource, /\.mst-dungeon-map-picker\s*\{\s*display:\s*contents;\s*\}/s);
+  assert.match(integratedCssSource, /\.mst-dungeon-market-tile\s*\{/);
+  assert.match(integratedCssSource, /\.mst-dungeon-batch-table\s*\{[^}]*table-layout:\s*auto/s);
+  assert.match(integratedCssSource, /\.mst-dungeon-batch-cost\s*\{[^}]*--color-scarlet-300/s);
+  assert.match(integratedCssSource, /\.mst-dungeon-batch-profit\s*\{[^}]*--color-jade-300/s);
+  assert.match(integratedCssSource, /\.mst-dungeon-batch-expected\s*\{/);
+  assert.match(integratedCssSource, /\.mst-dungeon-batch-table\s+input\[type='number'\]\s*\{[^}]*width:\s*3\.6rem/s);
+  assert.match(integratedCssSource, /\.mst-dungeon-batch-table\s+select\s*\{[^}]*min-width:\s*3\.2rem/s);
+  assert.doesNotMatch(integratedCssSource, /\.mst-dungeon-batch-toggle\s*\{/);
+  // 计算服务不感知批量视图：批量只是换了一种入参组合调用现有 calculate。
+  assert.doesNotMatch(dungeonCalculatorSource, /batch/i);
+});
+
+test('批量模拟配置只存输入参数，同一 key 分模式保存并在打开时恢复', () => {
+  const Service = loadService();
+  const service = new Service(createMarketService(createCompleteMarketData(100, 80)));
+  const storage = new Map();
+  const Feature = vm.runInNewContext(
+    `${readVmSource('src/common/constants.js', 'src/modules/dungeon-profit/index.js')}
+        DungeonProfitCalculatorFeature;`,
+    {
+      localStorage: {
+        getItem(key) {
+          return storage.get(key) || null;
+        },
+        setItem(key, value) {
+          storage.set(key, String(value));
+        }
+      }
+    }
+  );
+  Feature.configure({
+    Notifier: {toast() {}},
+    i18n: {t: (key) => key},
+    STORAGE_KEYS: {DUNGEON_PROFIT_CONFIG: 'MST_DUNGEON_config'},
+    DungeonProfitCalculatorService: Service
+  });
+  const feature = new Feature(service);
+  feature.state = {
+    actionHrid: '/actions/combat/pirate_cove',
+    useArtisanTea: true,
+    useGuzzlingPouch: true,
+    guzzlingLevel: '5'
+  };
+  feature.resetState = () => {
+    feature.state = {
+      actionHrid: '/actions/combat/pirate_cove',
+      useArtisanTea: true,
+      useGuzzlingPouch: true,
+      guzzlingLevel: '5'
+    };
+  };
+  feature.batchEnabled = false;
+  feature.batchRows = [];
+  feature.batchNextRowId = 0;
+
+  // 单图模式自动保存完整表单字段，批量模式保存选项 + 行；两个小节共用同一 key。
+  Feature.batchView.autosave(feature);
+  feature.batchEnabled = true;
+  feature.batchRows = service
+    .getDungeons()
+    .slice(0, 2)
+    .map((dungeon) => Feature.batchView.createBatchRow(feature, dungeon.hrid));
+  Feature.batchView.autosave(feature);
+  // 批量勾选状态作为共享开关存入同一存储的顶层字段，重开（含重新加载页面）后恢复。
+  const storedToggle = JSON.parse(storage.get('MST_DUNGEON_config'));
+  assert.equal(storedToggle.batchEnabled, true);
+
+  // 重开时按保存的批量快照恢复行与批量勾选状态，单图小节字段应用到共享 state，结果不落盘、全部重新计算。
+  const fresh = new Feature(service);
+  fresh.state = {useArtisanTea: false, guzzlingLevel: '0'};
+  fresh.resetState = () => {
+    fresh.state = {useArtisanTea: false, guzzlingLevel: '0'};
+  };
+  fresh.batchRows = [];
+  fresh.batchNextRowId = 0;
+  fresh.batchInitialized = false;
+  Feature.batchView.loadSavedConfigs(fresh);
+  assert.equal(fresh.batchEnabled, true);
+  assert.equal(fresh.batchRows.length, 2);
+  assert.equal(fresh.batchRows[0].actionHrid, service.getDungeons()[0].hrid);
+  assert.equal(fresh.state.useArtisanTea, true);
+  // 恢复默认在批量模式下只清理批量小节，单图小节保留，批量回到四个默认地图；
+  // 恢复默认置自动保存暂停标志，随后的默认态渲染不会把清空的配置写回。
+  fresh.batchEnabled = true;
+  Feature.batchView.restoreDefaults(fresh);
+  assert.equal(fresh.autosavePaused, true);
+  const stored = JSON.parse(storage.get('MST_DUNGEON_config'));
+  assert.equal(stored.batch, undefined);
+  assert.equal(stored.single.actionHrid, '/actions/combat/pirate_cove');
+  assert.equal(fresh.batchRows.length, 4);
+  assert.equal(fresh.batchInitialized, true);
+  // 暂停期间的默认态自动保存被跳过且解除暂停；下一次用户修改后的自动保存重新写回。
+  Feature.batchView.autosave(fresh);
+  const storedAfterPausedAutosave = JSON.parse(storage.get('MST_DUNGEON_config'));
+  assert.equal(storedAfterPausedAutosave.batch, undefined);
+  assert.equal(fresh.autosavePaused, false);
+  fresh.batchRows[0].difficultyTier = 2;
+  Feature.batchView.autosave(fresh);
+  const storedAfterChange = JSON.parse(storage.get('MST_DUNGEON_config'));
+  assert.equal(storedAfterChange.batch.rows.length, 4);
+  assert.equal(storedAfterChange.batch.rows[0].difficultyTier, 2);
+  // 无任何保存配置时批量仍默认四个官方地图。
+  storage.clear();
+  const fresh2 = new Feature(service);
+  fresh2.state = {useArtisanTea: true, guzzlingLevel: '5'};
+  fresh2.resetState = () => {
+    fresh2.state = {useArtisanTea: true, guzzlingLevel: '5'};
+  };
+  fresh2.batchRows = [];
+  fresh2.batchNextRowId = 0;
+  fresh2.batchInitialized = false;
+  Feature.batchView.loadSavedConfigs(fresh2);
+  assert.equal(fresh2.batchRows.length, 4);
+  assert.equal(fresh2.batchInitialized, true);
+  // 期望数量单元格：无精炼时只渲染普通一行，有精炼时两行。
+  const quantityHtml = Feature.batchView.getExpectedQuantityCellHtml(
+    {formatCount: (value) => String(value)},
+    {normalQuantity: 62.16, refinementQuantity: 0}
+  );
+  assert.equal((quantityHtml.match(/mst-dungeon-batch-expected/g) || []).length, 1);
+  const quantityHtml2 = Feature.batchView.getExpectedQuantityCellHtml(
+    {formatCount: (value) => String(value)},
+    {normalQuantity: 62.16, refinementQuantity: 20.5}
+  );
+  assert.equal((quantityHtml2.match(/mst-dungeon-batch-expected/g) || []).length, 2);
+});
+
+test('批量模拟价格格映射到制作/购买钥匙的保守乐观组合并与 calculate 结果一致', () => {
+  const Service = loadService();
+  const service = new Service(createMarketService(createCompleteMarketData(100, 80)));
+  const Feature = vm.runInNewContext(
+    `${readVmSource('src/common/constants.js', 'src/modules/dungeon-profit/index.js')}
+        DungeonProfitCalculatorFeature;`
+  );
+  Feature.configure({});
+  const state = {
+    useArtisanTea: true,
+    useGuzzlingPouch: true,
+    guzzlingLevel: '10',
+    excludeBackEquipmentValue: false,
+    applyMarketTax: true,
+    customMode: true,
+    customKeySource: 'market',
+    customBuySide: 'bid',
+    customSellSide: 'ask'
+  };
+  const row = {
+    id: 1,
+    actionHrid: '/actions/combat/pirate_cove',
+    difficultyTier: 1,
+    partySize: '5',
+    clearMinutes: '30',
+    dailyConsumablesCost: '2'
+  };
+  const computed = Feature.batchView.computeRowResult({state, service}, row);
+  const reference = service.calculate({
+    actionHrid: row.actionHrid,
+    difficultyTier: row.difficultyTier,
+    partySize: Number(row.partySize),
+    clearMinutes: row.clearMinutes,
+    dailyConsumablesCost: row.dailyConsumablesCost,
+    ...state
+  });
+
+  // 期望数量直接来自 calculate 的普通/精炼宝箱数量。
+  assert.equal(computed.normalQuantity, reference.normalQuantity);
+  assert.equal(computed.refinementQuantity, reference.refinementQuantity);
+  // 左买/右卖 = 同来源保守组合（ask 买入 + bid 卖出）；右买/左卖 = 乐观组合。
+  assert.equal(computed.craftAB.cost, reference.costScenarios.materials.totalCostConservative);
+  assert.equal(computed.craftAB.profit, reference.costScenarios.materials.profitConservative);
+  assert.equal(computed.craftBA.cost, reference.costScenarios.materials.totalCostOptimistic);
+  assert.equal(computed.craftBA.profit, reference.costScenarios.materials.profitOptimistic);
+  assert.equal(computed.marketAB.cost, reference.costScenarios.market.totalCostConservative);
+  assert.equal(computed.marketAB.profit, reference.costScenarios.market.profitConservative);
+  assert.equal(computed.marketBA.cost, reference.costScenarios.market.totalCostOptimistic);
+  assert.equal(computed.marketBA.profit, reference.costScenarios.market.profitOptimistic);
+  // 自定义列使用自定义模式的独立买卖档位组合。
+  assert.equal(computed.custom.cost, reference.customScenario.totalCost);
+  assert.equal(computed.custom.profit, reference.customScenario.profit);
+  // 完整市场数据下不缺价；缺价计数按物品去重。
+  assert.equal(
+    Feature.batchView.getMissingPriceCount({state, service, batchRows: [
+        row
+      ]}),
+    0
+  );
+
+  // 单次耗时非法时该行所有数值为空，不影响其他行。
+  const invalid = Feature.batchView.computeRowResult({state, service}, {...row, clearMinutes: '0'});
+  assert.equal(invalid, null);
 });
 
 test('工具箱及中英文文档按计算流程排列装备提升和地下城收益', () => {
