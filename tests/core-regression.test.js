@@ -1774,3 +1774,85 @@ test('角色数据服务延迟解析 utils：真实启动顺序（utils 晚于�
   assert.equal(service.getInventoryCount('/items/a'), 1);
   assert.equal(service.getInventoryCount('/items/not_owned'), 0);
 });
+
+test('角色数据服务读取当前战斗配装已装备技能并按槽位排序', () => {
+  // 多个配装混排：只取 combat 配装的 abilityMap，按槽位号排序，空槽位过滤。
+  const loadoutMap = {
+    1: {id: 1, name: '生活', actionTypeHrid: '/action_types/life', abilityMap: {0: '/abilities/not_combat'}},
+    2: {
+      id: 2,
+      name: '战斗',
+      actionTypeHrid: '/action_types/combat',
+      abilityMap: {
+        3: '/abilities/third',
+        1: '/abilities/first',
+        4: '',
+        2: '/abilities/second'
+      }
+    }
+  };
+  const DataHub = {
+    characterData: {raw: {characterLoadoutMap: loadoutMap}},
+    getGameState() {
+      return {};
+    }
+  };
+  const ctx = {DataHub};
+  const service = vm.runInNewContext(
+    `${readVmSource('src/common/data.js')}
+        createCharacterDataService(ctx, DataHub);`,
+    {console, ctx, DataHub, window: {dispatchEvent() {}}}
+  );
+  assert.deepEqual(
+    [
+      ...service.getEquippedAbilityHrids()
+    ],
+    [
+      '/abilities/first', '/abilities/second', '/abilities/third'
+    ]
+  );
+});
+
+test('角色数据服务无角色原包时从游戏状态读取战斗配装技能，无配装返回空', () => {
+  const loadoutMap = {
+    9: {id: 9, actionTypeHrid: '/action_types/combat', abilityMap: {0: '/abilities/only'}}
+  };
+  const DataHub = {
+    characterData: {raw: {}},
+    getGameState() {
+      return {characterLoadoutMap: loadoutMap};
+    }
+  };
+  const ctx = {DataHub};
+  const service = vm.runInNewContext(
+    `${readVmSource('src/common/data.js')}
+        createCharacterDataService(ctx, DataHub);`,
+    {console, ctx, DataHub, window: {dispatchEvent() {}}}
+  );
+  // raw 缺失时回退游戏状态中的战斗配装。
+  assert.deepEqual(
+    [
+      ...service.getEquippedAbilityHrids()
+    ],
+    [
+      '/abilities/only'
+    ]
+  );
+  // 只有生活配装或完全没有配装时都返回空数组。
+  DataHub.getGameState = () => ({
+    characterLoadoutMap: {5: {id: 5, actionTypeHrid: '/action_types/life', abilityMap: {0: '/abilities/life'}}}
+  });
+  assert.deepEqual(
+    [
+      ...service.getEquippedAbilityHrids()
+    ],
+    []
+  );
+  DataHub.getGameState = () => ({});
+  assert.deepEqual(
+    [
+      ...service.getEquippedAbilityHrids()
+    ],
+    []
+  );
+});

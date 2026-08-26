@@ -26,7 +26,7 @@ MST 是独立脚本，以下项目提供了参考或公开接口；参考类功�
 ## 技能升级计算器
 
 - **入口**：工具箱、技能页面、技能详情。
-- **功能**：估算技能升级需要的技能书和金币，按左一/右一市场价显示成本，并可配合市场伴侣加入购物车。
+- **功能**：估算技能升级需要的技能书和金币，按左一/右一市场价显示成本，可配合市场伴侣加入购物车；从技能页打开时自动填入当前配装已装备的技能。
 
 ## 房屋升级材料计算器
 
@@ -46,7 +46,7 @@ MST 是独立脚本，以下项目提供了参考或公开接口；参考类功�
 ## 地下城收益计算器
 
 - **入口**：工具箱。
-- **功能**：按地下城、难度、耗时、钥匙来源和市场价格，估算每日收益、每车收益、钥匙成本和宝箱产出；结果区可在“收益结果”与“掉落物”之间切换，“掉落物”页签按官方宝箱掉落物列表分普通、精炼宝箱展示物品、掉率、期望数量和左一/右一价格。
+- **功能**：按地下城、难度、耗时、钥匙来源和市场价格，估算每日收益、每车收益、钥匙成本和宝箱产出，结果可在“收益结果”与“掉落物”之间切换；支持批量模拟，一次对比多个地下城的制作/购买钥匙成本和收益，参数自动保存。
 
 ## 迷宫补充补给
 
@@ -108,7 +108,7 @@ Click **Toolkit** in the top character-info area. It is the main entry for cards
 ## Ability Upgrade Calculator
 
 - **Entry**: Toolkit, ability pages, and ability details.
-- **Does**: estimates required ability books and coins, shows Best Ask / Best Bid costs, and can add books to Market Mate carts.
+- **Does**: estimates required ability books and coins, shows Best Ask / Best Bid costs, and can add books to Market Mate carts. Opening it from the ability page prefills the abilities equipped in your current combat loadout.
 
 ## House Upgrade Material Calculator
 
@@ -128,7 +128,7 @@ Click **Toolkit** in the top character-info area. It is the main entry for cards
 ## Dungeon Profit Calculator
 
 - **Entry**: Toolkit.
-- **Does**: estimates daily profit, run profit, key costs, and chest output by dungeon, tier, run time, key source, and market prices. The result area switches between a Profit table and a Loot table that lists official chest drops by Normal and Refined Chest, showing item, drop rate, expected quantity, and Best Ask/Bid prices.
+- **Does**: estimates daily profit, run profit, key costs, and chest output by dungeon, tier, run time, key source, and market prices. Switch between the Profit table and the Loot table, or use Batch Simulation to compare crafted/purchased key costs and expected profit across multiple dungeons at once. Parameters are saved automatically.
 
 ## Labyrinth Restock Supplies
 
@@ -169,6 +169,12 @@ Click **Toolkit** in the top character-info area. It is the main entry for cards
 - EDS 历史线保留 `1.x` 版本号，最后一个作为融合基础的版本是 `1.2.7`。
 - MST 从 `2.0.0` 开始，表示从装备数据同步脚本升级为综合工具箱。
 - 后续版本遵循语义化版本：不兼容变更提升主版本，向后兼容的新功能提升次版本，修复和兼容性调整提升补丁版本；开发构建使用 `-dev.<时间戳>` 后缀。
+
+## v2.14.0
+
+1. 地下城收益新增批量模拟：把多个地下城加入列表，每行单独设置难度、队伍人数、耗时和每日成本，一次对比制作/购买钥匙的每日成本和期望收益；参数修改后自动保存，可随时恢复默认。
+2. 技能升级：从技能页面打开计算器时，自动填入当前战斗配装已装备的技能；技能书菜单里的计算器入口按钮与游戏其他操作按钮外观一致。
+3. 地下城收益的“掉落物”页签外观改为与游戏页面页签一致。
 
 ## v2.13.0
 

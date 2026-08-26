@@ -5,6 +5,8 @@ export const STORAGE_KEYS = {
   MILKONOMY_PRESET: 'MST_EDS_preset',
   MARKET_CACHE: 'MST_HCCP_market',
   MARKET_CACHE_TIMESTAMP: 'MST_HCCP_marketTimestamp',
+  // 地下城收益配置：同一 key 下分 single/batch 两个模式小节，只存配置不存结果。
+  DUNGEON_PROFIT_CONFIG: 'MST_DUNGEON_config',
   MWITOOLS_MARKET_CACHE: 'MWITools_marketAPI_json',
   MWITOOLS_MARKET_TIMESTAMP: 'MWITools_marketAPI_timestamp',
   // 战斗模拟器跨站导入（GM 存储按脚本共享，游戏站写入、模拟器站读取）。
@@ -972,6 +974,19 @@ export function createCharacterDataService(ctx, DataHub) {
 
     getCharacterAbility(abilityHrid) {
       return this.getCharacterAbilities().find((ability) => ability?.abilityHrid === abilityHrid) || null;
+    },
+
+    // 当前战斗配装已装备的技能槽位（characterLoadoutMap 中战斗配装的 abilityMap，按槽位号排序）。
+    getEquippedAbilityHrids() {
+      const loadoutMap = this.raw?.characterLoadoutMap || DataHub.getGameState()?.characterLoadoutMap || {};
+      const combatLoadout = Object.values(loadoutMap).find(
+        (loadout) => loadout?.actionTypeHrid === '/action_types/combat'
+      );
+      const abilityMap = combatLoadout?.abilityMap || {};
+      return Object.keys(abilityMap)
+        .sort((left, right) => Number(left) - Number(right))
+        .map((slot) => abilityMap[slot])
+        .filter(Boolean);
     },
 
     getLevelExperience(level) {

@@ -745,7 +745,8 @@ const abilityUpgradePageIntegration = {
     button.type = 'button';
     button.className = utils.getGameButtonClass() + ' mst-ability-calculator-trigger';
     button.textContent = i18n.t('upgradeCalculator');
-    button.addEventListener('click', () => feature.open());
+    // 从技能页打开时预填当前战斗配装已装备的全部技能。
+    button.addEventListener('click', () => feature.open(feature.getEquippedAbilityHrids()));
     container.appendChild(button);
     title.insertAdjacentElement('afterend', container);
     return panel;
@@ -779,18 +780,19 @@ const abilityUpgradePageIntegration = {
     const {CharacterDataService, GameNavigationService, Notifier, i18n, utils} = feature.ctx;
     const menu = document.querySelector('[class*="Ability_actionMenu"]');
     if (!menu || !feature.lastClickedAbilityHrid) return;
-    const reference = menu.querySelector('button');
     const abilityHrid = feature.lastClickedAbilityHrid;
+    // 布局类取菜单内多数游戏按钮的类集合，保证注入按钮高度、边距、字号与同菜单其他按钮一致。
+    const menuClasses = this.getMenuButtonClasses(menu) || utils.getGameButtonClass();
     let calculatorButton = menu.querySelector('.mst-ability-action-calculator');
     if (!calculatorButton) {
       calculatorButton = document.createElement('button');
       calculatorButton.type = 'button';
-      calculatorButton.className =
-        (reference?.className || utils.getGameButtonClass()) + ' mst-ability-action-calculator';
+      calculatorButton.className = menuClasses + ' mst-ability-action-calculator';
       calculatorButton.textContent = i18n.t('upgradeCalculator');
       calculatorButton.addEventListener('click', (event) => {
         event.preventDefault();
         event.stopPropagation();
+        this.closeInteractiveMenu();
         feature.open(abilityHrid);
       });
       menu.appendChild(calculatorButton);
@@ -799,11 +801,12 @@ const abilityUpgradePageIntegration = {
     if (!menu.querySelector('.mst-ability-action-market')) {
       const marketButton = document.createElement('button');
       marketButton.type = 'button';
-      marketButton.className = (reference?.className || utils.getGameButtonClass()) + ' mst-ability-action-market';
+      marketButton.className = menuClasses + ' mst-ability-action-market';
       marketButton.textContent = i18n.t('openMarket');
       marketButton.addEventListener('click', (event) => {
         event.preventDefault();
         event.stopPropagation();
+        this.closeInteractiveMenu();
         const book = CharacterDataService.getAbilityBook(abilityHrid);
         if (!book || !GameNavigationService.openMarketplace(book.hrid, 0)) {
           Notifier.toast(i18n.t('navigationUnavailable'), 'warning');
@@ -811,6 +814,28 @@ const abilityUpgradePageIntegration = {
       });
       calculatorButton.before(marketButton);
     }
+  },
+
+  // 取菜单内大多数游戏按钮使用的类集合；注入按钮复制它，布局与同菜单其他按钮保持一致。
+  getMenuButtonClasses(menu) {
+    const counts = new Map();
+    menu.querySelectorAll('button').forEach((button) => {
+      const classes = String(button.className || '')
+        .replace(/\s*mst-\S+/g, '')
+        .trim();
+      if (!classes) return;
+      counts.set(classes, (counts.get(classes) || 0) + 1);
+    });
+    return [
+        ...counts.entries()
+      ].sort((left, right) => right[1] - left[1])[0]?.[0] || '';
+  },
+
+  // 注入按钮的点击被 stopPropagation 拦截，游戏自身的“点击菜单外关闭”不会触发；
+  // 这里向 document 派发一次 mousedown，让 MUI ClickAway/Tooltip 关闭悬浮层，
+  // 避免 MST 弹窗打开后游戏悬浮框仍然挂在页面上。
+  closeInteractiveMenu() {
+    document.dispatchEvent(new MouseEvent('mousedown', {bubbles: true, cancelable: true}));
   },
 
   // 市场技能书交易详情页：点击技能书图标后，游戏通过 MUI Tooltip 在 body 下
@@ -836,15 +861,17 @@ const abilityUpgradePageIntegration = {
     const existing = popper.querySelector('.mst-ability-tooltip-calculator');
     if (existing?.dataset.abilityHrid === book.abilityHrid) return;
     existing?.remove();
-    const reference = actionMenu.querySelector('button');
+    // 布局类取菜单内多数游戏按钮的类集合，保证与其他按钮高度、边距、字号一致。
+    const menuClasses = this.getMenuButtonClasses(actionMenu);
     const button = document.createElement('button');
     button.type = 'button';
-    button.className = (reference?.className || '') + ' mst-ability-tooltip-calculator';
+    button.className = (menuClasses ? menuClasses + ' ' : '') + 'mst-ability-tooltip-calculator';
     button.dataset.abilityHrid = book.abilityHrid;
     button.textContent = i18n.t('upgradeCalculator');
     button.addEventListener('click', (event) => {
       event.preventDefault();
       event.stopPropagation();
+      this.closeInteractiveMenu();
       feature.open(book.abilityHrid);
     });
     actionMenu.appendChild(button);
@@ -1014,11 +1041,18 @@ export class AbilityUpgradeCalculatorFeature {
     this.marketActions.openAbilityBookMarket(this, row);
   }
 
+  // 当前战斗配装已装备的技能槽（按槽位顺序）。
+  getEquippedAbilityHrids() {
+    const {CharacterDataService} = this.ctx;
+    return CharacterDataService.getEquippedAbilityHrids();
+  }
+
   addAbilityBooksToCart(row) {
     this.marketActions.addAbilityBooksToCart(this, row);
   }
 
-  async open(initialAbilityHrid = '') {
+  // 打开技能升级计算器并预填技能：字符串按单个技能处理，数组按列表逐项添加（已装备技能）。
+  async open(initialAbilityHrids = []) {
     const {DataHub, Notifier, i18n} = this.ctx;
     if (!DataHub.getClientData()?.levelExperienceTable || !this.getAbilityRows().length) {
       return Notifier.alert(i18n.t('calculatorDataNotReady'), 'warning');
@@ -1030,7 +1064,10 @@ export class AbilityUpgradeCalculatorFeature {
     }
     this.rows = [];
     this.nextRowId = 0;
-    if (initialAbilityHrid) this.addAbility(initialAbilityHrid, false);
+    const abilityList = Array.isArray(initialAbilityHrids) ? initialAbilityHrids : initialAbilityHrids ? [
+            initialAbilityHrids
+          ] : [];
+    abilityList.forEach((abilityHrid) => this.addAbility(abilityHrid, false));
     return Notifier.html({
       title: i18n.t('abilityUpgradeCalculator'),
       html: this.getDialogHtml(),
