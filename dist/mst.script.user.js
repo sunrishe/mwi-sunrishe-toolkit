@@ -3,7 +3,7 @@
 // @name:zh-CN         MWI Sunrishe 工具箱
 // @name:en            MWI Sunrishe Toolkit
 // @namespace          http://tampermonkey.net/
-// @version            2.14.0
+// @version            2.15.0
 // @description        MWI Sunrishe 综合工具箱：提供角色/队伍名片、技能/房屋/战斗升级规划、装备提升计算器、地下城收益、配装同步和市场伴侣增强。
 // @description:zh-CN  MWI Sunrishe 综合工具箱：提供角色/队伍名片、技能/房屋/战斗升级规划、装备提升计算器、地下城收益、配装同步和市场伴侣增强。
 // @description:en     MST toolkit for character/party cards, ability/house/combat upgrade planning, equipment comparison, dungeon profit, loadout sync, and Market Mate enhancements.
@@ -1060,16 +1060,21 @@
         return this.getCharacterAbilities().find((ability) => ability?.abilityHrid === abilityHrid) || null;
       },
 
-      // 当前战斗配装已装备的技能槽位（characterLoadoutMap 中战斗配装的 abilityMap，按槽位号排序）。
+      // 当前装配的技能槽位（按槽位号排序）：游戏以 characterAbilityMap/characterAbilities 条目
+      // 的 slotNumber（1..5）表示当前生效技能，与配装模板（characterLoadoutMap）无关；
+      // 优先读 React 游戏状态的 characterAbilityMap（实时权威），raw 角色数据兜底。
       getEquippedAbilityHrids() {
-        const loadoutMap = this.raw?.characterLoadoutMap || DataHub.getGameState()?.characterLoadoutMap || {};
-        const combatLoadout = Object.values(loadoutMap).find(
-          (loadout) => loadout?.actionTypeHrid === '/action_types/combat'
-        );
-        const abilityMap = combatLoadout?.abilityMap || {};
-        return Object.keys(abilityMap)
-          .sort((left, right) => Number(left) - Number(right))
-          .map((slot) => abilityMap[slot])
+        const gameStateMap = DataHub.getGameState()?.characterAbilityMap;
+        const abilities = gameStateMap && typeof gameStateMap.values === 'function' ? [
+                ...gameStateMap.values()
+              ] : Array.isArray(gameStateMap) ? gameStateMap : this.getCharacterAbilities();
+        return abilities
+          .filter((ability) => {
+            const slot = Number(ability?.slotNumber || 0);
+            return slot >= 1 && slot <= 5;
+          })
+          .sort((left, right) => Number(left.slotNumber) - Number(right.slotNumber))
+          .map((ability) => ability.abilityHrid)
           .filter(Boolean);
       },
 
@@ -2053,12 +2058,8 @@
     concurrentTraining: {zh: '同修', en: 'Train Together'},
     combatCalculatorHelpTitle: {zh: '查看战斗升级说明', en: 'View combat calculator instructions'},
     combatCalculatorHelp: {
-      zh: '使用：填写顶部主修经验和选修经验；战斗中也可点击“使用当前战斗经验”自动填入。双击上方专业添加行，只能从“序号”列拖动排序。每行可以设置起始等级、目标等级、类型、同修和单独经验；单独经验会覆盖顶部对应类型经验。EPH 只用于估算总次数，不影响升级时间。重置列表会恢复耐力、智力、攻击、防御和当前等级最高的战斗主修。\n\n限制：耐力、智力固定为选修；远程、魔法固定为主修；攻击、防御、近战可切换主修或选修。列表至少需要一项主修，同一序号内不能出现重复专业。\n\n计算：选修使用选修经验；未同修的主修使用主修经验加选修经验；同修主修只使用主修经验。主修勾选同修后，其目标等级不能手动修改，会按同组选修训练时长反推出结束等级和经验百分比。相邻同修行共用同一序号；同一序号同时开始，下一序号等待上一序号全部完成。当前战斗只读到 1 个或 5 个职业经验时按总经验 3:7 拆分主修/选修；读到 2 个职业时按当前列表类型分别填入。\n\n数据：未自定义起始等级时使用角色实际等级和经验；自定义后按输入等级的 0% 经验开始。重复专业会继承前一次训练结束后的精确进度。当前战斗经验只读取游戏战斗状态，不更新名片或通用角色数据。',
-      en: 'Usage: Enter shared primary and secondary XP rates; during combat, you can also click Use Current Combat XP to fill them automatically. Double-click a skill above to add a row, and drag only from the Sequence column to reorder. Each row can set start level, target level, type, Train Together, and a row-specific XP rate; a row rate overrides the shared rate for that type. EPH only estimates total runs and does not affect upgrade time. Reset List restores Stamina, Intelligence, Attack, Defense, and the highest-level primary combat skill.\n\nLimits: Stamina and Intelligence are always secondary; Ranged and Magic are always primary; Attack, Defense, and Melee can switch between primary and secondary. At least one primary row is required, and the same skill cannot appear twice in one sequence.\n\nCalculation: Secondary rows use secondary XP. A primary row trained alone uses primary plus secondary XP. A primary row trained together uses primary XP only. When a primary row is trained together, its target cannot be edited and is derived from the same-sequence secondary training duration, including ending XP percentage. Adjacent together rows share one sequence; rows in one sequence start together, and the next sequence waits for all rows in the previous sequence to finish. Current combat XP is split 3:7 when one or five skill rates are available; when two rates are available, they are filled by the current row types.\n\nData: Without a custom start level, actual character level and XP are used; a custom start begins at 0% XP of that level. A repeated skill inherits the exact progress from its previous segment. Current combat XP only reads game battle state and does not update cards or shared character data.'
-    },
-    combatPrimaryRequired: {
-      zh: '训练方案至少需要一条主修；耐力等选修不能脱离主修单独训练。',
-      en: 'A training plan requires at least one primary profession; secondary professions such as Stamina cannot train on their own.'
+      zh: '使用：填写顶部主修经验和选修经验；战斗中也可点击“使用当前战斗经验”自动填入。双击上方专业添加行，只能从“序号”列拖动排序。每行可以设置起始等级、目标等级、类型、同修和单独经验；单独经验会覆盖顶部对应类型经验。EPH 只用于估算总次数，不影响升级时间。重置列表会恢复耐力、智力、攻击、防御和当前等级最高的战斗主修。\n\n限制：耐力、智力固定为选修；远程、魔法固定为主修；攻击、防御、近战可切换主修或选修。同一序号内不能出现重复专业。\n\n计算：选修使用选修经验；未同修的主修使用主修经验加选修经验；同修主修只使用主修经验。没有主修时，各行按选修经验或单独经验估算。主修勾选同修后，其目标等级不能手动修改，会按同组选修训练时长反推出结束等级和经验百分比。相邻同修行共用同一序号；同一序号同时开始，下一序号等待上一序号全部完成。当前战斗只读到 1 个或 5 个职业经验时按总经验 3:7 拆分主修/选修；读到 2 个职业时按当前列表类型分别填入。\n\n数据：未自定义起始等级时使用角色实际等级和经验；自定义后按输入等级的 0% 经验开始。重复专业会继承前一次训练结束后的精确进度。当前战斗经验只读取游戏战斗状态，不更新名片或通用角色数据。',
+      en: 'Usage: Enter shared primary and secondary XP rates; during combat, you can also click Use Current Combat XP to fill them automatically. Double-click a skill above to add a row, and drag only from the Sequence column to reorder. Each row can set start level, target level, type, Train Together, and a row-specific XP rate; a row rate overrides the shared rate for that type. EPH only estimates total runs and does not affect upgrade time. Reset List restores Stamina, Intelligence, Attack, Defense, and the highest-level primary combat skill.\n\nLimits: Stamina and Intelligence are always secondary; Ranged and Magic are always primary; Attack, Defense, and Melee can switch between primary and secondary. The same skill cannot appear twice in one sequence.\n\nCalculation: Secondary rows use secondary XP. A primary row trained alone uses primary plus secondary XP. A primary row trained together uses primary XP only. Without a primary row, each row is estimated with secondary XP or its own rate. When a primary row is trained together, its target cannot be edited and is derived from the same-sequence secondary training duration, including ending XP percentage. Adjacent together rows share one sequence; rows in one sequence start together, and the next sequence waits for all rows in the previous sequence to finish. Current combat XP is split 3:7 when one or five skill rates are available; when two rates are available, they are filled by the current row types.\n\nData: Without a custom start level, actual character level and XP are used; a custom start begins at 0% XP of that level. A repeated skill inherits the exact progress from its previous segment. Current combat XP only reads game battle state and does not update cards or shared character data.'
     },
     totalHours: {zh: '耗时', en: 'Duration'},
     estimatedUpgradeTime: {zh: '预计升级时间', en: 'Estimated Completion'},
@@ -4507,7 +4508,7 @@
       button.type = 'button';
       button.className = utils.getGameButtonClass() + ' mst-ability-calculator-trigger';
       button.textContent = i18n.t('upgradeCalculator');
-      // 从技能页打开时预填当前战斗配装已装备的全部技能。
+      // 从技能页打开时预填当前装配已装备的全部技能。
       button.addEventListener('click', () => feature.open(feature.getEquippedAbilityHrids()));
       container.appendChild(button);
       title.insertAdjacentElement('afterend', container);
@@ -4803,7 +4804,7 @@
       this.marketActions.openAbilityBookMarket(this, row);
     }
 
-    // 当前战斗配装已装备的技能槽（按槽位顺序）。
+    // 当前装配的技能槽（按槽位顺序）。
     getEquippedAbilityHrids() {
       const {CharacterDataService} = this.ctx;
       return CharacterDataService.getEquippedAbilityHrids();
@@ -8172,14 +8173,10 @@
 .mst-character-card-btn:hover{background:var(--color-primary-hover, #344386)}
 .mst-my-character-card-btn{display:inline-flex;align-items:center;padding:0 var(--spacing-xs, .25rem);margin:0;border:var(--border-width-thin, 1px) solid var(--color-space-400, #7184d8);border-radius:var(--radius-xs, .125rem);background:var(--color-midnight-500, #2c2e45);color:var(--color-space-100, #dde2f8);font:var(--font-weight-medium, 500) var(--font-size-sm, .8125rem)/1.2 Roboto,Helvetica,Arial,sans-serif;vertical-align:middle;white-space:nowrap;cursor:pointer}
 .mst-my-character-card-btn:hover{border-color:var(--color-space-300, #98a7e9);background:var(--color-midnight-400, #323450);color:var(--color-text-dark-mode, #e7e7e7)}
-.mst-my-character-name-card-btn{display:inline-flex!important;box-sizing:border-box;max-width:100%;align-items:center;justify-content:flex-end;padding:0 var(--spacing-xs, .25rem);border:var(--border-width-thin, 1px) solid var(--color-space-400, #7184d8);border-radius:var(--radius-xs, .125rem);background:#2c2e45b8;cursor:pointer}
-.mst-my-character-name-card-btn:hover{border-color:var(--color-space-300, #98a7e9);background:var(--color-midnight-400, #323450)}
+.mst-my-character-name-card-btn{cursor:pointer}
 .mst-my-character-name-card-btn:focus-visible{outline:1px solid var(--color-space-200, #bbc5f1);outline-offset:1px}
-.mst-header-card-level-layout{display:flex!important;flex-wrap:wrap;max-width:100%;align-items:center!important;justify-content:flex-end!important;column-gap:var(--spacing-xs, .25rem);row-gap:var(--spacing-xxs, .125rem);white-space:nowrap}
-.mst-header-card-level-layout>[class*=Header_totalLevel]{flex:0 1 auto;white-space:nowrap}
-.mst-header-card-level-layout>.mst-my-character-card-btn{flex:0 0 auto;white-space:nowrap}
-.mst-header-card-level-layout>:not([class*=Header_totalLevel]):not(.mst-my-character-card-btn){flex:0 0 100%;text-align:right;white-space:nowrap}
-.mst-header-card-level-layout>#mwitools-header-tools{flex:0 0 100%;justify-content:flex-end;margin:2px 0 0 auto}
+.mst-header-level-toolkit{display:inline-flex;align-items:center;justify-content:flex-end;gap:var(--spacing-xs, .25rem)}
+[class*=Header_characterInfo] [class*=Header_info]>#mwitools-header-tools{margin-left:0;margin-right:0}
 .mst-download-section{text-align:center;margin-bottom:var(--spacing-sm-plus, .75rem)}
 .mst-download-card-btn,.mst-download-team-card-btn,.mst-copy-card-btn,.mst-copy-team-card-btn,.mst-reset-team-card-btn,.mst-reset-character-card-btn{display:inline-flex;align-items:center;justify-content:center;box-sizing:border-box;min-width:var(--button-min-width-normal, 5.25rem);height:var(--button-height-normal, 1.875rem);background:var(--color-primary, #4357af);color:var(--color-text-dark-mode, #e7e7e7);border:none;padding:0 var(--button-padding-x-normal, .625rem);border-radius:var(--radius-sm, .25rem);font-family:Roboto,Helvetica,Arial,sans-serif;font-size:var(--font-size-base, .875rem);font-weight:var(--font-weight-semibold, 600);line-height:1;cursor:pointer;transition:background-color .15s ease}
 .mst-download-card-btn:hover:not(:disabled),.mst-download-team-card-btn:hover:not(:disabled),.mst-copy-card-btn:hover:not(:disabled),.mst-copy-team-card-btn:hover:not(:disabled),.mst-reset-team-card-btn:hover:not(:disabled),.mst-reset-character-card-btn:hover:not(:disabled){background:var(--color-primary-hover, #344386)}
@@ -9969,47 +9966,38 @@
         .find(Boolean);
       const totalLevelElement = headerInfoElement?.querySelector('[class*="Header_totalLevel"]');
       if (!headerInfoElement || !totalLevelElement) return false;
+      const nameElement = headerInfoElement.querySelector('[class*="Header_name"]');
+      if (!nameElement) return false;
       let changed = false;
-      let levelLayout = totalLevelElement.closest('.mst-header-card-level-layout');
-      if (!levelLayout || levelLayout.parentElement !== headerInfoElement) {
-        levelLayout = document.createElement('div');
-        levelLayout.className = 'mst-header-card-level-layout';
-        headerInfoElement.insertBefore(levelLayout, totalLevelElement);
-        changed = true;
-      }
-      if (totalLevelElement.parentElement !== levelLayout) {
-        levelLayout.appendChild(totalLevelElement);
-        changed = true;
-      }
-      const nameElement = Array.from(headerInfoElement.children || []).find((element) =>
-        Array.from(element.classList).some((className) => className.startsWith('Header_name'))
-      );
-      if (nameElement) {
-        nameElement.classList.add('mst-my-character-name-card-btn');
-        nameElement.setAttribute('role', 'button');
-        nameElement.tabIndex = 0;
-        this.setAttributeIfChanged(nameElement, 'title', this.i18n.t('userCharacterCard'));
-        if (!nameElement.dataset.mstCharacterCardBound) {
-          nameElement.dataset.mstCharacterCardBound = '1';
-          nameElement.addEventListener('click', (event) => {
-            event.preventDefault();
-            event.stopPropagation();
-            this.showMyCharacterCard();
-          });
-          nameElement.addEventListener('keydown', (event) => {
-            if (event.key !== 'Enter' && event.key !== ' ') return;
-            event.preventDefault();
-            event.stopPropagation();
-            this.showMyCharacterCard();
-          });
-        }
+      nameElement.classList.add('mst-my-character-name-card-btn');
+      nameElement.setAttribute('role', 'button');
+      nameElement.tabIndex = 0;
+      this.setAttributeIfChanged(nameElement, 'title', this.i18n.t('userCharacterCard'));
+      if (!nameElement.dataset.mstCharacterCardBound) {
+        nameElement.dataset.mstCharacterCardBound = '1';
+        nameElement.addEventListener('click', (event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          this.showMyCharacterCard();
+        });
+        nameElement.addEventListener('keydown', (event) => {
+          if (event.key !== 'Enter' && event.key !== ' ') return;
+          event.preventDefault();
+          event.stopPropagation();
+          this.showMyCharacterCard();
+        });
       }
 
+      // 工具箱按钮直接放进总等级元素内部（总等级 div 加行内 flex class），不改动原有
+      // 结构层：总等级仍在信息列原位，其紧后面的兄弟插槽完整留给 MWITools 头部工具宿主
+      // （#mwitools-header-tools）。若按钮占用该插槽，MWITools 观察器会把宿主重新插到
+      // 总等级后面、MST 又把自己的按钮挪回去，双方反复挪动会让页头先变高再还原地抖动。
+      totalLevelElement.classList.add('mst-header-level-toolkit');
       const existingButton = headerInfoElement.querySelector('.mst-my-character-card-btn');
       if (existingButton) {
         this.updateToolkitButton(existingButton);
-        if (totalLevelElement.nextElementSibling !== existingButton) {
-          levelLayout.insertBefore(existingButton, totalLevelElement.nextSibling);
+        if (existingButton.parentElement !== totalLevelElement || existingButton !== totalLevelElement.lastElementChild) {
+          totalLevelElement.appendChild(existingButton);
           changed = true;
         }
         return changed;
@@ -10019,7 +10007,7 @@
       myButton.className = 'mst-my-character-card-btn';
       myButton.type = 'button';
       this.updateToolkitButton(myButton);
-      levelLayout.insertBefore(myButton, totalLevelElement.nextSibling);
+      totalLevelElement.appendChild(myButton);
       return true;
     }
 
@@ -11095,8 +11083,7 @@
       };
     }
 
-    calculateRequiredHours(requiredExperience, hourlyRate, hasPrimary) {
-      if (!hasPrimary) return null;
+    calculateRequiredHours(requiredExperience, hourlyRate) {
       if (requiredExperience === 0) return 0;
       if (hourlyRate <= 0) return null;
       return requiredExperience / hourlyRate;
@@ -11105,7 +11092,6 @@
     calculatePlan(rows, primaryRate, secondaryRate) {
       const {CharacterDataService, utils} = this.ctx;
       const {sequenceById, concurrentAllowedById} = this.getSequenceState(rows);
-      const hasPrimary = rows.some((row) => row.trainingType === 'primary');
       const sequenceDurations = new Map();
       const previousBySkill = new Map();
       const results = new Map();
@@ -11119,7 +11105,6 @@
         const result = this.calculatePlanRow({
           CharacterDataService,
           context,
-          hasPrimary,
           maxSequence,
           planner: this,
           primaryRate,
@@ -11135,9 +11120,9 @@
 
       let totalHours = 0;
       if (rows.length > 0) {
-        totalHours = hasPrimary ? this.getSequenceStartHours(maxSequence + 1, sequenceDurations) : null;
+        totalHours = this.getSequenceStartHours(maxSequence + 1, sequenceDurations);
       }
-      return {results, sequenceById, concurrentAllowedById, sequenceDurations, totalHours, hasPrimary};
+      return {results, sequenceById, concurrentAllowedById, sequenceDurations, totalHours};
     }
 
     getPlanRowContext(row, sequenceById, previousBySkill, CharacterDataService, utils) {
@@ -11173,7 +11158,6 @@
     calculatePlanRow({
       CharacterDataService,
       context,
-      hasPrimary,
       maxSequence,
       primaryRate,
       row,
@@ -11189,7 +11173,6 @@
       return this.calculateFixedTargetRow({
         CharacterDataService,
         context,
-        hasPrimary,
         maxSequence,
         rate,
         row,
@@ -11233,21 +11216,12 @@
       };
     }
 
-    calculateFixedTargetRow({
-      CharacterDataService,
-      context,
-      hasPrimary,
-      maxSequence,
-      rate,
-      row,
-      sequenceDurations,
-      utils
-    }) {
+    calculateFixedTargetRow({CharacterDataService, context, maxSequence, rate, row, sequenceDurations, utils}) {
       const targetLevel = Math.max(context.startLevel, utils.clampLevel(row.targetLevel, 1, 200));
       row.targetLevel = targetLevel;
       const targetExperience = CharacterDataService.getLevelExperience(targetLevel);
       const requiredExperience = Math.max(0, targetExperience - context.startExperience);
-      const hours = this.calculateRequiredHours(requiredExperience, rate, hasPrimary);
+      const hours = this.calculateRequiredHours(requiredExperience, rate);
       const existingDuration = sequenceDurations.get(context.sequence);
       sequenceDurations.set(context.sequence, this.mergeSequenceDuration(existingDuration, hours));
       const nextMaxSequence = Math.max(maxSequence, context.sequence);
@@ -11642,7 +11616,7 @@
       const eph = Math.max(0, Number(feature.popup.querySelector('[data-field="eph"]')?.value) || 0);
       const plan = feature.calculatePlan(primaryRate, secondaryRate);
       const startedAt = Date.now();
-      this.updateHelp(feature, plan, i18n);
+      this.updateHelp(feature, i18n);
       feature.rows.forEach((row) => {
         const rowElement = feature.popup.querySelector(`[data-row-id="${row.id}"]`);
         if (!rowElement) return;
@@ -11666,14 +11640,9 @@
       return Math.max(0, Number(popup.querySelector(`[data-field="${field}"]`)?.value) || 0) * 1000;
     },
 
-    updateHelp(feature, plan, i18n) {
-      const missingPrimary = !plan.hasPrimary && feature.rows.length > 0;
-      feature.helpController?.setContent(
-        missingPrimary
-          ? `${i18n.t('combatPrimaryRequired')}\n\n${i18n.t('combatCalculatorHelp')}`
-          : i18n.t('combatCalculatorHelp')
-      );
-      feature.helpController?.setError(missingPrimary);
+    updateHelp(feature, i18n) {
+      feature.helpController?.setContent(i18n.t('combatCalculatorHelp'));
+      feature.helpController?.setError(false);
     },
 
     updateRow(feature, row, rowElement, result, startedAt, primaryRate, secondaryRate, eph, i18n, utils) {
@@ -12157,8 +12126,8 @@
       return this.planner.getSequenceStartHours(sequence, sequenceDurations);
     }
 
-    calculateRequiredHours(requiredExperience, hourlyRate, hasPrimary) {
-      return this.planner.calculateRequiredHours(requiredExperience, hourlyRate, hasPrimary);
+    calculateRequiredHours(requiredExperience, hourlyRate) {
+      return this.planner.calculateRequiredHours(requiredExperience, hourlyRate);
     }
 
     mergeSequenceDuration(currentDuration, rowDuration) {
@@ -23749,7 +23718,8 @@
         const dropdown = document.getElementById('mst-toolkit-character-dropdown');
         if (dropdown && !dropdown.contains(event.target)) this.closeDropdown();
       };
-      this.openHandler = (event) => this.toggleDropdown(event?.detail?.trigger || null);
+      this.openHandler = (event) =>
+        this.toggleDropdown(event?.detail?.trigger || null, event?.detail?.anchorRect || null);
     }
 
     getActions() {
@@ -23798,21 +23768,27 @@
       });
     }
 
-    toggleDropdown(trigger) {
+    toggleDropdown(trigger, anchorRect) {
       const {GameUiAdapter} = this.ctx;
       const old = document.getElementById('mst-toolkit-character-dropdown');
       if (old) {
         this.closeDropdown();
         return;
       }
-      // 优先挂到点击来源附近；找不到来源时回退到游戏头部角色信息区域。
-      const host = trigger?.closest?.('[class*="Header_characterInfo"]') || GameUiAdapter.query('headerCharacterInfo');
-      if (!host) return;
+      // 优先锚定到点击来源附近：从头像弹出层打开时用点击前捕获的弹出层矩形（弹出层随后被关闭并卸载，
+      // 脱离文档的元素无法再读取位置），下拉右上角与弹出层右上角对齐；页头入口保持锚定按钮自身；
+      // 找不到来源时回退到游戏头部角色信息区域。
+      const avatarMenu = anchorRect ? null : trigger?.closest?.('[class*="Header_avatarMenu"]');
+      const host =
+        avatarMenu || trigger?.closest?.('[class*="Header_characterInfo"]') || GameUiAdapter.query('headerCharacterInfo');
+      if (!host && !anchorRect) return;
       const dropdown = document.createElement('div');
       dropdown.id = 'mst-toolkit-character-dropdown';
       this.renderDropdown(dropdown);
       document.body.appendChild(dropdown);
-      this.bindDropdownPosition(dropdown, trigger || host);
+      // 从头像弹出层打开时下拉占据弹出层原位（右缘与顶部对齐整块浮层），页头入口保持锚定按钮自身。
+      const positionAnchor = anchorRect ? {getBoundingClientRect: () => anchorRect} : avatarMenu || trigger || host;
+      this.bindDropdownPosition(dropdown, positionAnchor, Boolean(anchorRect || avatarMenu));
       setTimeout(() => document.addEventListener('click', this.outsideClickHandler), 0);
     }
 
@@ -23823,7 +23799,9 @@
       document.getElementById('mst-toolkit-character-dropdown')?.remove();
     }
 
-    bindDropdownPosition(dropdown, trigger) {
+    // alignTop = true 时下拉顶部与锚点顶部对齐（头像浮窗场景：浮窗关闭后下拉停在原位置），
+    // 空间不足时仍在视口内收敛；默认沿锚点下方展开。
+    bindDropdownPosition(dropdown, trigger, alignTop = false) {
       const positionDropdown = () => {
         if (!dropdown.isConnected) return;
         const viewport = window.visualViewport;
@@ -23849,8 +23827,9 @@
         );
         const belowTop = triggerRect.bottom + gap;
         const aboveTop = triggerRect.top - dropdownRect.height - gap;
-        const top =
-          belowTop + dropdownRect.height <= viewportBottom - margin
+        const top = alignTop
+          ? Math.max(viewportTop + margin, Math.min(triggerRect.top, viewportBottom - dropdownRect.height - margin))
+          : belowTop + dropdownRect.height <= viewportBottom - margin
             ? belowTop
             : Math.max(viewportTop + margin, Math.min(aboveTop, viewportBottom - dropdownRect.height - margin));
         dropdown.style.left = `${left}px`;
@@ -23889,6 +23868,59 @@
 `,
         dropdown
       );
+    }
+
+    // 在右上角头像弹出层（游戏原生 Header_avatarMenu 菜单）里注入工具箱入口，
+    // 放在所有条目最前面（标题行之下、查看资料之前）；菜单每次打开都会重新挂载，由公共观察器注入。
+    addAvatarMenuEntry() {
+      const {i18n} = this.ctx;
+      const menu = document.querySelector('[class*="Header_avatarMenu"]');
+      if (!menu) return;
+      const label = i18n.t('toolkitTitle');
+      const existingButton = menu.querySelector('.mst-avatar-toolkit-btn');
+      if (existingButton) {
+        if (existingButton.textContent !== label) existingButton.textContent = label;
+        if (existingButton.getAttribute('title') !== label) existingButton.setAttribute('title', label);
+        return;
+      }
+      const gameButtonClasses = [
+        ...(menu.querySelector('button')?.classList || [])
+      ].filter((className) => className.startsWith('Button_button__') || className.startsWith('Button_fullWidth__'));
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = [
+        ...gameButtonClasses, 'mst-avatar-toolkit-btn'
+      ]
+        .filter(Boolean)
+        .join(' ');
+      button.textContent = label;
+      button.title = label;
+      button.addEventListener('click', (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        // 先捕获弹出层当前位置（游戏原生以 MUI Tooltip 渲染整块浮层，placement bottom-end 锚定到头像按钮）；
+        // 组件关闭后浮层会卸载，脱离文档后无法再读取矩形。与游戏自身浮层出现位置保持一致——
+        // 下拉右上角对齐弹出层整体（含内边距与边框）的右上角，而不是对齐被内边距包裹的内部菜单。
+        const menu = button.closest('[class*="Header_avatarMenu"]');
+        const anchorRect =
+          menu?.closest('.MuiTooltip-tooltip')?.getBoundingClientRect() || menu?.getBoundingClientRect() || null;
+        document.dispatchEvent(new KeyboardEvent('keydown', {key: 'Escape', bubbles: true, cancelable: true}));
+        window.dispatchEvent(new CustomEvent('mst:toolkit:open', {detail: {trigger: button, anchorRect}}));
+      });
+      const firstButton = menu.querySelector('button');
+      if (firstButton) menu.insertBefore(button, firstButton);
+      else menu.appendChild(button);
+    }
+
+    refresh() {
+      const {i18n} = this.ctx;
+      document.querySelectorAll('.mst-my-character-card-btn').forEach((button) => {
+        const text = i18n.t('toolkitShort');
+        const title = i18n.t('toolkitTitle');
+        if (button.textContent !== text) button.textContent = text;
+        if (button.getAttribute('title') !== title) button.setAttribute('title', title);
+      });
+      this.addAvatarMenuEntry();
     }
 
     init() {
@@ -24495,6 +24527,8 @@ to{transform:translateY(0);opacity:1}
         Notifier
       } = this.ctx;
       installAppStyles();
+      // 就绪状态字段必须写在页面 window（ctx.pageWindow）上，油猴沙箱 window 写入页面不可见。
+      this.ctx.pageWindow.MWISunrisheToolkitState = 'app-styles';
       const characterCardFeature = new CharacterCardFeature();
       const combatCalculator = new CombatUpgradeCalculatorFeature(this.ctx);
       const abilityCalculator = new AbilityUpgradeCalculatorFeature(this.ctx, marketDataService);
@@ -24521,6 +24555,7 @@ to{transform:translateY(0);opacity:1}
         equipmentComparison,
         dungeonCalculator
       };
+      this.ctx.pageWindow.MWISunrisheToolkitState = 'app-features';
       characterCardFeature.init();
       combatCalculator.init();
       abilityCalculator.init();
@@ -24532,6 +24567,9 @@ to{transform:translateY(0);opacity:1}
       new MarketplaceCartFeature().init();
       this.languageController.init();
       this.observeDOM();
+      // 就绪状态字段推进为版本号（dev 构建带时间戳，与头部 @version 同源）：字段值 === 当前构建
+      // 版本即表示初始化完成，自动化验证以此校验页面加载的构建是否为最新（不一致则刷新重试）。
+      this.ctx.pageWindow.MWISunrisheToolkitState = "2.15.0";
     }
   }
 
@@ -24566,7 +24604,14 @@ to{transform:translateY(0);opacity:1}
   }
 
   function runMst() {
+    // 加载成功日志：便于用户/自动化验证时确认脚本注入与构建版本（版本号由构建注入）。
+    console.info(`[MST] 脚本加载 v${"2.15.0"}`);
     const pageWindow = typeof unsafeWindow !== 'undefined' ? unsafeWindow : window;
+    // 就绪状态字段：初始化阶段逐步推进（loading → app-styles → app-features → 构建版本号），
+    // 自动化验证轮询该字段精确判断脚本状态；脚本未加载时字段不存在。
+    // 必须写入页面 window（unsafeWindow）：油猴沙箱的 window 与页面 window 是两个对象，
+    // 写到沙箱 window 页面轮询不到，会误判脚本未加载。
+    pageWindow.MWISunrisheToolkitState = 'loading';
     const hostname = window.location.hostname;
     // 通过二级域判断中英文游戏站，保证 www 与子域名都能复用同一套配置。
     const domainname = hostname.substring(hostname.lastIndexOf('.', hostname.lastIndexOf('.') - 1) + 1);

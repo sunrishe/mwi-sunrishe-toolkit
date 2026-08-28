@@ -659,57 +659,27 @@
   background: var(--color-midnight-400, #323450);
   color: var(--color-text-dark-mode, #e7e7e7);
 }
+/* 角色名只做增强：不加边框、不改布局，鼠标指针提示可点击，悬浮标题提示打开名片。 */
 .mst-my-character-name-card-btn {
-  display: inline-flex !important;
-  box-sizing: border-box;
-  max-width: 100%;
-  align-items: center;
-  justify-content: flex-end;
-  padding: 0 var(--spacing-xs, 0.25rem);
-  border: var(--border-width-thin, 1px) solid var(--color-space-400, #7184d8);
-  border-radius: var(--radius-xs, 0.125rem);
-  background: rgba(44, 46, 69, 0.72);
   cursor: pointer;
-}
-.mst-my-character-name-card-btn:hover {
-  border-color: var(--color-space-300, #98a7e9);
-  background: var(--color-midnight-400, #323450);
 }
 .mst-my-character-name-card-btn:focus-visible {
   outline: 1px solid var(--color-space-200, #bbc5f1);
   outline-offset: 1px;
 }
-.mst-header-card-level-layout {
-  display: flex !important;
-  flex-wrap: wrap;
-  max-width: 100%;
-  align-items: center !important;
-  justify-content: flex-end !important;
-  column-gap: var(--spacing-xs, 0.25rem);
-  row-gap: var(--spacing-xxs, 0.125rem);
-  white-space: nowrap;
-}
-.mst-header-card-level-layout > [class*='Header_totalLevel'] {
-  flex: 0 1 auto;
-  white-space: nowrap;
-}
-.mst-header-card-level-layout > .mst-my-character-card-btn {
-  flex: 0 0 auto;
-  white-space: nowrap;
-}
-.mst-header-card-level-layout > :not([class*='Header_totalLevel']):not(.mst-my-character-card-btn) {
-  flex: 0 0 100%;
-  text-align: right;
-  white-space: nowrap;
-}
-/* MWITools 会把它的头部工具宿主（#mwitools-header-tools）插到总等级元素紧后面，
-   而 MST 已把总等级移入本布局容器，宿主随之进入并命中上面的通配规则；
-   其自带样式是 justify-content:center + margin:auto（行内居中），
-   这里按更高特异性覆盖为靠右，保持与其单独运行时一致的观感。 */
-.mst-header-card-level-layout > #mwitools-header-tools {
-  flex: 0 0 100%;
+/* 工具箱按钮直接放进总等级元素内部：总等级 div 变行内 flex，等级文本与按钮同一行；
+   总等级仍在信息列原位，其后的兄弟插槽归 MWITools 头部工具宿主，避免争抢 DOM 所有权。
+   MWITools 宿主自带 margin:auto 会在纵向信息列里把自己居中，
+   这里覆盖为不占 margin，让信息列的 align-items:flex-end 把它推到靠右。 */
+.mst-header-level-toolkit {
+  display: inline-flex;
+  align-items: center;
   justify-content: flex-end;
-  margin: 2px 0 0 auto;
+  gap: var(--spacing-xs, 0.25rem);
+}
+[class*='Header_characterInfo'] [class*='Header_info'] > #mwitools-header-tools {
+  margin-left: 0;
+  margin-right: 0;
 }
 .mst-download-section {
   text-align: center;

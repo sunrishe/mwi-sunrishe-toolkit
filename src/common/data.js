@@ -976,16 +976,21 @@ export function createCharacterDataService(ctx, DataHub) {
       return this.getCharacterAbilities().find((ability) => ability?.abilityHrid === abilityHrid) || null;
     },
 
-    // 当前战斗配装已装备的技能槽位（characterLoadoutMap 中战斗配装的 abilityMap，按槽位号排序）。
+    // 当前装配的技能槽位（按槽位号排序）：游戏以 characterAbilityMap/characterAbilities 条目
+    // 的 slotNumber（1..5）表示当前生效技能，与配装模板（characterLoadoutMap）无关；
+    // 优先读 React 游戏状态的 characterAbilityMap（实时权威），raw 角色数据兜底。
     getEquippedAbilityHrids() {
-      const loadoutMap = this.raw?.characterLoadoutMap || DataHub.getGameState()?.characterLoadoutMap || {};
-      const combatLoadout = Object.values(loadoutMap).find(
-        (loadout) => loadout?.actionTypeHrid === '/action_types/combat'
-      );
-      const abilityMap = combatLoadout?.abilityMap || {};
-      return Object.keys(abilityMap)
-        .sort((left, right) => Number(left) - Number(right))
-        .map((slot) => abilityMap[slot])
+      const gameStateMap = DataHub.getGameState()?.characterAbilityMap;
+      const abilities = gameStateMap && typeof gameStateMap.values === 'function' ? [
+              ...gameStateMap.values()
+            ] : Array.isArray(gameStateMap) ? gameStateMap : this.getCharacterAbilities();
+      return abilities
+        .filter((ability) => {
+          const slot = Number(ability?.slotNumber || 0);
+          return slot >= 1 && slot <= 5;
+        })
+        .sort((left, right) => Number(left.slotNumber) - Number(right.slotNumber))
+        .map((ability) => ability.abilityHrid)
         .filter(Boolean);
     },
 

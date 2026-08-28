@@ -183,7 +183,7 @@ console.log(`[MST] HTTP 服务已启动: ${origin}/`);
 console.log(`[MST] 文件版油猴入口: ${path.relative(rootDir, localDebugPath)}`);
 console.log(`[MST] HTTP 版油猴入口: ${path.relative(rootDir, httpDebugPath)}`);
 console.log(
-  '[MST] 两个入口都会自动刷新 @version 和 @require；油猴未自动更新时，请重新导入对应文件或在脚本详情页检查更新。'
+  '[MST] 两个入口都会自动刷新 @version 和 @require；file:// 引入无缓存，文件版每次页面加载读取最新构建；HTTP 版在 Tampermonkey 内按 URL 缓存，需重新导入调试壳（新时间戳 URL）才会更新。'
 );
 
 const rollupWatch = startRollupWatch();

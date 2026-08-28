@@ -317,18 +317,52 @@ test('战斗模拟导入：导入前自动刷新价格，成功后按钮禁用�
     menuSource,
     /window\.open\('https:\/\/aiwwb\.github\.io\/milkywayidle_battle\/dist\/',\s*'mst-combat-sim-aiwwb'\)/
   );
+  // 头像弹出菜单注入工具箱入口：锚定游戏原生 Header_avatarMenu，放条目第一位，
+  // 复用统一 mst:toolkit:open 事件，按 mst-avatar-toolkit-btn 去重。
+  assert.match(menuSource, /addAvatarMenuEntry\(\)/);
+  assert.match(menuSource, /querySelector\('\[class\*="Header_avatarMenu"\]'\)/);
+  assert.match(menuSource, /mst-avatar-toolkit-btn/);
+  assert.match(menuSource, /menu\.insertBefore\(button,\s*firstButton\)/);
+  assert.match(menuSource, /dispatchEvent\(new CustomEvent\('mst:toolkit:open'/);
+  // 头像浮层打开下拉时，点击处理先同步捕获弹出层矩形（组件关闭后浮层卸载、脱离文档
+  // 无法再取位置），再派发 Escape 关闭浮层；下拉锚定游戏 MUI Tooltip 整块弹出层右上角
+  // （含内边距与边框，placement bottom-end），与游戏浮层出现位置一致，菜单矩形仅作回退；
+  // 页头入口仍锚定按钮自身。
+  assert.match(
+    menuSource,
+    /menu\?\.closest\('\.MuiTooltip-tooltip'\)\?\.getBoundingClientRect\(\) \|\| menu\?\.getBoundingClientRect\(\) \|\| null/
+  );
+  assert.match(menuSource, /\?\.getBoundingClientRect\(\) \|\| null/);
+  assert.match(menuSource, /detail:\s*\{trigger: button,\s*anchorRect\}/);
+  assert.match(
+    menuSource,
+    /toggleDropdown\(event\?\.detail\?\.trigger \|\| null,\s*event\?\.detail\?\.anchorRect \|\| null\)/
+  );
+  assert.match(
+    menuSource,
+    /const avatarMenu = anchorRect \? null : trigger\?\.closest\?\.\('\[class\*="Header_avatarMenu"\]'\)/
+  );
+  assert.match(menuSource, /getBoundingClientRect:\s*\(\) => anchorRect/);
+  assert.match(
+    menuSource,
+    /this\.bindDropdownPosition\(dropdown,\s*positionAnchor,\s*Boolean\(anchorRect \|\| avatarMenu\)\)/
+  );
+  assert.match(menuSource, /dispatchEvent\(new KeyboardEvent\('keydown',\s*\{key:\s*'Escape'/);
 });
 
-test('战斗模拟导入：MST 头部布局容器内 MWITools 工具宿主保持靠右', () => {
-  // MWITools 会把 #mwitools-header-tools 插到总等级紧后面（即 MST 布局容器内），
-  // 其自带居中样式必须被 MST 的更高特异性规则覆盖为靠右。
+test('战斗模拟导入：MST 与 MWITools 共存时头部不再争抢总等级后插槽', () => {
+  // MWITools 会把 #mwitools-header-tools 插到总等级紧后面；MST 的工具箱按钮直接放进
+  // 总等级元素内部（总等级 div 加行内 flex class），不改动原有结构层、不移动总等级，
+  // 否则双方观察器反复挪动会让页头先变高再还原地抖动；宿主的 margin:auto 居中样式
+  // 必须被覆盖为靠右。
+  const cardSourceFile = readSourceFile('src', 'modules', 'character-card', 'index.js');
+  assert.doesNotMatch(cardSourceFile, /mst-header-card-level-layout|mst-my-character-name-row/);
+  assert.match(cardSourceFile, /totalLevelElement\.appendChild\(myButton\)/);
+  assert.match(cardSourceFile, /mst-header-level-toolkit/);
   const cssSourceFile = readSourceFile('src', 'modules', 'character-card', 'styles.css');
   assert.match(
     cssSourceFile,
-    /\.mst-header-card-level-layout > #mwitools-header-tools\s*\{[^}]*justify-content:\s*flex-end/s
+    /\[class\*='Header_characterInfo'\] \[class\*='Header_info'\] > #mwitools-header-tools\s*\{[^}]*margin-left:\s*0;[^}]*margin-right:\s*0;/
   );
-  assert.match(
-    cssSourceFile,
-    /\.mst-header-card-level-layout > #mwitools-header-tools\s*\{[^}]*margin:\s*2px 0 0 auto/s
-  );
+  assert.doesNotMatch(cssSourceFile, /\.mst-header-card-level-layout\s*>\s*#mwitools-header-tools/);
 });
