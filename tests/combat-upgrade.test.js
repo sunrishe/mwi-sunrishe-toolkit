@@ -515,6 +515,59 @@ test('缺少选修经验时不伪造同修主修的结束等级', () => {
   assert.equal(plan.results.get(2).endState, null);
 });
 
+test('列表没有主修时也按选修或单独经验估算各行耗时与合计', () => {
+  const feature = new CombatUpgradeCalculatorFeature();
+  skillLevels.clear();
+  skillLevels.set('/skills/stamina', 100);
+  skillLevels.set('/skills/intelligence', 100);
+  skillLevels.set('/skills/defense', 100);
+  feature.rows = [
+    {
+      id: 1,
+      skillHrid: '/skills/stamina',
+      startLevel: 100,
+      targetLevel: 101,
+      trainingType: 'secondary',
+      concurrentTraining: false,
+      customStart: false,
+      hourlyExperienceOverride: null
+    }, {
+      id: 2,
+      skillHrid: '/skills/intelligence',
+      startLevel: 100,
+      targetLevel: 102,
+      trainingType: 'secondary',
+      concurrentTraining: false,
+      customStart: false,
+      hourlyExperienceOverride: null
+    }, {
+      id: 3,
+      skillHrid: '/skills/defense',
+      startLevel: 100,
+      targetLevel: 103,
+      trainingType: 'secondary',
+      concurrentTraining: false,
+      customStart: false,
+      hourlyExperienceOverride: 2
+    }
+  ];
+
+  const plan = feature.calculatePlan(500, 1000);
+  const stamina = plan.results.get(1);
+  const intelligence = plan.results.get(2);
+  const defense = plan.results.get(3);
+
+  assert.equal(stamina.hours, 1);
+  assert.equal(stamina.completionHours, 1);
+  assert.equal(intelligence.hours, 2);
+  assert.equal(intelligence.startHours, 1);
+  assert.equal(intelligence.completionHours, 3);
+  assert.equal(defense.hours, 1.5);
+  assert.equal(defense.startHours, 3);
+  assert.equal(defense.completionHours, 4.5);
+  assert.equal(plan.totalHours, 4.5);
+});
+
 test('同修主修反推经验不超过 200 级上限', () => {
   const feature = new CombatUpgradeCalculatorFeature();
   skillLevels.clear();

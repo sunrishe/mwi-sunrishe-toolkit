@@ -1775,24 +1775,28 @@ test('角色数据服务延迟解析 utils：真实启动顺序（utils 晚于�
   assert.equal(service.getInventoryCount('/items/not_owned'), 0);
 });
 
-test('角色数据服务读取当前战斗配装已装备技能并按槽位排序', () => {
-  // 多个配装混排：只取 combat 配装的 abilityMap，按槽位号排序，空槽位过滤。
-  const loadoutMap = {
-    1: {id: 1, name: '生活', actionTypeHrid: '/action_types/life', abilityMap: {0: '/abilities/not_combat'}},
-    2: {
-      id: 2,
-      name: '战斗',
-      actionTypeHrid: '/action_types/combat',
-      abilityMap: {
-        3: '/abilities/third',
-        1: '/abilities/first',
-        4: '',
-        2: '/abilities/second'
-      }
-    }
-  };
+test('角色数据服务读取当前装配技能并按槽位排序', () => {
+  // 以角色技能数据的 slotNumber（1..5）为装配依据：按槽位号排序、空槽位与未装配条目过滤。
   const DataHub = {
-    characterData: {raw: {characterLoadoutMap: loadoutMap}},
+    characterData: {
+      raw: {
+        characterAbilities: [
+          {
+            abilityHrid: '/abilities/unslotted',
+            level: 1,
+            slotNumber: 0
+          }, {abilityHrid: '/abilities/third', level: 1, slotNumber: 3}, {
+            abilityHrid: '/abilities/first',
+            level: 1,
+            slotNumber: 1
+          }, {abilityHrid: '/abilities/second', level: 1, slotNumber: 2}, {
+            abilityHrid: '/abilities/sixth',
+            level: 1,
+            slotNumber: 6
+          }
+        ]
+      }
+    },
     getGameState() {
       return {};
     }
@@ -1803,6 +1807,13 @@ test('角色数据服务读取当前战斗配装已装备技能并按槽位排�
         createCharacterDataService(ctx, DataHub);`,
     {console, ctx, DataHub, window: {dispatchEvent() {}}}
   );
+  ctx.utils = {
+    getCollectionValues(collection) {
+      if (Array.isArray(collection)) return collection;
+      if (collection && typeof collection === 'object') return Object.values(collection);
+      return [];
+    }
+  };
   assert.deepEqual(
     [
       ...service.getEquippedAbilityHrids()
@@ -1813,14 +1824,11 @@ test('角色数据服务读取当前战斗配装已装备技能并按槽位排�
   );
 });
 
-test('角色数据服务无角色原包时从游戏状态读取战斗配装技能，无配装返回空', () => {
-  const loadoutMap = {
-    9: {id: 9, actionTypeHrid: '/action_types/combat', abilityMap: {0: '/abilities/only'}}
-  };
+test('角色数据服务无角色原包时从游戏状态读取已装配技能，无装配返回空', () => {
   const DataHub = {
     characterData: {raw: {}},
     getGameState() {
-      return {characterLoadoutMap: loadoutMap};
+      return {characterAbilityMap: {'/abilities/only': {abilityHrid: '/abilities/only', level: 1, slotNumber: 1}}};
     }
   };
   const ctx = {DataHub};
@@ -1829,7 +1837,14 @@ test('角色数据服务无角色原包时从游戏状态读取战斗配装技�
         createCharacterDataService(ctx, DataHub);`,
     {console, ctx, DataHub, window: {dispatchEvent() {}}}
   );
-  // raw 缺失时回退游戏状态中的战斗配装。
+  ctx.utils = {
+    getCollectionValues(collection) {
+      if (Array.isArray(collection)) return collection;
+      if (collection && typeof collection === 'object') return Object.values(collection);
+      return [];
+    }
+  };
+  // raw 缺失时回退游戏状态中的技能装配。
   assert.deepEqual(
     [
       ...service.getEquippedAbilityHrids()
@@ -1838,9 +1853,9 @@ test('角色数据服务无角色原包时从游戏状态读取战斗配装技�
       '/abilities/only'
     ]
   );
-  // 只有生活配装或完全没有配装时都返回空数组。
+  // 只有未装备槽位或完全没有技能数据时都返回空数组。
   DataHub.getGameState = () => ({
-    characterLoadoutMap: {5: {id: 5, actionTypeHrid: '/action_types/life', abilityMap: {0: '/abilities/life'}}}
+    characterAbilityMap: {'/abilities/unslotted': {abilityHrid: '/abilities/unslotted', level: 1, slotNumber: 0}}
   });
   assert.deepEqual(
     [

@@ -27,7 +27,8 @@ export default [
         uhtml: 'readonly',
         unsafeWindow: 'readonly',
         __MST_BUILD_ENV__: 'readonly',
-        __MST_IS_DEV__: 'readonly'
+        __MST_IS_DEV__: 'readonly',
+        __MST_VERSION__: 'readonly'
       }
     },
     rules: {

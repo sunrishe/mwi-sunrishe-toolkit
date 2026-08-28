@@ -352,7 +352,7 @@ const combatUpgradeResultView = {
     const eph = Math.max(0, Number(feature.popup.querySelector('[data-field="eph"]')?.value) || 0);
     const plan = feature.calculatePlan(primaryRate, secondaryRate);
     const startedAt = Date.now();
-    this.updateHelp(feature, plan, i18n);
+    this.updateHelp(feature, i18n);
     feature.rows.forEach((row) => {
       const rowElement = feature.popup.querySelector(`[data-row-id="${row.id}"]`);
       if (!rowElement) return;
@@ -376,14 +376,9 @@ const combatUpgradeResultView = {
     return Math.max(0, Number(popup.querySelector(`[data-field="${field}"]`)?.value) || 0) * 1000;
   },
 
-  updateHelp(feature, plan, i18n) {
-    const missingPrimary = !plan.hasPrimary && feature.rows.length > 0;
-    feature.helpController?.setContent(
-      missingPrimary
-        ? `${i18n.t('combatPrimaryRequired')}\n\n${i18n.t('combatCalculatorHelp')}`
-        : i18n.t('combatCalculatorHelp')
-    );
-    feature.helpController?.setError(missingPrimary);
+  updateHelp(feature, i18n) {
+    feature.helpController?.setContent(i18n.t('combatCalculatorHelp'));
+    feature.helpController?.setError(false);
   },
 
   updateRow(feature, row, rowElement, result, startedAt, primaryRate, secondaryRate, eph, i18n, utils) {
@@ -867,8 +862,8 @@ export class CombatUpgradeCalculatorFeature {
     return this.planner.getSequenceStartHours(sequence, sequenceDurations);
   }
 
-  calculateRequiredHours(requiredExperience, hourlyRate, hasPrimary) {
-    return this.planner.calculateRequiredHours(requiredExperience, hourlyRate, hasPrimary);
+  calculateRequiredHours(requiredExperience, hourlyRate) {
+    return this.planner.calculateRequiredHours(requiredExperience, hourlyRate);
   }
 
   mergeSequenceDuration(currentDuration, rowDuration) {

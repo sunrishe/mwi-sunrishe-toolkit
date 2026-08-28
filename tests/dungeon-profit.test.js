@@ -1774,8 +1774,13 @@ test('工具箱及中英文文档按计算流程排列装备提升和地下城�
   const menuEndOffset = source.slice(menuStart).search(/^\s*export function installModules/m);
   assert.ok(menuEndOffset > 0, '找不到工具箱菜单功能结束位置');
   const menuSource = source.slice(menuStart, menuStart + menuEndOffset);
+  // 只从 getActions 返回的动作数组里提取 key，避免误匹配类中其他 {key: '...'} 字面量。
+  const actionsStart = menuSource.search(/getActions\(\)\s*\{/);
+  const actionsArrayStart = menuSource.indexOf('return [', actionsStart);
+  const actionsArrayEnd = menuSource.indexOf('];', actionsArrayStart);
+  assert.ok(actionsArrayStart > 0 && actionsArrayEnd > actionsArrayStart, '找不到 getActions 动作数组');
   const actionKeys = [
-    ...menuSource.matchAll(/\{\s*key:\s*'([^']+)'/g)
+    ...menuSource.slice(actionsArrayStart, actionsArrayEnd).matchAll(/\{\s*key:\s*'([^']+)'/g)
   ].map((match) => match[1]);
   assert.deepEqual(actionKeys, [
     'userCharacterCard', 'abilityUpgradeCalculator', 'houseUpgradeCalculator', 'combatUpgradeCalculator', 'equipmentComparison',

@@ -16,73 +16,63 @@ MST 是独立脚本，以下项目提供了参考或公开接口；参考类功�
 
 ## Sunrishe 工具箱
 
-页面顶部角色信息区域会显示**工具箱**，是角色名片、升级计算、装备提升、地下城收益和切换角色等功能的主要入口。
+工具箱入口位于页面顶部角色信息区域，多数功能也能从对应页面直接打开。
 
 ## 角色与队伍名片
 
-- **入口**：顶部角色名、工具箱、资料页、配装页、队伍区域。
-- **功能**：生成角色、队伍或配装 PNG 名片，展示装备、技能、房屋、等级和战力打造分，支持下载或复制图片。
+把角色、队伍或配装生成 PNG 名片，支持下载或复制。
 
 ## 技能升级计算器
 
-- **入口**：工具箱、技能页面、技能详情。
-- **功能**：估算技能升级需要的技能书和金币，按左一/右一市场价显示成本，可配合市场伴侣加入购物车；从技能页打开时自动填入当前配装已装备的技能。
+估算升级技能所需的技能书和金币，可加入购物车。
 
 ## 房屋升级材料计算器
 
-- **入口**：工具箱、房屋页面。
-- **功能**：统计房屋升级材料、金币、库存缺口和市场价值，支持导出 CSV，并可配合市场伴侣加入购物车。
+统计房屋升级材料和成本，支持导出和加入购物车。
 
 ## 战斗升级计算器
 
-- **入口**：工具箱。
-- **功能**：按职业、目标等级、经验速度和训练顺序，估算战斗升级耗时与预计完成时间。
+按职业、等级和经验规划升级耗时与预计完成时间。
 
 ## 装备提升计算器
 
-- **入口**：工具箱。
-- **功能**：比较同职业方案下两件装备的属性、价格差和模拟 DPS，查看每 10M 金币带来的提升。
+比较两件装备的属性、价格差和模拟伤害。
 
 ## 地下城收益计算器
 
-- **入口**：工具箱。
-- **功能**：按地下城、难度、耗时、钥匙来源和市场价格，估算每日收益、每车收益、钥匙成本和宝箱产出，结果可在“收益结果”与“掉落物”之间切换；支持批量模拟，一次对比多个地下城的制作/购买钥匙成本和收益，参数自动保存。
+估算地下城每日和每车收益，支持批量对比多个地下城。
 
 ## 迷宫补充补给
 
-- **入口**：迷宫“进入迷宫”按钮上方。
-- **功能**：悬浮“补充补给”按钮，选择 1~5 次入场，把缺少的迷宫道具和补给箱加入 MWITools 购物车；只加购，不自动下单。
+把缺少的迷宫道具加入购物车。
 
 ## 市场加入购物车
 
-- **入口**：市场“刷新”按钮右侧。
-- **功能**：把市场当前查看的物品加入 MWITools 购物车，每次 1 个，查看强化等级订单时按该等级加购；只加购，不自动下单。
+把当前查看的市场物品加入购物车。
 
 ## 切换角色
 
-- **入口**：工具箱。
-- **功能**：调用游戏原生角色切换入口。
+调用游戏原生入口切换角色。
 
 ## 利润网与战斗配装
 
-- **入口**：游戏配装页、战斗配装详情、支持的利润网页面。
-- **功能**：在游戏、Milkonomy、hyhfish 和战斗模拟器之间复制或同步配装数据。
+在游戏、利润网和战斗模拟器之间复制或同步配装。
 
 ## 战斗模拟器一键导入
 
-- **入口**：aiwwb 战斗模拟器页面“导入/导出”按钮下方。
-- **功能**：一键把当前角色与队伍数据填入模拟器。
+一键把当前角色与队伍数据填入模拟器。
 
 ## MWI 市场伴侣剪贴板导入
 
-- **入口**：MWI 市场伴侣清单面板。
-- **功能**：从剪贴板批量解析物品名称、数量和强化等级，并加入市场伴侣购物车；不自动下单。
+从剪贴板批量解析物品并加入购物车。
+
+以上加入购物车的功能都只加购、不自动下单。
 
 ---
 
 # MWI Sunrishe Toolkit User Guide
 
-MWI Sunrishe Toolkit provides character cards, upgrade planning, equipment comparison, dungeon profit estimates, loadout sync, and MWI Market Mate enhancements. The interface follows the game language.
+MWI Sunrishe Toolkit is a multi-purpose helper for Milky Way Idle, providing character cards, upgrade planning, equipment comparison, dungeon profit estimates, loadout sync, and MWI Market Mate enhancements. The interface follows the game language.
 
 ## Credits
 
@@ -98,67 +88,57 @@ MST is independent. The projects below provide references or public APIs; refere
 
 ## Sunrishe Toolkit
 
-Click **Toolkit** in the top character-info area. It is the main entry for cards, upgrade calculators, equipment comparison, dungeon profit, and character switching.
+The Toolkit entry is in the top character-info area; most features can also be opened from their related pages.
 
 ## Character and Party Cards
 
-- **Entry**: top character name, Toolkit, profile pages, loadout pages, and party UI.
-- **Does**: generates character, party, or loadout PNG cards with equipment, abilities, houses, levels, and Combat Power Score; supports download or image copy.
+Generate character, party, or loadout cards as PNG images, with download or image copy.
 
 ## Ability Upgrade Calculator
 
-- **Entry**: Toolkit, ability pages, and ability details.
-- **Does**: estimates required ability books and coins, shows Best Ask / Best Bid costs, and can add books to Market Mate carts. Opening it from the ability page prefills the abilities equipped in your current combat loadout.
+Estimate the ability books and coins needed, with cart support.
 
 ## House Upgrade Material Calculator
 
-- **Entry**: Toolkit and house pages.
-- **Does**: calculates house upgrade materials, coins, inventory shortages, and market value; supports CSV export and Market Mate carts.
+Calculate upgrade materials and costs, with export and cart support.
 
 ## Combat Upgrade Calculator
 
-- **Entry**: Toolkit.
-- **Does**: estimates combat training duration and finish time by profession, target level, XP rate, and training order.
+Plan training duration and completion time by profession, level, and XP rate.
 
 ## Equipment Comparison
 
-- **Entry**: Toolkit.
-- **Does**: compares two items under the same combat preset by stats, price difference, simulated DPS, and gain per 10M coins.
+Compare two items by stats, price difference, and simulated DPS.
 
 ## Dungeon Profit Calculator
 
-- **Entry**: Toolkit.
-- **Does**: estimates daily profit, run profit, key costs, and chest output by dungeon, tier, run time, key source, and market prices. Switch between the Profit table and the Loot table, or use Batch Simulation to compare crafted/purchased key costs and expected profit across multiple dungeons at once. Parameters are saved automatically.
+Estimate daily and per-run profit, with batch comparison across multiple dungeons.
 
 ## Labyrinth Restock Supplies
 
-- **Entry**: above the Labyrinth "Enter Labyrinth" button.
-- **Does**: hovering the Restock Supplies button opens a small window to pick 1–5 entries and adds the missing supplies and crates to the MWITools cart. MST only adds to the cart and never places orders.
+Add missing labyrinth supplies to the cart.
 
 ## Marketplace Add to Cart
 
-- **Entry**: to the right of the Marketplace "Refresh" button.
-- **Does**: adds the market item currently being viewed to the MWITools cart, one at a time, keeping the enhancement level of the order book being viewed. MST only adds to the cart and never places orders.
+Add the currently viewed market item to the cart.
 
 ## Switch Character
 
-- **Entry**: Toolkit.
-- **Does**: opens the game's native character switch entry.
+Open the game's native character switch entry.
 
 ## Profit-Site and Combat Loadout Data
 
-- **Entry**: game loadout pages, combat loadout details, and supported profit sites.
-- **Does**: copies or syncs loadout data between the game, Milkonomy, hyhfish, and the combat simulator.
+Copy or sync loadouts between the game, profit sites, and the combat simulator.
 
 ## One-Click Combat Simulator Import
 
-- **Entry**: the aiwwb combat simulator page, below its "Import/Export" button.
-- **Does**: fills your current character and party data into the simulator.
+Fill the simulator with your current character and party data.
 
 ## MWI Market Mate Clipboard Import
 
-- **Entry**: MWI Market Mate list panel.
-- **Does**: parses item names, quantities, and enhancement levels from the clipboard, then adds them to the Market Mate cart; it never places orders.
+Parse item lists from the clipboard and add them to the cart.
+
+Cart features only add items and never place orders.
 
 ---
 
@@ -170,10 +150,15 @@ Click **Toolkit** in the top character-info area. It is the main entry for cards
 - MST 从 `2.0.0` 开始，表示从装备数据同步脚本升级为综合工具箱。
 - 后续版本遵循语义化版本：不兼容变更提升主版本，向后兼容的新功能提升次版本，修复和兼容性调整提升补丁版本；开发构建使用 `-dev.<时间戳>` 后缀。
 
+## v2.15.0
+
+1. 点击右上角头像弹出的菜单里新增「Sunrishe 工具箱」入口，点击后原地打开工具箱下拉（页头原有入口不变）。
+2. 战斗升级计算器在没有主修职业时也能规划升级，按各行经验估算耗时和预计升级时间。
+
 ## v2.14.0
 
 1. 地下城收益新增批量模拟：把多个地下城加入列表，每行单独设置难度、队伍人数、耗时和每日成本，一次对比制作/购买钥匙的每日成本和期望收益；参数修改后自动保存，可随时恢复默认。
-2. 技能升级：从技能页面打开计算器时，自动填入当前战斗配装已装备的技能；技能书菜单里的计算器入口按钮与游戏其他操作按钮外观一致。
+2. 技能升级：从技能页面打开计算器时，自动填入当前装配的技能；技能书菜单里的计算器入口按钮与游戏其他操作按钮外观一致。
 3. 地下城收益的“掉落物”页签外观改为与游戏页面页签一致。
 
 ## v2.13.0

@@ -232,19 +232,27 @@ test('窄屏只横向滚动名片内容，不带动顶部操作区', () => {
   );
 });
 
-test('顶部用户名片入口不接管游戏原生名称容器布局', () => {
+test('顶部用户名片入口只增强角色名与总等级，不改变原有结构层', () => {
   const cardSource = readSourceFile('src', 'modules', 'character-card', 'index.js');
 
-  assert.doesNotMatch(cardSource, /headerInfoElement\.classList\.add\('mst-header-card-level-layout'\)/);
-  assert.match(cardSource, /levelLayout\.insertBefore\(existingButton,\s*totalLevelElement\.nextSibling\)/);
-  assert.doesNotMatch(characterCardStylesSource, /\.mst-header-card-level-layout\s*>\s*\[class\*=['"]Header_name/);
-  assert.match(characterCardStylesSource, /\.mst-header-card-level-layout\s*\{[^}]*display:\s*flex\s*!important;/);
+  // 工具箱按钮直接放进总等级元素内部（总等级 div 加行内 flex class）；
+  // 角色名只加增强 class，两者都不额外包裹容器、不移动原有元素。
+  assert.doesNotMatch(cardSource, /mst-header-card-level-layout|mst-my-character-name-row/);
+  assert.doesNotMatch(cardSource, /totalLevelElement\.insertAdjacentElement|totalLevelElement\.parentElement/);
+  assert.match(cardSource, /totalLevelElement\.classList\.add\('mst-header-level-toolkit'\)/);
+  assert.match(cardSource, /totalLevelElement\.appendChild\(myButton\)/);
+  assert.match(cardSource, /totalLevelElement\.appendChild\(existingButton\)/);
+  // 角色名只有点击增强：指针样式、无边框、无 hover 胶囊样式。
+  assert.match(characterCardStylesSource, /\.mst-my-character-name-card-btn\s*\{[^}]*cursor:\s*pointer;/);
+  assert.doesNotMatch(characterCardStylesSource, /\.mst-my-character-name-card-btn\s*\{[^}]*border:/);
+  assert.doesNotMatch(
+    characterCardStylesSource,
+    /\.mst-my-character-name-card-btn:visited|\.mst-my-character-name-card-btn:hover/
+  );
+  assert.match(characterCardStylesSource, /\.mst-header-level-toolkit\s*\{[^}]*display:\s*inline-flex/);
   assert.match(
     characterCardStylesSource,
-    /\.mst-header-card-level-layout\s*>\s*\.mst-my-character-card-btn\s*\{[^}]*white-space:\s*nowrap;/
+    /\[class\*='Header_characterInfo'\] \[class\*='Header_info'\] > #mwitools-header-tools\s*\{[^}]*margin-left:\s*0;[^}]*margin-right:\s*0;/
   );
-  assert.match(
-    characterCardStylesSource,
-    /\.mst-header-card-level-layout\s*>\s*:not\(\[class\*='Header_totalLevel'\]\):not\(\.mst-my-character-card-btn\)/
-  );
+  assert.doesNotMatch(characterCardStylesSource, /\.mst-header-card-level-layout/);
 });

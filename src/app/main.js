@@ -21,7 +21,14 @@ import {installModules} from '../modules/index.js';
 import {installAppBootstrap, installRuntimeInstances} from './app-controller.js';
 
 export function runMst() {
+  // 加载成功日志：便于用户/自动化验证时确认脚本注入与构建版本（版本号由构建注入）。
+  console.info(`[MST] 脚本加载 v${__MST_VERSION__}`);
   const pageWindow = typeof unsafeWindow !== 'undefined' ? unsafeWindow : window;
+  // 就绪状态字段：初始化阶段逐步推进（loading → app-styles → app-features → 构建版本号），
+  // 自动化验证轮询该字段精确判断脚本状态；脚本未加载时字段不存在。
+  // 必须写入页面 window（unsafeWindow）：油猴沙箱的 window 与页面 window 是两个对象，
+  // 写到沙箱 window 页面轮询不到，会误判脚本未加载。
+  pageWindow.MWISunrisheToolkitState = 'loading';
   const hostname = window.location.hostname;
   // 通过二级域判断中英文游戏站，保证 www 与子域名都能复用同一套配置。
   const domainname = hostname.substring(hostname.lastIndexOf('.', hostname.lastIndexOf('.') - 1) + 1);

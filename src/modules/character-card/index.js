@@ -1727,47 +1727,38 @@ export class CharacterCardEntryController {
       .find(Boolean);
     const totalLevelElement = headerInfoElement?.querySelector('[class*="Header_totalLevel"]');
     if (!headerInfoElement || !totalLevelElement) return false;
+    const nameElement = headerInfoElement.querySelector('[class*="Header_name"]');
+    if (!nameElement) return false;
     let changed = false;
-    let levelLayout = totalLevelElement.closest('.mst-header-card-level-layout');
-    if (!levelLayout || levelLayout.parentElement !== headerInfoElement) {
-      levelLayout = document.createElement('div');
-      levelLayout.className = 'mst-header-card-level-layout';
-      headerInfoElement.insertBefore(levelLayout, totalLevelElement);
-      changed = true;
-    }
-    if (totalLevelElement.parentElement !== levelLayout) {
-      levelLayout.appendChild(totalLevelElement);
-      changed = true;
-    }
-    const nameElement = Array.from(headerInfoElement.children || []).find((element) =>
-      Array.from(element.classList).some((className) => className.startsWith('Header_name'))
-    );
-    if (nameElement) {
-      nameElement.classList.add('mst-my-character-name-card-btn');
-      nameElement.setAttribute('role', 'button');
-      nameElement.tabIndex = 0;
-      this.setAttributeIfChanged(nameElement, 'title', this.i18n.t('userCharacterCard'));
-      if (!nameElement.dataset.mstCharacterCardBound) {
-        nameElement.dataset.mstCharacterCardBound = '1';
-        nameElement.addEventListener('click', (event) => {
-          event.preventDefault();
-          event.stopPropagation();
-          this.showMyCharacterCard();
-        });
-        nameElement.addEventListener('keydown', (event) => {
-          if (event.key !== 'Enter' && event.key !== ' ') return;
-          event.preventDefault();
-          event.stopPropagation();
-          this.showMyCharacterCard();
-        });
-      }
+    nameElement.classList.add('mst-my-character-name-card-btn');
+    nameElement.setAttribute('role', 'button');
+    nameElement.tabIndex = 0;
+    this.setAttributeIfChanged(nameElement, 'title', this.i18n.t('userCharacterCard'));
+    if (!nameElement.dataset.mstCharacterCardBound) {
+      nameElement.dataset.mstCharacterCardBound = '1';
+      nameElement.addEventListener('click', (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        this.showMyCharacterCard();
+      });
+      nameElement.addEventListener('keydown', (event) => {
+        if (event.key !== 'Enter' && event.key !== ' ') return;
+        event.preventDefault();
+        event.stopPropagation();
+        this.showMyCharacterCard();
+      });
     }
 
+    // 工具箱按钮直接放进总等级元素内部（总等级 div 加行内 flex class），不改动原有
+    // 结构层：总等级仍在信息列原位，其紧后面的兄弟插槽完整留给 MWITools 头部工具宿主
+    // （#mwitools-header-tools）。若按钮占用该插槽，MWITools 观察器会把宿主重新插到
+    // 总等级后面、MST 又把自己的按钮挪回去，双方反复挪动会让页头先变高再还原地抖动。
+    totalLevelElement.classList.add('mst-header-level-toolkit');
     const existingButton = headerInfoElement.querySelector('.mst-my-character-card-btn');
     if (existingButton) {
       this.updateToolkitButton(existingButton);
-      if (totalLevelElement.nextElementSibling !== existingButton) {
-        levelLayout.insertBefore(existingButton, totalLevelElement.nextSibling);
+      if (existingButton.parentElement !== totalLevelElement || existingButton !== totalLevelElement.lastElementChild) {
+        totalLevelElement.appendChild(existingButton);
         changed = true;
       }
       return changed;
@@ -1777,7 +1768,7 @@ export class CharacterCardEntryController {
     myButton.className = 'mst-my-character-card-btn';
     myButton.type = 'button';
     this.updateToolkitButton(myButton);
-    levelLayout.insertBefore(myButton, totalLevelElement.nextSibling);
+    totalLevelElement.appendChild(myButton);
     return true;
   }
 

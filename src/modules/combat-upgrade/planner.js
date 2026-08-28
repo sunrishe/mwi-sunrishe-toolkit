@@ -103,8 +103,7 @@ export class CombatUpgradePlanner {
     };
   }
 
-  calculateRequiredHours(requiredExperience, hourlyRate, hasPrimary) {
-    if (!hasPrimary) return null;
+  calculateRequiredHours(requiredExperience, hourlyRate) {
     if (requiredExperience === 0) return 0;
     if (hourlyRate <= 0) return null;
     return requiredExperience / hourlyRate;
@@ -113,7 +112,6 @@ export class CombatUpgradePlanner {
   calculatePlan(rows, primaryRate, secondaryRate) {
     const {CharacterDataService, utils} = this.ctx;
     const {sequenceById, concurrentAllowedById} = this.getSequenceState(rows);
-    const hasPrimary = rows.some((row) => row.trainingType === 'primary');
     const sequenceDurations = new Map();
     const previousBySkill = new Map();
     const results = new Map();
@@ -127,7 +125,6 @@ export class CombatUpgradePlanner {
       const result = this.calculatePlanRow({
         CharacterDataService,
         context,
-        hasPrimary,
         maxSequence,
         planner: this,
         primaryRate,
@@ -143,9 +140,9 @@ export class CombatUpgradePlanner {
 
     let totalHours = 0;
     if (rows.length > 0) {
-      totalHours = hasPrimary ? this.getSequenceStartHours(maxSequence + 1, sequenceDurations) : null;
+      totalHours = this.getSequenceStartHours(maxSequence + 1, sequenceDurations);
     }
-    return {results, sequenceById, concurrentAllowedById, sequenceDurations, totalHours, hasPrimary};
+    return {results, sequenceById, concurrentAllowedById, sequenceDurations, totalHours};
   }
 
   getPlanRowContext(row, sequenceById, previousBySkill, CharacterDataService, utils) {
@@ -181,7 +178,6 @@ export class CombatUpgradePlanner {
   calculatePlanRow({
     CharacterDataService,
     context,
-    hasPrimary,
     maxSequence,
     primaryRate,
     row,
@@ -197,7 +193,6 @@ export class CombatUpgradePlanner {
     return this.calculateFixedTargetRow({
       CharacterDataService,
       context,
-      hasPrimary,
       maxSequence,
       rate,
       row,
@@ -241,21 +236,12 @@ export class CombatUpgradePlanner {
     };
   }
 
-  calculateFixedTargetRow({
-    CharacterDataService,
-    context,
-    hasPrimary,
-    maxSequence,
-    rate,
-    row,
-    sequenceDurations,
-    utils
-  }) {
+  calculateFixedTargetRow({CharacterDataService, context, maxSequence, rate, row, sequenceDurations, utils}) {
     const targetLevel = Math.max(context.startLevel, utils.clampLevel(row.targetLevel, 1, 200));
     row.targetLevel = targetLevel;
     const targetExperience = CharacterDataService.getLevelExperience(targetLevel);
     const requiredExperience = Math.max(0, targetExperience - context.startExperience);
-    const hours = this.calculateRequiredHours(requiredExperience, rate, hasPrimary);
+    const hours = this.calculateRequiredHours(requiredExperience, rate);
     const existingDuration = sequenceDurations.get(context.sequence);
     sequenceDurations.set(context.sequence, this.mergeSequenceDuration(existingDuration, hours));
     const nextMaxSequence = Math.max(maxSequence, context.sequence);

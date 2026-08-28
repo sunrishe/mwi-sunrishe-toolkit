@@ -168,6 +168,8 @@ export class AppController {
       Notifier
     } = this.ctx;
     installAppStyles();
+    // 就绪状态字段必须写在页面 window（ctx.pageWindow）上，油猴沙箱 window 写入页面不可见。
+    this.ctx.pageWindow.MWISunrisheToolkitState = 'app-styles';
     const characterCardFeature = new CharacterCardFeature();
     const combatCalculator = new CombatUpgradeCalculatorFeature(this.ctx);
     const abilityCalculator = new AbilityUpgradeCalculatorFeature(this.ctx, marketDataService);
@@ -194,6 +196,7 @@ export class AppController {
       equipmentComparison,
       dungeonCalculator
     };
+    this.ctx.pageWindow.MWISunrisheToolkitState = 'app-features';
     characterCardFeature.init();
     combatCalculator.init();
     abilityCalculator.init();
@@ -205,6 +208,9 @@ export class AppController {
     new MarketplaceCartFeature().init();
     this.languageController.init();
     this.observeDOM();
+    // 就绪状态字段推进为版本号（dev 构建带时间戳，与头部 @version 同源）：字段值 === 当前构建
+    // 版本即表示初始化完成，自动化验证以此校验页面加载的构建是否为最新（不一致则刷新重试）。
+    this.ctx.pageWindow.MWISunrisheToolkitState = __MST_VERSION__;
   }
 }
 

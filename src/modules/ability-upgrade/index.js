@@ -745,7 +745,7 @@ const abilityUpgradePageIntegration = {
     button.type = 'button';
     button.className = utils.getGameButtonClass() + ' mst-ability-calculator-trigger';
     button.textContent = i18n.t('upgradeCalculator');
-    // 从技能页打开时预填当前战斗配装已装备的全部技能。
+    // 从技能页打开时预填当前装配已装备的全部技能。
     button.addEventListener('click', () => feature.open(feature.getEquippedAbilityHrids()));
     container.appendChild(button);
     title.insertAdjacentElement('afterend', container);
@@ -1041,7 +1041,7 @@ export class AbilityUpgradeCalculatorFeature {
     this.marketActions.openAbilityBookMarket(this, row);
   }
 
-  // 当前战斗配装已装备的技能槽（按槽位顺序）。
+  // 当前装配的技能槽（按槽位顺序）。
   getEquippedAbilityHrids() {
     const {CharacterDataService} = this.ctx;
     return CharacterDataService.getEquippedAbilityHrids();

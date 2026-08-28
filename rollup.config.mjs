@@ -5,17 +5,19 @@ import {formatDevVersionTimestamp} from './scripts/lib/version.mjs';
 
 const buildEnv = process.env.MST_BUILD_ENV === 'production' ? 'production' : 'development';
 const isDev = buildEnv !== 'production';
+// 版本号统一计算一次：同时用作头部 @version、代码内日志与 MWISunrisheToolkitState 就绪字段，
+// 保证自动化验证拿头部 @version 做期望值能与页面字段精确匹配（dev 带 -dev.<时间戳> 后缀）。
+const injectedVersion = isDev
+  ? `${JSON.parse(fs.readFileSync('package.json', 'utf8')).version}-dev.${formatDevVersionTimestamp()}`
+  : JSON.parse(fs.readFileSync('package.json', 'utf8')).version;
 
-// 头部与版本在每次构建（含 watch 重建）时实时读取重新计算，
-// 避免 watch 会话内 @version 的 -dev 时间戳与头部文本长期冻结。
+// 头部 @version 复用同一版本常量，避免与代码内注入值出现秒级时间戳差异。
 function computeBanner() {
-  const packageJson = JSON.parse(fs.readFileSync('package.json', 'utf8'));
   const headerTemplate = fs.readFileSync('userscript-header.txt', 'utf8');
-  const version = isDev ? `${packageJson.version}-dev.${formatDevVersionTimestamp()}` : packageJson.version;
   return headerTemplate
     .replace('MWI Sunrishe Toolkit', isDev ? 'MWI Sunrishe Toolkit - Dev' : 'MWI Sunrishe Toolkit')
     .replace('MWI Sunrishe 工具箱', isDev ? 'MWI Sunrishe 工具箱 - 开发版' : 'MWI Sunrishe 工具箱')
-    .replace('__MST_VERSION__', version);
+    .replace('__MST_VERSION__', injectedVersion);
 }
 const STRING_ARRAY_MAX_LINE_LENGTH = 112;
 
@@ -109,7 +111,7 @@ export default {
     banner: isDev ? () => computeBanner() : ''
   },
   plugins: [
-    rawCssPlugin(), replace({preventAssignment: true, values: {__MST_BUILD_ENV__: JSON.stringify(buildEnv), __MST_IS_DEV__: JSON.stringify(isDev)}}), compactStringArraysPlugin(), userscriptHeaderPlugin()
+    rawCssPlugin(), replace({preventAssignment: true, values: {__MST_BUILD_ENV__: JSON.stringify(buildEnv), __MST_IS_DEV__: JSON.stringify(isDev), __MST_VERSION__: JSON.stringify(injectedVersion)}}), compactStringArraysPlugin(), userscriptHeaderPlugin()
   ],
   watch: {buildDelay: 100, clearScreen: false, include: [
       'src/**', 'userscript-header.txt', 'package.json', 'rollup.config.mjs'
