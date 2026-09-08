@@ -264,6 +264,15 @@ test('正式构建保留 JS 可读输出，并继续压缩内嵌 CSS', () => {
   assert.match(rollupSource, /code: `\$\{computeBanner\(\)\.trimEnd\(\)\}\\n\$\{code\}`/);
 });
 
+test('构建不做语法转译，源码兼容性由 ESLint 强制', () => {
+  assert.doesNotMatch(rollupSource, /@babel|babelEs2020|prettierFormat|rollup-plugin-babel/);
+  const eslintConfig = fs.readFileSync(path.join(__dirname, '..', 'eslint.config.mjs'), 'utf8');
+  assert.match(eslintConfig, /no-restricted-syntax/);
+  assert.match(eslintConfig, /LogicalAssignmentExpression/);
+  assert.match(eslintConfig, /StaticBlock/);
+  assert.match(eslintConfig, /PrivateIdentifier/);
+});
+
 test('全局 DOM 观察按帧合并，并在执行订阅回调时暂停监听', () => {
   const {document, FakeMutationObserver} = createObserverHarness();
   const frames = [];

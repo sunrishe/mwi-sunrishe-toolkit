@@ -80,9 +80,9 @@ function loadBuildScoreService() {
 
 const BuildScoreService = loadBuildScoreService();
 
-function loadBuildLoadoutCardData() {
+function loadBuildLoadoutCardData(rawOverride = null) {
   const context = {
-    DataHub: {characterData: {raw: characterData, updatedAt: Date.now()}},
+    DataHub: {characterData: {raw: rawOverride || characterData, updatedAt: Date.now()}},
     i18n: {
       t(key) {
         return key;
@@ -103,6 +103,66 @@ function loadBuildLoadoutCardData() {
 }
 
 const buildLoadoutCardData = loadBuildLoadoutCardData();
+
+test('配装名片勾选“使用最高强化等级”时取库存与已穿戴中的最高强化', () => {
+  const raw = {
+    character: {id: 42, name: 'tester'},
+    characterItems: [
+      {
+        hash: '42::/item_locations/inventory::/items/sword::3',
+        itemLocationHrid: '/item_locations/main_hand',
+        itemHrid: '/items/sword',
+        enhancementLevel: 3
+      }, {
+        hash: '42::/item_locations/inventory::/items/sword::7',
+        itemLocationHrid: '/item_locations/inventory',
+        itemHrid: '/items/sword',
+        enhancementLevel: 7
+      }, {
+        hash: '42::/item_locations/inventory::/items/bow::0',
+        itemLocationHrid: '/item_locations/inventory',
+        itemHrid: '/items/bow',
+        enhancementLevel: 0
+      }
+    ],
+    characterSkills: [],
+    characterAbilities: [],
+    characterHouseRoomMap: {}
+  };
+  const loadBuildoutData = loadBuildLoadoutCardData(raw);
+  const baseLoadout = {
+    actionTypeHrid: '/action_types/combat',
+    wearableMap: {'/item_locations/main_hand': '42::/item_locations/inventory::/items/sword::3'}
+  };
+  // 未勾选“使用精确强化等级”（即游戏“使用最高强化等级”）：取库存+已穿戴最高 +7。
+  const highest = loadBuildoutData({...baseLoadout, useExactEnhancement: false});
+  const highestItem = highest.player.equipment.find((item) => item.itemLocationHrid === '/item_locations/main_hand');
+  assert.equal(highestItem.itemHrid, '/items/sword');
+  assert.equal(highestItem.enhancementLevel, 7);
+  // 勾选“使用精确强化等级”：保留配装 hash 指向的 +3。
+  const exact = loadBuildoutData({...baseLoadout, useExactEnhancement: true});
+  assert.equal(
+    exact.player.equipment.find((item) => item.itemLocationHrid === '/item_locations/main_hand').enhancementLevel,
+    3
+  );
+  // 字段缺失（旧数据/旧版配装）按未勾选精确强化处理：与官方 checked: !useExactEnhancement 一致。
+  const missingField = loadBuildoutData({...baseLoadout});
+  assert.equal(
+    missingField.player.equipment.find((item) => item.itemLocationHrid === '/item_locations/main_hand')
+      .enhancementLevel,
+    7
+  );
+  // 配装 hash 已失效（物品不存在）且勾选最高强化：按同物品最高强化兜底。
+  const staleHash = loadBuildoutData({
+    ...baseLoadout,
+    wearableMap: {'/item_locations/main_hand': '42::/item_locations/inventory::/items/sword::1'},
+    useExactEnhancement: false
+  });
+  assert.equal(
+    staleHash.player.equipment.find((item) => item.itemLocationHrid === '/item_locations/main_hand').enhancementLevel,
+    7
+  );
+});
 
 function loadLifeCardHelpers() {
   const context = {
@@ -203,6 +263,359 @@ const equippedItems = characterData.characterItems.filter(
   (item) => item.itemLocationHrid !== '/item_locations/inventory'
 );
 
+function loadBuildScoreDetailRenderer() {
+  const context = {
+    i18n: {
+      languageKey: 'zh',
+      t(key) {
+        return key;
+      },
+      pick(entry) {
+        return entry?.zh ?? entry?.en ?? '';
+      }
+    },
+    TemplateRenderer: createTemplateRenderer(),
+    DataHub: {
+      clientData: {raw: clientData},
+      getLocalizedGameName(group, hrid) {
+        const detailMap = group === 'itemNames' ? clientData.itemDetailMap : null;
+        return detailMap?.[hrid]?.name || hrid.split('/').pop().replace(/_/g, ' ');
+      },
+      getGameI18nResources() {
+        return null;
+      }
+    },
+    buildScoreService: {
+      // 分类桩：工具槽按工具处理，其余按战斗装备处理。
+      _classifyEquippedItem(item) {
+        const location = String(item.itemLocationHrid || '');
+        if (location.endsWith('_tool')) return {isTool: true, isCombat: false, isSkilling: true};
+        return {isTool: false, isCombat: true, isSkilling: false};
+      }
+    },
+    getAbilityDisplayNames(abilityHrid) {
+      return {zh: abilityHrid, en: abilityHrid};
+    },
+    utils: {
+      substrLastSlash(value) {
+        return String(value).split('/').pop();
+      },
+      escapeHtml(value) {
+        return String(value);
+      }
+    },
+    state: {
+      cardContentMode: 'all',
+      customSkills: {selectedSkills: [], maxSkills: 5},
+      buildScore: {sequence: 0, sources: new Map(), results: new Map()},
+      svgTool: {
+        isLoaded: true,
+        createSVGIcon() {
+          return '<svg></svg>';
+        },
+        createFallbackIcon() {
+          return '<svg></svg>';
+        },
+        getChatIconsSpritePath() {
+          return '';
+        }
+      }
+    }
+  };
+  return vm.runInNewContext(
+    `${readVmSource('src/modules/character-card/data.js', 'src/modules/character-card/renderer.js')}
+        new CharacterCardBuildScoreRenderer({
+            ctx: {DataHub, buildScoreService, i18n, utils},
+            state,
+            getAbilityDisplayNames
+        });`,
+    context
+  );
+}
+
+test('评分明细浮层按战斗/生活分组列明房屋、技能、装备与神龛', () => {
+  const renderer = loadBuildScoreDetailRenderer();
+  const itemScores = {
+    items: {
+      '/items/sword::5::/item_locations/main_hand': 100,
+      '/items/holy_brush::5::/item_locations/milking_tool': 10
+    },
+    abilities: {'/abilities/fireball::4': 2},
+    houses: {'/house_rooms/dojo': 30, '/house_rooms/brewery': 5},
+    shrines: {
+      battle: [
+        {
+          hrid: '/guild_buffs/force_combat',
+          shrineHrid: '/guild_shrines/force',
+          level: 2,
+          value: 21
+        }
+      ],
+      skilling: []
+    }
+  };
+  const cardData = {
+    player: {
+      equipment: [
+        {
+          itemHrid: '/items/sword',
+          itemLocationHrid: '/item_locations/main_hand',
+          enhancementLevel: 5
+        }, {itemHrid: '/items/holy_brush', itemLocationHrid: '/item_locations/milking_tool', enhancementLevel: 5}
+      ]
+    },
+    abilities: [
+      {abilityHrid: '/abilities/fireball', level: 4, slotNumber: 1}
+    ],
+    characterHouseRoomMap: {'/house_rooms/dojo': 3, '/house_rooms/brewery': 2}
+  };
+  const score = {
+    battle: {total: 132, house: 30, abilities: 2, equipment: 100, shrine: 21},
+    skilling: {total: 15, house: 5, tools: 10, equipment: 0, shrine: 0, available: true},
+    equipmentHidden: false,
+    newVersion: true
+  };
+  const groups = renderer.buildScoreDetailGroups({cardData, score, itemScores, useNewBuildScore: true});
+  assert.equal(groups.length, 2, '着装评分应分战斗/生活两组');
+  assert.match(groups[0].title, /battleGearScore/);
+  // 战斗组：战斗房屋（dojo）+ 技能 + 战斗装备（剑 +5）+ 战斗神龛；分组合计分数右对齐（独立 value 节点）。
+  assert.match(groups[0].html, /mst-score-detail-group-value">30\.0</);
+  assert.match(groups[0].html, /mst-score-detail-group-value">2\.0</);
+  assert.match(groups[0].html, /mst-score-detail-group-value">100\.0</);
+  assert.match(groups[0].html, /mst-score-detail-divider/);
+  assert.match(groups[0].html, /house_rooms\/dojo/);
+  assert.match(groups[0].html, /sword \+5/);
+  assert.match(groups[0].html, /\/abilities\/fireball Lv\.4/);
+  assert.match(groups[0].html, /battleShrineScore/);
+  // 神龛组：每个已激活公会增益一行（官方按神龛名称显示 + 生效等级）并带组合计。
+  assert.match(groups[0].html, /force Lv\.2/);
+  assert.match(groups[0].html, /mst-score-detail-group-value">21\.0</);
+  assert.ok(!groups[0].html.includes('holy brush'), '战斗组不应包含生活工具');
+  // 生活组：生活房屋（brewery）+ 工具（刷子），分组标题带合计分数；无生活神龛增益时不显示神龛组。
+  assert.match(groups[1].html, /mst-score-detail-group-value">5\.0</);
+  assert.match(groups[1].html, /mst-score-detail-group-value">10\.0</);
+  assert.match(groups[1].html, /house_rooms\/brewery/);
+  assert.match(groups[1].html, /Holy Brush \+5/);
+  assert.ok(!groups[1].html.includes('skillingShrineScore'), '无生活神龛增益时不显示神龛分组');
+  assert.ok(!groups[1].html.includes('sword'), '生活组不应包含战斗装备');
+  // 数值保留一位小数。
+  assert.match(groups[0].html, /100\.0/);
+});
+
+test('评分明细按固定顺序排列：装备按位置、技能按槽位、神龛按官方神龛顺序', () => {
+  const renderer = loadBuildScoreDetailRenderer();
+  const itemScores = {
+    items: {
+      '/items/mst_sword::5::/item_locations/main_hand': 100,
+      '/items/mst_helmet::0::/item_locations/head': 20,
+      '/items/mst_boots::0::/item_locations/feet': 5,
+      '/items/holy_brush::5::/item_locations/milking_tool': 10,
+      '/items/mst_hammer::0::/item_locations/cheesesmithing_tool': 8
+    },
+    abilities: {'/abilities/fireball::4': 2, '/abilities/icebolt::3': 3},
+    houses: {'/house_rooms/dojo': 30, '/house_rooms/brewery': 5},
+    shrines: {
+      battle: [
+        {
+          hrid: '/guild_buffs/rarity_combat',
+          shrineHrid: '/guild_shrines/rarity',
+          level: 1,
+          value: 7
+        }, {hrid: '/guild_buffs/force_combat', shrineHrid: '/guild_shrines/force', level: 2, value: 21}
+      ],
+      skilling: []
+    }
+  };
+  // 输入顺序故意打乱：装备（脚→头→手）、技能（2 槽→1 槽）、神龛（rarity→force）、
+  // 工具（奶酪锻造锤→挤奶刷，与官方技能顺序相反）。
+  const cardData = {
+    player: {
+      equipment: [
+        {
+          itemHrid: '/items/mst_boots',
+          itemLocationHrid: '/item_locations/feet',
+          enhancementLevel: 0
+        }, {itemHrid: '/items/mst_sword', itemLocationHrid: '/item_locations/main_hand', enhancementLevel: 5}, {
+          itemHrid: '/items/mst_helmet',
+          itemLocationHrid: '/item_locations/head',
+          enhancementLevel: 0
+        }, {
+          itemHrid: '/items/mst_hammer',
+          itemLocationHrid: '/item_locations/cheesesmithing_tool',
+          enhancementLevel: 0
+        }, {itemHrid: '/items/holy_brush', itemLocationHrid: '/item_locations/milking_tool', enhancementLevel: 5}
+      ]
+    },
+    abilities: [
+      {
+        abilityHrid: '/abilities/fireball',
+        level: 4,
+        slotNumber: 2
+      }, {abilityHrid: '/abilities/icebolt', level: 3, slotNumber: 1}
+    ],
+    characterHouseRoomMap: {'/house_rooms/dojo': 3, '/house_rooms/brewery': 2}
+  };
+  const score = {
+    battle: {total: 138, house: 30, abilities: 5, equipment: 125, shrine: 28},
+    skilling: {total: 15, house: 5, tools: 10, equipment: 0, shrine: 0, available: true},
+    equipmentHidden: false,
+    newVersion: true
+  };
+  const groups = renderer.buildScoreDetailGroups({cardData, score, itemScores, useNewBuildScore: true});
+  const battleHtml = groups[0].html;
+  // 装备行按固定位置顺序：主手 → 头部 → 脚部（主手、副手、头、身体、腿、手、脚…）。
+  const swordIndex = battleHtml.indexOf('mst sword +5');
+  const headIndex = battleHtml.indexOf('mst helmet');
+  const bootsIndex = battleHtml.indexOf('mst boots');
+  assert.ok(swordIndex >= 0, '战斗组应包含主手装备行');
+  assert.ok(headIndex > swordIndex, '头部装备应排在主手装备之后');
+  assert.ok(bootsIndex > headIndex, '脚部装备应排在头部装备之后');
+  // 技能行按槽位顺序：1 槽（icebolt）在 2 槽（fireball）之前。
+  const iceboltIndex = battleHtml.indexOf('/abilities/icebolt Lv.3');
+  const fireballIndex = battleHtml.indexOf('/abilities/fireball Lv.4');
+  assert.ok(iceboltIndex >= 0 && fireballIndex > iceboltIndex, '技能应按槽位顺序排列');
+  // 神龛行按官方神龛顺序（sortIndex）：force（1）在 rarity（2）之前。
+  const forceIndex = battleHtml.indexOf('force Lv.2');
+  const rarityIndex = battleHtml.indexOf('rarity Lv.1');
+  assert.ok(forceIndex >= 0 && rarityIndex > forceIndex, '神龛应按官方神龛顺序排列');
+  // 工具组仍归生活组。
+  assert.ok(!battleHtml.includes('holy brush'), '战斗组不应包含生活工具');
+  // 工具行按官方技能顺序（skillDetailMap sortIndex）：挤奶（2）在奶酪锻造（5）之前。
+  const skillingHtml = groups[1].html;
+  const brushIndex = skillingHtml.indexOf('Holy Brush +5');
+  const hammerIndex = skillingHtml.indexOf('mst hammer');
+  assert.ok(brushIndex >= 0 && hammerIndex > brushIndex, '工具应按官方技能顺序排列');
+});
+
+test('复制明细文本中名称与分数在同一行', () => {
+  const renderer = loadBuildScoreDetailRenderer();
+  const itemScores = {
+    items: {
+      '/items/sword::5::/item_locations/main_hand': 100,
+      '/items/holy_brush::5::/item_locations/milking_tool': 10
+    },
+    abilities: {'/abilities/fireball::4': 2},
+    houses: {'/house_rooms/dojo': 30, '/house_rooms/brewery': 5},
+    shrines: {
+      battle: [
+        {
+          hrid: '/guild_buffs/force_combat',
+          shrineHrid: '/guild_shrines/force',
+          level: 2,
+          value: 21
+        }
+      ],
+      skilling: []
+    }
+  };
+  const cardData = {
+    player: {
+      equipment: [
+        {
+          itemHrid: '/items/sword',
+          itemLocationHrid: '/item_locations/main_hand',
+          enhancementLevel: 5
+        }, {itemHrid: '/items/holy_brush', itemLocationHrid: '/item_locations/milking_tool', enhancementLevel: 5}
+      ]
+    },
+    abilities: [
+      {abilityHrid: '/abilities/fireball', level: 4, slotNumber: 1}
+    ],
+    characterHouseRoomMap: {'/house_rooms/dojo': 3, '/house_rooms/brewery': 2}
+  };
+  const score = {
+    battle: {total: 132, house: 30, abilities: 2, equipment: 100, shrine: 21},
+    skilling: {total: 15, house: 5, tools: 10, equipment: 0, shrine: 0, available: true},
+    equipmentHidden: false,
+    newVersion: true
+  };
+  const text = renderer.buildScoreDetailText({cardData, score, itemScores, useNewBuildScore: true});
+  const lines = text.split('\n');
+  assert.equal(lines[0], 'scoreDetailTitle', '首行应为明细标题');
+  const titleLine = lines.find((line) => line.startsWith('battleGearScore'));
+  assert.ok(titleLine, '应包含战斗着装评分标题行');
+  const swordLine = lines.find((line) => line.includes('sword +5'));
+  assert.ok(swordLine, '文本应包含装备行');
+  assert.match(swordLine, /sword \+5\s+100\.0$/, '装备名称与分数应在同一行');
+  const shrineLine = lines.find((line) => line.includes('force Lv.2'));
+  assert.ok(shrineLine, '文本应包含神龛行');
+  assert.match(shrineLine, /force Lv\.2\s+21\.0$/, '神龛名称与分数应在同一行');
+  assert.ok(
+    lines.some((line) => line.includes('battleShrineScore')),
+    '应包含战斗神龛分组合计行'
+  );
+  const legacyScore = {total: 132, house: 30, ability: 2, equipment: 100, equipmentHidden: false, newVersion: false};
+  const legacyText = renderer.buildScoreDetailText({
+    cardData,
+    score: legacyScore,
+    itemScores,
+    useNewBuildScore: false
+  });
+  assert.ok(
+    legacyText.split('\n').some((line) => line.includes('buildScore')),
+    '战力打造分口径应有总分标题行'
+  );
+});
+
+test('评分悬浮提示首行提示点击可查看明细', () => {
+  const renderer = loadBuildScoreDetailRenderer();
+  const legacyTip = renderer.buildScoreTooltip({
+    total: 1,
+    house: 1,
+    ability: 1,
+    equipment: 1,
+    equipmentHidden: false,
+    newVersion: false
+  });
+  assert.ok(legacyTip.startsWith('scoreDetailHint'), '旧版提示首行应为点击查看明细');
+  const newTip = renderer.buildScoreTooltip({
+    battle: {total: 1, house: 1, abilities: 1, equipment: 1, shrine: null},
+    skilling: {total: 1, house: 1, tools: 1, equipment: 1, shrine: null, available: true},
+    equipmentHidden: false,
+    newVersion: true
+  });
+  assert.ok(newTip.startsWith('scoreDetailHint'), '新版提示首行应为点击查看明细');
+});
+
+test('评分明细浮层在战力打造分口径下列明房屋、技能与全部装备', () => {
+  const renderer = loadBuildScoreDetailRenderer();
+  const itemScores = {
+    items: {
+      '/items/sword::5::/item_locations/main_hand': 100,
+      '/items/holy_brush::5::/item_locations/milking_tool': 10
+    },
+    abilities: {'/abilities/fireball::4': 2},
+    houses: {'/house_rooms/dojo': 30}
+  };
+  const cardData = {
+    player: {
+      equipment: [
+        {
+          itemHrid: '/items/sword',
+          itemLocationHrid: '/item_locations/main_hand',
+          enhancementLevel: 5
+        }, {itemHrid: '/items/holy_brush', itemLocationHrid: '/item_locations/milking_tool', enhancementLevel: 5}
+      ]
+    },
+    abilities: [
+      {abilityHrid: '/abilities/fireball', level: 4, slotNumber: 1}
+    ],
+    characterHouseRoomMap: {'/house_rooms/dojo': 3, '/house_rooms/brewery': 2}
+  };
+  const score = {total: 132, house: 30, ability: 2, equipment: 100, equipmentHidden: false, newVersion: false};
+  const groups = renderer.buildScoreDetailGroups({cardData, score, itemScores, useNewBuildScore: false});
+  assert.equal(groups.length, 1, '战力打造分只有单组');
+  assert.match(groups[0].title, /buildScore/);
+  assert.match(groups[0].html, /mst-score-detail-group-value">30\.0</);
+  assert.match(groups[0].html, /mst-score-detail-group-value">2\.0</);
+  assert.match(groups[0].html, /mst-score-detail-group-value">110\.0</);
+  assert.match(groups[0].html, /house_rooms\/dojo/);
+  assert.ok(!groups[0].html.includes('brewery'), '战力打造分房屋不含生活房间（分值为 0 不列出）');
+  assert.match(groups[0].html, /sword \+5/);
+  assert.match(groups[0].html, /Holy Brush \+5/);
+  assert.match(groups[0].html, /\/abilities\/fireball Lv\.4/);
+});
+
 function createCardData(mode = 'actual') {
   const equipment = equippedItems.map((item) => ({
     ...item,
@@ -246,6 +659,49 @@ function assertScoreStructure(score, label) {
     label + ' 生活总分不等于分项之和'
   );
 }
+
+test('单物品评分输出装备/技能/房屋分值并随算法口径切换', () => {
+  const cardData = createCardData('actual');
+  const service = new BuildScoreService(createMarketService());
+  const newScores = service.calculateItemScores(cardData, true);
+  assert.ok(newScores, '着装评分口径应返回单物品评分');
+  // 装备键 = itemHrid::强化等级；无市场价值的物品（估值 0）不输出，与聚合口径一致。
+  assert.ok(Object.keys(newScores.items).length > 0, '缺少装备评分');
+  Object.entries(newScores.items).forEach(
+    ([
+      key, value
+    ]) => {
+      assert.ok(typeof value === 'number' && value >= 0, `装备评分非法 ${key}`);
+    }
+  );
+  assert.ok(Object.keys(newScores.abilities).length > 0, '缺少技能评分');
+  assert.ok(Object.keys(newScores.houses).length > 0, '缺少房屋评分');
+  // 与聚合口径一致：按分类重建各汇总（战斗/生活双分类物品在聚合中同时计入两列）。
+  const gearScores = service._calculateGearScores(cardData, clientData);
+  let combatSum = 0;
+  let toolsSum = 0;
+  let skillingEquipSum = 0;
+  cardData.player.equipment.forEach((item) => {
+    if (item.itemLocationHrid === '/item_locations/inventory') return;
+    const classification = service._classifyEquippedItem(item, clientData);
+    const value = (Number(item.count ?? 1) * service._getItemValue(item, clientData)) / 1_000_000;
+    if (classification.isCombat) combatSum += value;
+    if (classification.isTool) toolsSum += value;
+    else if (classification.isSkilling) skillingEquipSum += value;
+  });
+  assert.ok(Math.abs(combatSum - gearScores.combatEquipment) < 1e-9, '战斗装备分与逐项之和不一致');
+  assert.ok(Math.abs(toolsSum - gearScores.skillingTools) < 1e-9, '生活工具分与逐项之和不一致');
+  assert.ok(Math.abs(skillingEquipSum - gearScores.skillingEquipment) < 1e-9, '生活装备分与逐项之和不一致');
+  const houseSum = Object.values(newScores.houses).reduce((sum, value) => sum + value, 0);
+  const houseScores = service._calculateHouseScores(cardData, clientData);
+  assert.ok(Math.abs(houseSum - houseScores.all) < 1e-9, '房屋单物品之和应等于房屋总分');
+  // 未勾选着装评分时用战力打造分口径，同样输出三类。
+  const legacyScores = service.calculateItemScores(cardData, false);
+  assert.ok(legacyScores, '战力打造分口径应返回单物品评分');
+  assert.ok(Object.keys(legacyScores.items).length > 0, '缺少装备评分');
+  assert.ok(Object.keys(legacyScores.abilities).length > 0, '缺少技能评分');
+  assert.ok(Object.keys(legacyScores.houses).length > 0, '缺少房屋评分');
+});
 
 test('战斗配装名片使用当前穿戴的全部工具计算装备分', () => {
   const combatLoadout = Object.values(characterData.characterLoadoutMap).find(
@@ -658,4 +1114,17 @@ test('公会神龛生效等级按游戏规则取增益等级与神龛等级较�
   // 资料场景无公会建筑数据：直接用角色等级，累加三级。
   const withoutShrine = service._v26GuildShrineScores(baseCard, clientData);
   assert.equal(withoutShrine.battle, 39.675);
+
+  // 逐项明细与聚合口径一致：单增益行合计等于该组总分，行带生效等级。
+  const detail = service._calculateV26ShrineDetails(
+    {...baseCard, guildBuildingLevelMap: {'/guild_shrines/force': 2}},
+    clientData
+  );
+  assert.equal(detail.battle.length, 1);
+  assert.equal(detail.battle[0].hrid, '/guild_buffs/force_combat');
+  // 官方 UI 按 guildShrineNames.<神龛hrid> 显示名称，明细行需携带神龛 hrid 供取名。
+  assert.equal(detail.battle[0].shrineHrid, '/guild_shrines/force');
+  assert.equal(detail.battle[0].level, 2, '生效等级应取 min(增益 3, 神龛 2)');
+  assert.equal(detail.battle[0].value, 14.36);
+  assert.equal(detail.skilling.length, 0);
 });

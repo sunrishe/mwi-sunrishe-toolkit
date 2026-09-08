@@ -11,7 +11,9 @@ const injectedVersion = isDev
   ? `${JSON.parse(fs.readFileSync('package.json', 'utf8')).version}-dev.${formatDevVersionTimestamp()}`
   : JSON.parse(fs.readFileSync('package.json', 'utf8')).version;
 
-// 头部 @version 复用同一版本常量，避免与代码内注入值出现秒级时间戳差异。
+// 头部与版本在每次构建（含 watch 重建）时实时读取重新计算，
+// 避免 watch 会话内 @version 的 -dev 时间戳与头部文本长期冻结；
+// 头部 @version 复用同一 injectedVersion 常量，避免与代码内注入值出现秒级时间戳差异。
 function computeBanner() {
   const headerTemplate = fs.readFileSync('userscript-header.txt', 'utf8');
   return headerTemplate
@@ -111,7 +113,7 @@ export default {
     banner: isDev ? () => computeBanner() : ''
   },
   plugins: [
-    rawCssPlugin(), replace({preventAssignment: true, values: {__MST_BUILD_ENV__: JSON.stringify(buildEnv), __MST_IS_DEV__: JSON.stringify(isDev), __MST_VERSION__: JSON.stringify(injectedVersion)}}), compactStringArraysPlugin(), userscriptHeaderPlugin()
+    rawCssPlugin(), replace({preventAssignment: true, values: {__MST_BUILD_ENV__: JSON.stringify(buildEnv), __MST_IS_DEV__: JSON.stringify(isDev), __MST_PACKAGE_VERSION__: JSON.stringify(injectedVersion)}}), compactStringArraysPlugin(), userscriptHeaderPlugin()
   ],
   watch: {buildDelay: 100, clearScreen: false, include: [
       'src/**', 'userscript-header.txt', 'package.json', 'rollup.config.mjs'

@@ -239,6 +239,12 @@ export const CHARACTER_CARD_MESSAGES = {
   algorithmSourceMwiTools: {zh: '算法来源：MWITools', en: 'Algorithm source: MWITools'},
   battleGearScore: {zh: '战斗着装评分', en: 'Combat Gear Score'},
   skillingGearScore: {zh: '生活着装评分', en: 'Skilling Gear Score'},
+  gearScoreLabel: {zh: '着装评分', en: 'Gear Score'},
+  scoreDetailTitle: {zh: '评分明细', en: 'Score details'},
+  scoreDetailHint: {zh: '点击查看评分明细', en: 'Click for score details'},
+  copyScoreDetail: {zh: '复制明细', en: 'Copy details'},
+  scoreDetailCopied: {zh: '评分明细已复制', en: 'Score details copied'},
+  copyScoreDetailFailed: {zh: '复制评分明细失败', en: 'Failed to copy score details'},
   useNewBuildScore: {zh: '启用着装评分', en: 'Use gear score'},
   newBuildScoreBadge: {zh: '着装评分（MWITools 口径）', en: 'Gear score (MWITools)'},
   skillingTools: {zh: '生活工具', en: 'Skilling Tools'},
@@ -311,7 +317,75 @@ export const TOOLKIT_MENU_MESSAGES = {
   dungeonProfitCalculator: {zh: '地下城收益计算器', en: 'Dungeon Profit Calculator'},
   houseUpgradeCalculator: {zh: '房屋升级材料计算器', en: 'House Upgrade Calculator'},
   combatUpgradeCalculator: {zh: '战斗升级计算器', en: 'Combat Upgrade Calculator'},
-  abilityUpgradeCalculator: {zh: '技能升级计算器', en: 'Ability Upgrade Calculator'}
+  abilityUpgradeCalculator: {zh: '技能升级计算器', en: 'Ability Upgrade Calculator'},
+  subscribeNotification: {zh: '订阅通知', en: 'Notifications'}
+};
+
+// subscribe-notification-messages
+export const SUBSCRIBE_NOTIFICATION_MESSAGES = {
+  subscribeNotificationTitle: {zh: '订阅通知', en: 'Subscription Notifications'},
+  subscribeNotificationSectionGeneral: {zh: '通用配置', en: 'General'},
+  subscribeNotificationSectionChannel: {zh: '渠道配置', en: 'Channel'},
+  subscribeNotificationDocLink: {zh: '官方配置说明', en: 'Official setup guide'},
+  subscribeNotificationEnabled: {zh: '启用订阅通知', en: 'Enable subscription notifications'},
+  subscribeNotificationChannel: {zh: '通知渠道', en: 'Channel'},
+  subscribeNotificationChannelDingtalk: {zh: '钉钉机器人', en: 'DingTalk robot'},
+  subscribeNotificationChannelWeCom: {zh: '企业微信机器人', en: 'WeCom robot'},
+  subscribeNotificationChannelFeishu: {zh: '飞书机器人', en: 'Feishu bot'},
+  subscribeNotificationDingtalkUrl: {
+    zh: '钉钉 Webhook 地址（含 access_token）',
+    en: 'DingTalk webhook URL (with access_token)'
+  },
+  subscribeNotificationDingtalkSecret: {zh: '钉钉加签密钥（可选）', en: 'DingTalk sign secret (optional)'},
+  subscribeNotificationWeComKey: {zh: '企业微信机器人 key', en: 'WeCom bot key'},
+  subscribeNotificationFeishuUrl: {zh: '飞书 Webhook 地址', en: 'Feishu webhook URL'},
+  subscribeNotificationFeishuSecret: {zh: '飞书签名密钥（可选）', en: 'Feishu sign secret (optional)'},
+  subscribeNotificationMinInterval: {zh: '最小推送间隔（秒）', en: 'Min push interval (s)'},
+  subscribeNotificationProgressInterval: {
+    zh: '定期进度推送间隔（分钟，0 关闭）',
+    en: 'Progress push interval (min, 0 to disable)'
+  },
+  subscribeNotificationPushLimit: {zh: '每分钟推送上限（条）', en: 'Push limit per minute'},
+  subscribeNotificationMsgType: {zh: '消息类型', en: 'Message types'},
+  subscribeNotificationTypeQueue: {zh: '行动队列', en: 'Action queue'},
+  subscribeNotificationTypeComplete: {zh: '任务完成', en: 'Task completion'},
+  subscribeNotificationTypeProgress: {zh: '定期进度', en: 'Periodic progress'},
+  subscribeNotificationTypeEmpty: {zh: '队列为空', en: 'Empty queue'},
+  subscribeNotificationTypeCompleteTitle: {
+    zh: '当前行动结束、下一个行动开始时推送，附等待执行的前 3 项队列；队列腾空时随通知附加提醒',
+    en: 'Pushes when the current action ends and the next starts, with up to 3 waiting queue entries; an alert is appended when the queue becomes empty.'
+  },
+  subscribeNotificationTypeProgressTitle: {
+    zh: '当前任务长时间未完成时，按设定间隔推送进度（已完成与剩余次数）并附等待队列，间隔在通用配置中调整',
+    en: 'Pushes progress (completed and remaining counts) plus the waiting queue at the configured interval while the current task keeps running; the interval is set in General.'
+  },
+  subscribeNotificationTypeEmptyTitle: {
+    zh: '队列腾空后，固定每分钟推送一条空队列提醒，直到补充新任务',
+    en: 'Pushes an empty-queue reminder every minute after the queue becomes empty, until new tasks are added.'
+  },
+  subscribeNotificationTestSend: {zh: '测试发送', en: 'Send test'},
+  subscribeNotificationTestBody: {
+    zh: '这是一条 MST 订阅通知测试消息',
+    en: 'This is a test message from MST subscription notifications.'
+  },
+  subscribeNotificationTestOk: {zh: '测试消息已发送', en: 'Test message sent'},
+  subscribeNotificationTestFail: {zh: '测试发送失败', en: 'Test send failed'},
+  subscribeNotificationInvalid: {zh: '请先填写当前渠道的配置', en: 'Fill in the channel configuration first'},
+  subscribeNotificationHint: {
+    zh: '仅在游戏页面打开期间监听队列变化，离线期间不感知、不补推；密钥只保存在本地浏览器。',
+    en: 'Queue changes are tracked only while the game page is open; offline changes are not tracked. Secrets stay in this browser.'
+  },
+  subscribeNotificationMsgTitle: {zh: '行动队列', en: 'Action Queue'},
+  subscribeNotificationTaskCompleted: {zh: '完成', en: 'Completed'},
+  subscribeNotificationTaskStarted: {zh: '开始', en: 'Started'},
+  subscribeNotificationTaskWithCount: {zh: '{0}（{1}/{2}）', en: '{0} ({1}/{2})'},
+  subscribeNotificationTaskUnlimited: {zh: '{0}（无上限）', en: '{0} (unlimited)'},
+  subscribeNotificationQueueLabel: {zh: '等待队列：', en: 'Waiting queue:'},
+  subscribeNotificationQueueMore: {zh: '…共 {0} 项', en: '…{0} in total'},
+  subscribeNotificationQueueEmpty: {zh: '行动队列已空，请及时补充', en: 'Action queue is empty, please refill it'},
+  subscribeNotificationProgressDone: {zh: '{0}：已完成 {1} 次', en: '{0}: {1} done'},
+  subscribeNotificationProgressRemaining: {zh: '，剩余 {0} 次', en: ', {0} remaining'},
+  subscribeNotificationServerTest: {zh: '测试服', en: 'Test server'}
 };
 
 // dungeon-calculator-messages
@@ -586,5 +660,6 @@ export const I18N_MESSAGE_GROUPS = {
   equipmentComparison: EQUIPMENT_COMPARISON_MESSAGES,
   combatCalculator: COMBAT_CALCULATOR_MESSAGES,
   abilityCalculator: ABILITY_CALCULATOR_MESSAGES,
-  combatSimImport: COMBAT_SIM_IMPORT_MESSAGES
+  combatSimImport: COMBAT_SIM_IMPORT_MESSAGES,
+  subscribeNotification: SUBSCRIBE_NOTIFICATION_MESSAGES
 };

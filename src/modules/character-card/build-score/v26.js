@@ -43,7 +43,7 @@ export const buildScoreV26EnhancementMethods = {
   },
 
   _v26SuccessRateAt(table, level) {
-    const value = Number(table[level] ?? table.at(-1));
+    const value = Number(table[level] ?? table[table.length - 1]);
     if (!Number.isFinite(value)) return 0;
     return value > 1 ? value / 100 : value;
   },
@@ -863,6 +863,41 @@ export const buildScoreNewCalculators = {
     return scores;
   },
 
+  // 单物品评分（着装评分口径）：装备/技能/房屋各自的分值（折算到 M），供名片物品悬浮提示使用。
+  _calculateNewItemScores(cardData, clientData) {
+    const context = {cache: new Map(), visited: new Set()};
+    const items = {};
+    const equipment = cardData.player?.equipment || cardData.player?.characterItems || [];
+    for (const item of equipment) {
+      if (item.itemLocationHrid === '/item_locations/inventory') continue;
+      if (!item.itemHrid) continue;
+      const value = Number(item.count ?? 1) * this._getItemValue(item, clientData, context);
+      if (!(value > 0)) continue;
+      items[`${item.itemHrid}::${Number(item.enhancementLevel || 0)}::${item.itemLocationHrid}`] = value / 1_000_000;
+    }
+    const abilities = {};
+    (cardData.abilities || []).forEach((ability) => {
+      if (!ability.abilityHrid) return;
+      const cost = this._calculateV26AbilityCost(ability, clientData);
+      if (!(cost > 0)) return;
+      abilities[`${ability.abilityHrid}::${Number(ability.level || 0)}`] = cost / 1_000_000;
+    });
+    const houses = {};
+    Object.entries(cardData.characterHouseRoomMap || cardData.houseRooms || {}).forEach(
+      ([
+        key, room
+      ]) => {
+        const houseRoomHrid = room?.houseRoomHrid || (key.startsWith('/house_rooms/') ? key : '');
+        const level = Number(typeof room === 'object' ? room?.level : room) || 0;
+        if (!houseRoomHrid || level <= 0) return;
+        const cost = this._calculateV26HouseRoomCost(houseRoomHrid, level, clientData);
+        if (!(cost > 0)) return;
+        houses[houseRoomHrid] = cost / 1_000_000;
+      }
+    );
+    return {items, abilities, houses};
+  },
+
   // 房屋分按房间可用动作类型分为战斗/生活两类，造价逐级按公平价值累加，口径与 MWITools 一致。
   _calculateHouseScores(cardData, clientData) {
     let combat = 0;
@@ -884,14 +919,7 @@ export const buildScoreNewCalculators = {
             actionTypeHrid, isUsable
           ]) => actionTypeHrid !== '/action_types/combat' && Boolean(isUsable)
         );
-        let cost = 0;
-        const upgradeCostsMap = houseDetail.upgradeCostsMap || {};
-        for (let currentLevel = 1; currentLevel <= level; currentLevel++) {
-          (upgradeCostsMap[currentLevel] || []).forEach((item) => {
-            cost += Number(item.count || 0) * this._fairValue(item.itemHrid);
-          });
-        }
-        const value = cost / 1_000_000;
+        const value = this._calculateV26HouseRoomCost(houseRoomHrid, level, clientData) / 1_000_000;
         all += value;
         if (isCombat) combat += value;
         if (isSkilling) skilling += value;
@@ -900,23 +928,42 @@ export const buildScoreNewCalculators = {
     return {combat, skilling, all};
   },
 
+  // 单个房间造价（着装评分口径）：逐级材料按公平价值累加。
+  _calculateV26HouseRoomCost(houseRoomHrid, level, clientData) {
+    const houseDetail = clientData.houseRoomDetailMap[houseRoomHrid];
+    if (!houseDetail) return 0;
+    let cost = 0;
+    const upgradeCostsMap = houseDetail.upgradeCostsMap || {};
+    for (let currentLevel = 1; currentLevel <= level; currentLevel++) {
+      (upgradeCostsMap[currentLevel] || []).forEach((item) => {
+        cost += Number(item.count || 0) * this._fairValue(item.itemHrid);
+      });
+    }
+    return cost;
+  },
+
   // 技能分按等级所需经验折算技能书数量（8 个基础技能每本 50 经验，其余 500），再按公平价值计价。
   _calculateNewAbilityScore(abilities, clientData) {
+    let cost = 0;
+    abilities.forEach((ability) => {
+      cost += this._calculateV26AbilityCost(ability, clientData);
+    });
+    return cost / 1_000_000;
+  },
+
+  // 单个技能的技能书成本（着装评分口径）。
+  _calculateV26AbilityCost(ability, clientData) {
     const basicAbilityIds = [
       'poke', 'scratch', 'smack', 'quick_shot', 'water_strike',
       'fireball', 'entangle', 'minor_heal'
     ];
-    let cost = 0;
-    abilities.forEach((ability) => {
-      const targetLevel = Number(ability.level || 0);
-      const experience = Number(clientData.levelExperienceTable[targetLevel] || 0);
-      const experiencePerBook = basicAbilityIds.some((id) => ability.abilityHrid?.includes(id)) ? 50 : 500;
-      const bookCount = Number((experience / experiencePerBook + 1).toFixed(1));
-      const itemHrid = String(ability.abilityHrid || '').replace('/abilities/', '/items/');
-      const fairValue = this._fairValue(itemHrid, 0);
-      if (fairValue > 0) cost += bookCount * fairValue;
-    });
-    return cost / 1_000_000;
+    const targetLevel = Number(ability.level || 0);
+    const experience = Number(clientData.levelExperienceTable[targetLevel] || 0);
+    const experiencePerBook = basicAbilityIds.some((id) => ability.abilityHrid?.includes(id)) ? 50 : 500;
+    const bookCount = Number((experience / experiencePerBook + 1).toFixed(1));
+    const itemHrid = String(ability.abilityHrid || '').replace('/abilities/', '/items/');
+    const fairValue = this._fairValue(itemHrid, 0);
+    return fairValue > 0 ? bookCount * fairValue : 0;
   },
 
   // 公会 Buff 当前等级（MWITools getGuildBuffLevel）：支持数组或按 hrid 索引的对象。
@@ -926,6 +973,61 @@ export const buildScoreNewCalculators = {
       : levels?.[guildBuffHrid];
     const level = Number(typeof record === 'object' ? (record?.level ?? record?.currentLevel) : record);
     return Number.isSafeInteger(level) && level > 0 ? level : 0;
+  },
+
+  // 单个公会神龛增益的分值（着装评分口径）：生效等级内逐级代币与信用成本。
+  // valid 为 false 表示数据不可估值（与聚合口径一致，该组整体不计入）。
+  _calculateV26GuildShrineBuffValue(detail, buffLevel, shrineLevel, clientData, context) {
+    const currentLevel = shrineLevel > 0 ? Math.min(buffLevel, shrineLevel) : buffLevel;
+    let value = 0;
+    const levelCosts = detail.levelCosts;
+    if (!levelCosts) return {value, valid: false};
+    for (let level = 1; level <= currentLevel; level++) {
+      const cost = levelCosts[level] ?? levelCosts[String(level)];
+      if (!cost) return {value, valid: false};
+      const guildTokenCount = Number(cost.guildTokenCost);
+      if (guildTokenCount) {
+        const tokenValue = this._v26GuildTokenValue(clientData, context);
+        if (!(tokenValue > 0)) return {value, valid: false};
+        value += guildTokenCount * tokenValue;
+      }
+      for (const creditCost of cost.creditCosts ?? []) {
+        const count = Number(creditCost?.count);
+        if (!count) continue;
+        const creditValue = this._v26GuildCreditValue(creditCost.itemHrid, clientData);
+        if (!(creditValue > 0)) return {value, valid: false};
+        value += count * creditValue;
+      }
+    }
+    return {value, valid: true};
+  },
+
+  // 公会神龛逐项明细：每个已激活公会增益一行（生效等级取 min(个人增益, 公会神龛等级)），
+  // 供评分明细浮层展示。
+  _calculateV26ShrineDetails(cardData, clientData, context = {cache: new Map(), visited: new Set()}) {
+    const levels = cardData.characterGuildBuffMap;
+    const details = Object.values(clientData.guildBuffDetailMap || {});
+    if (!levels || typeof levels !== 'object' || !details.length) return {battle: [], skilling: []};
+    const buildingLevels = cardData.guildBuildingLevelMap || {};
+    const out = {battle: [], skilling: []};
+    for (const detail of details) {
+      const guildBuffHrid = detail?.guildBuffHrid ?? detail?.hrid;
+      if (!guildBuffHrid) continue;
+      const buffLevel = this._v26GuildBuffLevel(guildBuffHrid, levels);
+      if (!buffLevel) continue;
+      const shrineLevel = Number(buildingLevels?.[detail?.shrineHrid]) || 0;
+      if (typeof detail?.isCombat !== 'boolean') continue;
+      const result = this._calculateV26GuildShrineBuffValue(detail, buffLevel, shrineLevel, clientData, context);
+      if (!result.valid || !(result.value > 0)) continue;
+      out[detail.isCombat ? 'battle' : 'skilling'].push({
+        hrid: guildBuffHrid,
+        // 官方 UI 用 guildShrineNames.<神龛hrid> 显示名称（游戏无独立公会增益名称键）。
+        shrineHrid: detail.shrineHrid,
+        level: shrineLevel > 0 ? Math.min(buffLevel, shrineLevel) : buffLevel,
+        value: result.value / 1_000_000
+      });
+    }
+    return out;
   },
 
   // 公会神龛分数（MWITools v26.4.14 起计入着装评分）：按公会 Buff 等级累加每级
@@ -946,43 +1048,16 @@ export const buildScoreNewCalculators = {
       if (!guildBuffHrid) continue;
       const buffLevel = this._v26GuildBuffLevel(guildBuffHrid, levels);
       if (!buffLevel) continue;
-      const shrineLevel = Number(buildingLevels?.[detail?.shrineHrid]) || 0;
-      const currentLevel = shrineLevel > 0 ? Math.min(buffLevel, shrineLevel) : buffLevel;
       if (typeof detail?.isCombat !== 'boolean') return {battle: null, skilling: null};
       const group = detail.isCombat ? 'battle' : 'skilling';
       if (!valid[group]) continue;
-      const levelCosts = detail.levelCosts;
-      if (!levelCosts) {
+      const shrineLevel = Number(buildingLevels?.[detail?.shrineHrid]) || 0;
+      const result = this._calculateV26GuildShrineBuffValue(detail, buffLevel, shrineLevel, clientData, context);
+      if (!result.valid) {
         valid[group] = false;
         continue;
       }
-      for (let level = 1; level <= currentLevel; level++) {
-        const cost = levelCosts[level] ?? levelCosts[String(level)];
-        if (!cost) {
-          valid[group] = false;
-          break;
-        }
-        const guildTokenCount = Number(cost.guildTokenCost);
-        if (guildTokenCount) {
-          const tokenValue = this._v26GuildTokenValue(clientData, context);
-          if (!(tokenValue > 0)) {
-            valid[group] = false;
-            break;
-          }
-          values[group] += guildTokenCount * tokenValue;
-        }
-        for (const creditCost of cost.creditCosts ?? []) {
-          const count = Number(creditCost?.count);
-          if (!count) continue;
-          const creditValue = this._v26GuildCreditValue(creditCost.itemHrid, clientData);
-          if (!(creditValue > 0)) {
-            valid[group] = false;
-            break;
-          }
-          values[group] += count * creditValue;
-        }
-        if (!valid[group]) break;
-      }
+      values[group] += result.value;
     }
     return {
       battle: valid.battle ? values.battle / 1_000_000 : null,

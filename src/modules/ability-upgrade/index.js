@@ -764,7 +764,7 @@ const abilityUpgradePageIntegration = {
         const grids = [
           ...panel.querySelectorAll('[class*="AbilitiesPanel_abilityGrid"]')
         ];
-        if (ability.closest('[class*="AbilitiesPanel_abilityGrid"]') !== grids.at(-1)) {
+        if (ability.closest('[class*="AbilitiesPanel_abilityGrid"]') !== grids[grids.length - 1]) {
           feature.lastClickedAbilityHrid = '';
           return;
         }
@@ -1073,6 +1073,7 @@ export class AbilityUpgradeCalculatorFeature {
       html: this.getDialogHtml(),
       width: 'min(51rem, calc(100vw - 1rem))',
       popupClass: 'mst-upgrade-calculator-dialog',
+      icon: 'skills',
       didOpen: (popup) => this.bind(popup),
       willClose: () => {
         this.bindController?.abort();

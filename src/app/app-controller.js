@@ -1,4 +1,5 @@
 import {StyleService} from '../common/runtime.js';
+import {PACKAGE_VERSION} from '../common/build-flags.js';
 import MST_APP_BASE_CSS from '../common/styles/app-base.css';
 import MST_INTEGRATED_CSS from '../common/styles/integrated.css';
 import MST_LANGUAGE_TOGGLE_CSS from '../common/styles/language-toggle.css';
@@ -165,6 +166,7 @@ export class AppController {
       ClipboardCartImportFeature,
       LabyrinthSupplyFeature,
       MarketplaceCartFeature,
+      SubscribeNotificationFeature,
       Notifier
     } = this.ctx;
     installAppStyles();
@@ -177,13 +179,15 @@ export class AppController {
     const combatSimulationService = new CombatSimulationService(this.ctx);
     const equipmentComparisonService = new EquipmentComparisonService(marketDataService, combatSimulationService);
     const equipmentComparison = new EquipmentComparisonFeature(this.ctx, marketDataService, equipmentComparisonService);
+    const subscribeNotification = new SubscribeNotificationFeature(this.ctx);
     const toolkitMenu = new ToolkitMenuFeature(this.ctx, {
       characterCardFeature,
       appController: this,
       combatCalculator,
       abilityCalculator,
       equipmentComparison,
-      dungeonCalculator
+      dungeonCalculator,
+      subscribeNotification
     });
     // 暴露少量实例给控制台排查，正式功能仍通过菜单入口触发。
     window.MWISunrisheToolkit = {
@@ -206,11 +210,12 @@ export class AppController {
     new ClipboardCartImportFeature(this.ctx, Notifier).init();
     new LabyrinthSupplyFeature().init();
     new MarketplaceCartFeature().init();
+    subscribeNotification.init();
     this.languageController.init();
     this.observeDOM();
     // 就绪状态字段推进为版本号（dev 构建带时间戳，与头部 @version 同源）：字段值 === 当前构建
     // 版本即表示初始化完成，自动化验证以此校验页面加载的构建是否为最新（不一致则刷新重试）。
-    this.ctx.pageWindow.MWISunrisheToolkitState = __MST_VERSION__;
+    this.ctx.pageWindow.MWISunrisheToolkitState = PACKAGE_VERSION;
   }
 }
 

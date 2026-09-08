@@ -14,6 +14,7 @@ import {HouseCalculator} from './house-calculator/calculator.js';
 import {HouseCalculatorLauncher, HouseCalculatorUI} from './house-calculator/index.js';
 import {LabyrinthSupplyFeature} from './labyrinth-supply/index.js';
 import {MarketplaceCartFeature} from './marketplace-cart/index.js';
+import {SubscribeNotificationFeature} from './subscribe-notification/index.js';
 import {ToolkitMenuFeature} from './toolkit-menu/index.js';
 
 export function installModules(ctx) {
@@ -46,5 +47,6 @@ export function installModules(ctx) {
   ctx.HouseCalculatorUI = HouseCalculatorUI;
   ctx.LabyrinthSupplyFeature = LabyrinthSupplyFeature;
   ctx.MarketplaceCartFeature = MarketplaceCartFeature;
+  ctx.SubscribeNotificationFeature = SubscribeNotificationFeature;
   ctx.ToolkitMenuFeature = ToolkitMenuFeature;
 }

@@ -102,7 +102,7 @@ export class CharacterCardState {
     this.activeCard = null;
     this.initialCard = null;
     this.teamCard = {members: [], teamName: '', refreshTimer: null};
-    this.buildScore = {sequence: 0, sources: new Map()};
+    this.buildScore = {sequence: 0, sources: new Map(), results: new Map()};
   }
 }
 
@@ -118,12 +118,13 @@ export class CharacterCardDialogController {
     return document.querySelector('.mst-character-card-modal:not(.mst-team-card-modal) #mst-character-card');
   }
 
-  open({title, html, width = this.getDefaultWidth(), team = false, didOpen, willClose}) {
+  open({title, html, width = this.getDefaultWidth(), team = false, icon = '', didOpen, willClose}) {
     this.state.svgTool.refreshSpritePathsFromDOM();
     return this.Notifier.html({
       title,
       html,
       width,
+      icon,
       popupClass: 'mst-character-card-modal' + (team ? ' mst-team-card-modal' : ''),
       didOpen: (modal) => {
         didOpen?.(modal);
@@ -278,6 +279,10 @@ export class CharacterCardLayoutController {
   refreshCardLayoutLanguage(modal) {
     const columnLabel = modal.querySelector('.mst-card-column-toggle span');
     if (columnLabel) columnLabel.textContent = this.i18n.t('twoColumns');
+    // “启用着装评分”开关与双列开关共用 mst-card-column-toggle 样式类，
+    // 需按专属类单独刷新文案，否则语言切换后停留在打开时的语言。
+    const newScoreLabel = modal.querySelector('.mst-card-new-score-toggle span');
+    if (newScoreLabel) newScoreLabel.textContent = this.i18n.t('useNewBuildScore');
     const select = modal.querySelector('.mst-card-layout-select');
     if (!select) return;
     select.setAttribute('aria-label', this.i18n.t('cardLayout'));
@@ -1066,6 +1071,7 @@ export class CharacterCardStandaloneDialogs {
       dialogController.open({
         title: i18n.t('characterCard'),
         html: modalTemplate,
+        icon: 'social',
         didOpen: (modal) => {
           bindStandaloneCharacterCardControls(modal);
           refreshCharacterCard(modal);
@@ -1136,6 +1142,7 @@ export class CharacterCardStandaloneDialogs {
       dialogController.open({
         title: i18n.t('characterCard'),
         html: modalTemplate,
+        icon: 'social',
         didOpen: (modal) => {
           bindStandaloneCharacterCardControls(modal);
           refreshCharacterCard(modal);
@@ -1207,6 +1214,7 @@ export class CharacterCardStandaloneDialogs {
     dialogController.open({
       title: i18n.t('loadoutCharacterCard'),
       html: modalTemplate,
+      icon: 'loadout',
       didOpen: (modal) => {
         modal.querySelector('.mst-download-card-btn').onclick = CardImageExporter.downloadCharacter;
         modal.querySelector('.mst-copy-card-btn').onclick = CardImageExporter.copyCharacter;
@@ -1609,6 +1617,7 @@ export class CharacterCardTeamController {
         html: modalTemplate,
         width: teamView.getTeamDialogWidth(state.teamCard.members.length),
         team: true,
+        icon: 'social',
         didOpen: (modal) => {
           teamView.renderTeamCardDialog(modal);
 
@@ -1833,6 +1842,7 @@ export class CharacterCardLanguageController {
     this.standaloneController = deps.standaloneController;
     this.teamController = deps.teamController;
     this.entryController = deps.entryController;
+    this.ctx = deps.ctx;
     this.i18n = deps.ctx.i18n;
   }
 
@@ -1884,6 +1894,9 @@ export class CharacterCardLanguageController {
   setLanguage() {
     this.entryController.refreshEntryLanguage();
     this.refreshOpenCardLanguage();
+    // 游戏以英文启动时官方 i18next 未加载中文包，此时切中文物品名会退回 hrid；
+    // 触发游戏自身语言包加载，完成后 mst:i18n:ready 会再次进入本方法完成刷新。
+    this.ctx?.DataHub?.ensureGameLanguageResources?.(this.i18n.languageKey);
   }
 }
 
@@ -2161,6 +2174,8 @@ export class CharacterCardFeature {
     if (document.body) start();
     else document.addEventListener('DOMContentLoaded', start, {once: true});
     LanguageEvents.subscribe(() => OriginalCharacterCardFeature.setLanguage());
+    // 游戏语言包补拉完成（英文启动后切中文等场景）时再刷新一次打开的名片。
+    window.addEventListener('mst:i18n:ready', () => OriginalCharacterCardFeature.setLanguage());
     window.addEventListener('pagehide', OriginalCharacterCardFeature.cleanup, {once: true});
   }
 }

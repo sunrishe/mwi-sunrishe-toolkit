@@ -816,6 +816,7 @@ const equipmentComparisonFeatureLifecycle = {
       html: () => TemplateRenderer.html`<div id="mst-equipment-compare-root"></div>`,
       width: 'min(34.5rem, calc(100vw - 1rem))',
       popupClass: 'mst-equipment-compare-dialog',
+      icon: 'loadout',
       didOpen: (popup) => {
         this.root = popup.querySelector('#mst-equipment-compare-root');
         this.render();

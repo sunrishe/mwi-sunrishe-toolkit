@@ -13,7 +13,9 @@ export const STORAGE_KEYS = {
   SIM_CHARACTER_DATA: 'MST_SIM_characterData',
   SIM_CLIENT_DATA: 'MST_SIM_clientData',
   SIM_NEW_BATTLE: 'MST_SIM_newBattle',
-  SIM_PROFILES: 'MST_SIM_profiles'
+  SIM_PROFILES: 'MST_SIM_profiles',
+  // 订阅通知：只持久化订阅与渠道配置；id 基线、计时器、发送队列等运行时状态一律只存内存。
+  SUBSCRIBE_NOTIFICATION: 'MST_SUBSCRIBE_config'
 };
 
 function isClientData(data) {
@@ -356,13 +358,142 @@ const dataHubGameRuntimeMethods = {
       read(() => pageWindow.mwiHelper?.lang) ||
       read(() => pageWindow.mwi?.lang) ||
       read(() => this.getGameObject()?.props?.i18n?.options?.resources) ||
-      this.requestI18nResourcesFromPage() ||
+      read(() => this.requestI18nResourcesFromPage()) ||
       null;
-    if (this.hasGameI18nResources(resources)) {
-      this.clientData.i18nResources = resources;
-      return resources;
+    // 游戏其他语言包由 i18next 后端懒加载进 store.data（options.resources 只含内置 en），
+    // 合并进来保证英文启动后补拉的语言包也能被索引。来源对象不变时直接复用上次合并结果，
+    // 避免每次取名称都重建大对象。
+    const storeResources = this.getGameI18nStoreResources();
+    const sources = [
+      resources || null, storeResources
+    ];
+    const previous = this.clientData.i18nSources;
+    if (previous && previous[0] === sources[0] && previous[1] === sources[1] && this.clientData.i18nResources) {
+      return this.clientData.i18nResources;
+    }
+    this.clientData.i18nSources = sources;
+    const combined = this.mergeGameI18nSources(resources, storeResources);
+    if (this.hasGameI18nResources(combined)) {
+      this.clientData.i18nResources = combined;
+      return combined;
     }
     return this.clientData.i18nResources;
+  },
+
+  // 定位游戏 i18next 实例：官方把实例传进根组件 props（i18n.options.resources），
+  // props 拿不到时沿 React fiber 链回退（MWITools 同款定位方式）。实例惰性缓存。
+  getGameI18nInstance() {
+    const cached = this.clientData.gameI18n;
+    if (cached && (cached.options?.resources || cached.store?.data)) return cached;
+    const fromFiber = (element) => {
+      const fiberKey = Reflect.ownKeys(element ?? {}).find((key) => String(key).startsWith('__reactFiber$'));
+      for (
+        let fiber = fiberKey ? element[fiberKey] : null, depth = 0;
+        fiber && depth < 80;
+        fiber = fiber.return, depth += 1
+      ) {
+        for (const candidate of [
+          fiber.memoizedProps?.i18n, fiber.pendingProps?.i18n, fiber.stateNode?.props?.i18n, fiber.stateNode?.i18n
+        ]) {
+          if (candidate?.options?.resources || candidate?.store?.data) return candidate;
+        }
+      }
+      return null;
+    };
+    let instance = null;
+    try {
+      instance = this.getGameObject()?.props?.i18n || null;
+    } catch {}
+    if (!instance) {
+      try {
+        for (const selector of [
+          '#root', '[class^="GamePage"]', 'body'
+        ]) {
+          for (const element of document.querySelectorAll(selector)) {
+            instance = fromFiber(element);
+            if (instance) break;
+          }
+          if (instance) break;
+        }
+      } catch {}
+    }
+    if (instance?.options?.resources || instance?.store?.data) {
+      this.clientData.gameI18n = instance;
+      return instance;
+    }
+    return null;
+  },
+
+  getGameI18nStoreResources() {
+    try {
+      return this.getGameI18nInstance()?.store?.data || null;
+    } catch {
+      return null;
+    }
+  },
+
+  // 合并两路资源（options.resources 与 store.data）：同语言以 primary 优先，
+  // primary 缺失的语言（如英文启动会话的 zh）用 secondary 补齐。
+  mergeGameI18nSources(primary, secondary) {
+    if (!secondary) return primary;
+    const langs = new Set([
+      ...Object.keys(primary || {}), ...Object.keys(secondary || {})
+    ]);
+    const result = {};
+    langs.forEach((lang) => {
+      const primaryTranslation = primary?.[lang]?.translation || {};
+      const secondaryTranslation = secondary?.[lang]?.translation || {};
+      if (!Object.keys(primaryTranslation).length && !Object.keys(secondaryTranslation).length) return;
+      result[lang] = {translation: {...secondaryTranslation, ...primaryTranslation}};
+    });
+    return Object.keys(result).length ? result : null;
+  },
+
+  // 游戏以英文启动时官方 i18next 未加载中文包（官方 itemDetailMap 又无 nameZh），MST 切中文
+  // 后物品名会退回 hrid。通过游戏 i18next 实例触发语言包加载（官方后端为 webpack 动态 import），
+  // 完成后刷新索引并广播 mst:i18n:ready。同一语言的尝试以 Promise 记忆，避免重复触发。
+  ensureGameLanguageResources(lang) {
+    if (lang !== 'zh' && lang !== 'en') return Promise.resolve(false);
+    this.ensureI18nPromises = this.ensureI18nPromises || {};
+    const pending = this.ensureI18nPromises[lang];
+    if (pending) return pending;
+    const attempt = async () => {
+      if (!this.ctx.CONFIG.isGameSite) return false;
+      const resources = this.getGameI18nResources();
+      if (resources?.[lang]?.translation && Object.keys(resources[lang].translation).length > 0) return false;
+      const instance = this.getGameI18nInstance();
+      const connector = instance?.services?.backendConnector;
+      const loader =
+        typeof instance?.loadLanguages === 'function'
+          ? (lngs, callback) => instance.loadLanguages(lngs, callback)
+          : connector && typeof connector.loadLanguages === 'function'
+            ? (lngs, callback) => connector.loadLanguages(lngs, callback)
+            : null;
+      if (!loader) return false;
+      await new Promise((resolve, reject) => {
+        loader(
+          [
+            lang
+          ],
+          (error) => (error ? reject(error) : resolve())
+        );
+      });
+      this.clientData.i18nSources = null; // store.data 就地变化，来源标记失效以强制重建合并
+      this.refreshI18nIndexes();
+      window.dispatchEvent(new CustomEvent('mst:i18n:ready', {detail: {source: 'load-languages'}}));
+      return true;
+    };
+    const promise = attempt()
+      .catch((error) => {
+        console.warn(`[MST] 游戏 ${lang} 语言资源加载失败:`, error);
+        return false;
+      })
+      .then((loaded) => {
+        delete this.ensureI18nPromises[lang];
+        return loaded;
+      });
+    this.ensureI18nPromises[lang] = promise;
+    return promise;
   },
 
   startI18nResourceWatcher() {
@@ -555,6 +686,26 @@ const dataHubCharacterDataMethods = {
     return true;
   },
 
+  // 公会资料（含神龛等建筑等级 guildBuildingLevelMap）：官方 view_guild_profile 的应答
+  // guild_profile_shared，查看任意公会资料页即可获得；战斗模拟导出用它按
+  // min(个人增益等级, 该公会神龛等级) 计算队友神龛生效等级，跨公会不再退回个人等级。
+  rememberGuildProfile(guildProfile) {
+    const guildId = guildProfile?.id ?? guildProfile?.guild?.id;
+    if (guildId == null) return false;
+    this.characterData.guildProfiles[String(guildId)] = {
+      guildId: String(guildId),
+      guildName: guildProfile?.name || guildProfile?.guild?.name || '',
+      guildBuildingLevelMap: guildProfile?.guildBuildingLevelMap || {},
+      timestamp: Date.now()
+    };
+    return true;
+  },
+
+  getGuildProfile(guildId) {
+    if (guildId == null) return null;
+    return this.characterData.guildProfiles?.[String(guildId)] || null;
+  },
+
   getBattleUnit(characterId) {
     return this.characterData.battleUnits.get(String(characterId)) || null;
   },
@@ -622,6 +773,20 @@ const dataHubCharacterDataMethods = {
     }
     if (type === 'character_friends_updated' && message.friendCharacterMap)
       replace('friendCharacterMap', message.friendCharacterMap);
+    if (type === 'guild_buffs_updated') {
+      // 公会增益与神龛生效等级直接相关：登录后增益变化（到期/重开/换公会）要同步进快照，
+      // 否则战斗模拟导出的神龛信息停留在 init_character_data 时的状态。
+      if (message.characterGuildBuffMap) replace('characterGuildBuffMap', message.characterGuildBuffMap);
+      if (message.guildActionTypeBuffsMap) replace('guildActionTypeBuffsMap', message.guildActionTypeBuffsMap);
+    }
+    if (type === 'guild_updated') {
+      if (message.guild) replace('guild', message.guild);
+      if (message.guildBuildingLevelMap) replace('guildBuildingLevelMap', message.guildBuildingLevelMap);
+    }
+    if (type === 'guild_profile_shared' && message.guildProfile) {
+      // 查看公会资料（官方 view_guild_profile 应答）携带该公会建筑等级，含神龛等级。
+      if (this.rememberGuildProfile(message.guildProfile)) changed.push('guildProfiles');
+    }
     if (type === 'guild_characters_updated') {
       if (message.guildCharacterMap) replace('guildCharacterMap', message.guildCharacterMap);
       if (message.guildSharableCharacterMap) replace('guildSharableCharacterMap', message.guildSharableCharacterMap);
@@ -788,23 +953,50 @@ const dataHubProfileMethods = {
         }
       }
     );
-    // 公会增益等级保持官方对象结构（hrid → {guildBuffHrid, level}），只去掉时间戳等无关字段，
-    // 供着装评分公会神龛计算使用。
+    // 公会增益等级两种官方形态都保留：profile_shared 的 guildBuffLevelMap 值为数字
+    // （hrid → level，官方名片神龛页签直接按数字渲染），init_character_data 的
+    // characterGuildBuffMap 值为对象（hrid → {guildBuffHrid, level}，只去掉时间戳等无关字段）。
+    // 数字形态缺失会导致战斗模拟导出的队友神龛全部为 0。
     const guildBuffLevelMap = {};
     Object.entries(profile.guildBuffLevelMap || {}).forEach(
       ([
         hrid, record
       ]) => {
-        if (!record || typeof record !== 'object') return;
-        const compactRecord = pick(record, [
-          'guildBuffHrid', 'level'
-        ]);
-        if (compactRecord.level != null) guildBuffLevelMap[hrid] = compactRecord;
+        if (record == null) return;
+        if (typeof record === 'object') {
+          const compactRecord = pick(record, [
+            'guildBuffHrid', 'level'
+          ]);
+          if (compactRecord.level != null) guildBuffLevelMap[hrid] = compactRecord;
+        } else {
+          const level = Number(record);
+          if (Number.isSafeInteger(level) && level > 0) guildBuffLevelMap[hrid] = level;
+        }
+      }
+    );
+    // 成就压缩成 hrid → isCompleted 映射（未完成的成就对战斗模拟无意义），供战斗模拟导出复用；
+    // 兼容官方数组结构与上次压缩出的映射结构，保证重复压缩幂等。
+    const characterAchievements = {};
+    const achievementEntries = Array.isArray(profile.characterAchievements)
+      ? profile.characterAchievements.map((achievement) => [
+          achievement?.achievementHrid, achievement?.isCompleted
+        ])
+      : Object.entries(profile.characterAchievements || {});
+    achievementEntries.forEach(
+      ([
+        achievementHrid, isCompleted
+      ]) => {
+        if (achievementHrid) {
+          characterAchievements[achievementHrid] =
+            typeof isCompleted === 'object' && isCompleted != null
+              ? Boolean(isCompleted.isCompleted)
+              : Boolean(isCompleted);
+        }
       }
     );
     return {
       ...pick(profile, [
-        'combatLevel', 'hideWearableItems'
+        'combatLevel', 'hideWearableItems', 'guildId'
       ]),
       wearableItemMap,
       characterSkills: (profile.characterSkills || [])
@@ -826,7 +1018,10 @@ const dataHubProfileMethods = {
           'name', 'specialChatIconHrid', 'chatIconHrid', 'nameColorHrid', 'gameMode'
         ]) || {},
       characterHouseRoomMap,
-      guildBuffLevelMap
+      guildBuffLevelMap,
+      characterAchievements,
+      abilityCombatTriggersMap: profile.abilityCombatTriggersMap || {},
+      consumableCombatTriggersMap: profile.consumableCombatTriggersMap || {}
     };
   },
 
@@ -918,10 +1113,13 @@ export function createDataHub(ctx, STORAGE_KEYS) {
         houseHridToNameZh: new Map(),
         abilityBookByAbilityHrid: new Map()
       },
-      i18nResources: null
+      i18nResources: null,
+      gameI18n: null,
+      i18nSources: null
     },
-    characterData: {raw: null, profiles: {}, battleUnits: new Map(), source: '', updatedAt: 0},
+    characterData: {raw: null, profiles: {}, guildProfiles: {}, battleUnits: new Map(), source: '', updatedAt: 0},
     i18nWatcherStarted: false,
+    ensureI18nPromises: {},
     i18nBridgeInstalled: false,
     i18nBridgeInstallError: '',
     clientDataCacheSource: '',
@@ -1075,8 +1273,11 @@ export function createWebSocketService(ctx, DataHub) {
       const self = this;
       const onMessage = (event) => self.handleMessage(event.detail);
       const onSend = (event) => self.dispatch('mst:ws:send', self.safeParse(event.detail) || event.detail);
+      // 会话状态（open/closed）原样转发：模块可按需监听 mst:ws:state 做断连处理。
+      const onState = (event) => self.dispatch('mst:ws:state', event.detail);
       window.addEventListener('mst:ws:message-raw', onMessage);
       window.addEventListener('mst:ws:send-raw', onSend);
+      window.addEventListener('mst:ws:state-raw', onState);
       const installed = ctx.PageBridgeService.install({
         key: 'websocket',
         label: '游戏 WebSocket 数据桥',
@@ -1099,6 +1300,9 @@ export function createWebSocketService(ctx, DataHub) {
             ws.addEventListener('message', (event) => {
               if (typeof event.data === 'string') emit('mst:ws:message-raw', event.data);
             });
+            // 连接生命周期：open/close 转发给用户脚本侧，供会话监控（断连暂停定时推送等）按需订阅。
+            ws.addEventListener('open', () => emit('mst:ws:state-raw', {state: 'open', url}));
+            ws.addEventListener('close', () => emit('mst:ws:state-raw', {state: 'closed', url}));
             return ws;
           }
           IntegratedWebSocket.prototype = OriginalWebSocket.prototype;
@@ -1114,6 +1318,7 @@ export function createWebSocketService(ctx, DataHub) {
       if (!installed) {
         window.removeEventListener('mst:ws:message-raw', onMessage);
         window.removeEventListener('mst:ws:send-raw', onSend);
+        window.removeEventListener('mst:ws:state-raw', onState);
         return;
       }
       this.installed = true;

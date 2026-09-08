@@ -1,3 +1,6 @@
+// 与战斗模拟导入共用神龛生效等级规则：min(个人公会增益等级, 公会神龛等级)。
+import {computeShrineLevels} from '../combat-sim-import/export-builder.js';
+
 // eds-milkonomy-constants
 // 与 EDS 的 INCLUDE_ITEMS 和各类同步配置保持一致；装备详情仍使用游戏官方 clientData。
 export const EDS_INCLUDE_ITEM_HRIDS = new Set([
@@ -123,7 +126,11 @@ export class CombatSimulatorConverter {
       abilities: this.getAbilities(loadout.abilityMap, characterData.characterAbilities),
       triggerMap: {...(loadout.abilityCombatTriggersMap || {}), ...(loadout.consumableCombatTriggersMap || {})},
       houseRooms: this.getHouseRooms(characterData.characterHouseRoomMap),
-      achievements: this.getAchievements(characterData.characterAchievements)
+      achievements: this.getAchievements(characterData.characterAchievements),
+      shrines: computeShrineLevels({
+        characterGuildBuffMap: characterData.characterGuildBuffMap,
+        guildBuildingLevelMap: characterData.guildBuildingLevelMap
+      })
     };
   }
 

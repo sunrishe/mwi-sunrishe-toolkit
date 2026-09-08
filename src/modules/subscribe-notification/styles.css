@@ -1,0 +1,154 @@
+/* 订阅通知设置表单（模块私有样式）。
+   控件配色对齐地下城收益等计算器弹窗：midnight-700 底、dark-mode 前景，
+   select option 显式设置背景/前景，避免下拉展开后前景背景同色。 */
+.mst-subscribe-form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.7rem;
+  text-align: left;
+}
+
+.mst-subscribe-section-title {
+  margin-top: 0.2rem;
+  border-bottom: 1px solid var(--color-midnight-100, #454771);
+  padding-bottom: 0.3rem;
+  color: var(--color-text-dark-mode, #e7e7e7);
+  font-weight: 600;
+}
+
+.mst-subscribe-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.mst-subscribe-field > span {
+  font-size: 0.85rem;
+  opacity: 0.85;
+}
+
+.mst-subscribe-field input[type='text'],
+.mst-subscribe-field input[type='password'],
+.mst-subscribe-field input[type='number'],
+.mst-subscribe-field select {
+  box-sizing: border-box;
+  height: var(--button-height-normal, 1.875rem);
+  border: 1px solid var(--color-midnight-100, #454771);
+  border-radius: var(--radius-sm, 0.25rem);
+  padding: 0.2rem 0.45rem;
+  outline: 0;
+  background: var(--color-midnight-700, #20212f);
+  color: var(--color-text-dark-mode, #e7e7e7);
+  font: inherit;
+  color-scheme: dark;
+}
+
+.mst-subscribe-form select option {
+  background: var(--color-midnight-700, #20212f);
+  color: var(--color-text-dark-mode, #e7e7e7);
+}
+
+.mst-subscribe-row {
+  display: flex;
+  gap: 0.75rem;
+}
+
+.mst-subscribe-row .mst-subscribe-field {
+  flex: 1 1 0;
+}
+
+/* 启用后的详细选项容器：沿用表单的纵向间距，避免行与行贴在一起。 */
+.mst-subscribe-detail {
+  display: flex;
+  flex-direction: column;
+  gap: 0.7rem;
+}
+
+/* hidden 属性需覆盖本模块对 checkbox/select 的 display 设置。 */
+.mst-subscribe-form [hidden] {
+  display: none !important;
+}
+
+/* 复选框与地下城收益 mst-dungeon-auto-buff 同款：按钮式外框、未选中边框与输入框同色。 */
+.mst-subscribe-checkbox {
+  display: inline-flex;
+  width: 100%;
+  min-width: 0;
+  height: var(--button-height-normal, 1.875rem);
+  box-sizing: border-box;
+  align-items: center;
+  justify-content: center;
+  gap: 0.3rem;
+  padding: 0 0.5rem;
+  border: 1px solid var(--color-midnight-100, #454771);
+  border-radius: var(--radius-sm, 0.25rem);
+  background: var(--color-midnight-500, #2c2e45);
+  color: var(--color-space-100, #dde2f8);
+  font-size: 0.9rem;
+  cursor: pointer;
+}
+
+.mst-subscribe-checkbox:hover {
+  border-color: var(--color-space-300, #98a7e9);
+}
+
+.mst-subscribe-checkbox input {
+  width: 1rem !important;
+  height: 1rem !important;
+  margin: 0;
+  flex: 0 0 1rem;
+  cursor: inherit;
+}
+
+/* 消息类型行：分类文案 + 行内小复选框。 */
+.mst-subscribe-type-row {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+}
+
+.mst-subscribe-type-label {
+  font-size: 0.85rem;
+  opacity: 0.85;
+}
+
+.mst-subscribe-type-checkbox {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+
+.mst-subscribe-type-checkbox input {
+  width: 1rem !important;
+  height: 1rem !important;
+  margin: 0;
+  cursor: inherit;
+}
+
+/* 官方配置说明链接跟在渠道文案后，弱化显示。 */
+.mst-subscribe-doc-link {
+  margin-left: 0.35rem;
+  color: var(--color-space-300, #98a7e9);
+  font-size: 0.8rem;
+  text-decoration: underline;
+  word-break: break-all;
+}
+
+.mst-subscribe-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+/* 测试发送结果紧跟按钮右侧显示。 */
+.mst-subscribe-status {
+  flex: 1 1 auto;
+  min-width: 0;
+  align-self: center;
+  font-size: 0.8rem;
+  opacity: 0.75;
+  white-space: pre-wrap;
+  word-break: break-all;
+}

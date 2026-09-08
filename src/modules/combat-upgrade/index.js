@@ -913,6 +913,7 @@ export class CombatUpgradeCalculatorFeature {
       html: this.getDialogHtml(),
       width: 'min(56rem, calc(100vw - 1rem))',
       popupClass: 'mst-upgrade-calculator-dialog',
+      icon: 'experience',
       didOpen: (popup) => this.bind(popup),
       willClose: () => {
         this.bindController?.abort();

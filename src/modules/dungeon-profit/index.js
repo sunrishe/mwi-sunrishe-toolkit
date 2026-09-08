@@ -1558,6 +1558,7 @@ export class DungeonProfitCalculatorFeature {
       html: () => TemplateRenderer.html`<div id="mst-dungeon-calculator-root"></div>`,
       width: 'min(38rem, calc(100vw - 1rem))',
       popupClass: 'mst-upgrade-calculator-dialog mst-dungeon-dialog',
+      icon: 'loot_tracker',
       didOpen: (popup) => {
         this.popup = popup;
         this.root = popup.querySelector('#mst-dungeon-calculator-root');

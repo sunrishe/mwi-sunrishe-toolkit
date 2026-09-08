@@ -44,4 +44,7 @@
 // @connect            test.milkywayidlecn.com
 // @connect            www.milkywayidle.com
 // @connect            www.milkywayidlecn.com
+// @connect            oapi.dingtalk.com
+// @connect            qyapi.weixin.qq.com
+// @connect            open.feishu.cn
 // ==/UserScript==
