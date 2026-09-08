@@ -1,71 +1,119 @@
 // build-score-legacy（MWITools v25 及以下的“战力打造分”算法，与 v26.js 着装评分并行可选）
 // 对应参考：references/legacy-scripts/MWITools/MWITools_v25.14.js（Ratatatata 算法）
+// v25 战力打造分只统计战斗向房屋（该版本口径）。
+const legacyBattleHouseIds = new Set([
+  'dining_room', 'library', 'dojo', 'gym', 'armory',
+  'archery_range', 'mystical_study'
+]);
 export const buildScoreLegacyCalculators = {
   _calculateHouseScore(cardData, clientData) {
-    const battleHouseIds = new Set([
-      'dining_room', 'library', 'dojo', 'gym', 'armory',
-      'archery_range', 'mystical_study'
-    ]);
     let cost = 0;
     Object.entries(cardData.characterHouseRoomMap || cardData.houseRooms || {}).forEach(
       ([
         key, room
       ]) => {
         const houseRoomHrid = room?.houseRoomHrid || (key.startsWith('/house_rooms/') ? key : '');
-        const houseId = this.ctx.utils.substrLastSlash(houseRoomHrid);
-        if (!battleHouseIds.has(houseId)) return;
         const level = Number(typeof room === 'object' ? room?.level : room) || 0;
-        const upgradeCostsMap = clientData.houseRoomDetailMap[houseRoomHrid]?.upgradeCostsMap || {};
-        for (let currentLevel = 1; currentLevel <= level; currentLevel++) {
-          (upgradeCostsMap[currentLevel] || []).forEach((item) => {
-            cost += Number(item.count || 0) * this._getWeightedMarketPrice(item.itemHrid);
-          });
-        }
+        cost += this._calculateLegacyHouseRoomCost(houseRoomHrid, level, clientData);
       }
     );
     return cost / 1_000_000;
   },
 
+  // 单个房间造价（战力打造分口径）：只统计战斗向房屋，材料按加权市场价。
+  _calculateLegacyHouseRoomCost(houseRoomHrid, level, clientData) {
+    const houseId = this.ctx.utils.substrLastSlash(houseRoomHrid);
+    if (!legacyBattleHouseIds.has(houseId)) return 0;
+    const upgradeCostsMap = clientData.houseRoomDetailMap[houseRoomHrid]?.upgradeCostsMap || {};
+    let cost = 0;
+    for (let currentLevel = 1; currentLevel <= level; currentLevel++) {
+      (upgradeCostsMap[currentLevel] || []).forEach((item) => {
+        cost += Number(item.count || 0) * this._getWeightedMarketPrice(item.itemHrid);
+      });
+    }
+    return cost;
+  },
+
   _calculateAbilityScore(cardData, clientData) {
-    const basicAbilityIds = [
-      'poke', 'scratch', 'smack', 'quick_shot', 'water_strike',
-      'fireball', 'entangle', 'minor_heal'
-    ];
     const allAbilities = cardData.abilities || [];
     const equippedAbilities = allAbilities.filter((ability) => Number(ability.slotNumber) > 0);
     const abilities = equippedAbilities.length ? equippedAbilities : allAbilities;
     let cost = 0;
     abilities.forEach((ability) => {
-      const targetLevel = Number(ability.level || 0);
-      const experience = Number(clientData.levelExperienceTable[targetLevel] || 0);
-      const experiencePerBook = basicAbilityIds.some((id) => ability.abilityHrid?.includes(id)) ? 50 : 500;
-      const bookCount = Number((experience / experiencePerBook + 1).toFixed(1));
-      const itemHrid = String(ability.abilityHrid || '').replace('/abilities/', '/items/');
-      cost += bookCount * this._getWeightedMarketPrice(itemHrid);
+      cost += this._calculateLegacyAbilityCost(ability, clientData);
     });
     return cost / 1_000_000;
   },
 
+  // 单个技能的技能书成本（战力打造分口径）。
+  _calculateLegacyAbilityCost(ability, clientData) {
+    const basicAbilityIds = [
+      'poke', 'scratch', 'smack', 'quick_shot', 'water_strike',
+      'fireball', 'entangle', 'minor_heal'
+    ];
+    const targetLevel = Number(ability.level || 0);
+    const experience = Number(clientData.levelExperienceTable[targetLevel] || 0);
+    const experiencePerBook = basicAbilityIds.some((id) => ability.abilityHrid?.includes(id)) ? 50 : 500;
+    const bookCount = Number((experience / experiencePerBook + 1).toFixed(1));
+    const itemHrid = String(ability.abilityHrid || '').replace('/abilities/', '/items/');
+    return bookCount * this._getWeightedMarketPrice(itemHrid);
+  },
+
   _calculateEquipmentScore(cardData, clientData) {
     const equipment = cardData.player?.equipment || cardData.player?.characterItems || [];
-    let networthAsk = 0;
-    let networthBid = 0;
+    let networth = 0;
     for (const item of equipment) {
-      const count = Number(item.count || 1);
-      const enhancementLevel = Number(item.enhancementLevel || 0);
-      if (enhancementLevel > 1) {
-        const best = this._findBestEnhanceStrategyWithPhiMirror(item.itemHrid, enhancementLevel, clientData);
-        const totalCost = best?.totalCost ? Math.round(best.totalCost) : 0;
-        networthAsk += count * Math.max(totalCost, 0);
-        networthBid += count * Math.max(totalCost, 0);
-        continue;
-      }
-      const marketRow = this.marketService.getMarketRow(item.itemHrid, 0);
-      if (!marketRow) continue;
-      networthAsk += count * (Number(marketRow.a) > 0 ? Number(marketRow.a) : 0);
-      networthBid += count * (Number(marketRow.b) > 0 ? Number(marketRow.b) : 0);
+      networth += Number(item.count || 1) * this._calculateLegacyItemValue(item, clientData);
     }
-    return (networthAsk * 0.5 + networthBid * 0.5) / 1_000_000;
+    return networth / 1_000_000;
+  },
+
+  // 单物品评分（战力打造分口径）：装备/技能/房屋各自的分值（折算到 M），供名片物品悬浮提示
+  // 使用；房屋只统计战斗向（v25 口径），生活房间为 0。
+  _calculateLegacyItemScores(cardData, clientData) {
+    const items = {};
+    const equipment = cardData.player?.equipment || cardData.player?.characterItems || [];
+    for (const item of equipment) {
+      if (item.itemLocationHrid === '/item_locations/inventory') continue;
+      if (!item.itemHrid) continue;
+      const value = Number(item.count || 1) * this._calculateLegacyItemValue(item, clientData);
+      if (!(value > 0)) continue;
+      items[`${item.itemHrid}::${Number(item.enhancementLevel || 0)}::${item.itemLocationHrid}`] = value / 1_000_000;
+    }
+    const abilities = {};
+    (cardData.abilities || []).forEach((ability) => {
+      if (!ability.abilityHrid) return;
+      const cost = this._calculateLegacyAbilityCost(ability, clientData);
+      if (!(cost > 0)) return;
+      abilities[`${ability.abilityHrid}::${Number(ability.level || 0)}`] = cost / 1_000_000;
+    });
+    const houses = {};
+    Object.entries(cardData.characterHouseRoomMap || cardData.houseRooms || {}).forEach(
+      ([
+        key, room
+      ]) => {
+        const houseRoomHrid = room?.houseRoomHrid || (key.startsWith('/house_rooms/') ? key : '');
+        const level = Number(typeof room === 'object' ? room?.level : room) || 0;
+        if (!houseRoomHrid || level <= 0) return;
+        houses[houseRoomHrid] = this._calculateLegacyHouseRoomCost(houseRoomHrid, level, clientData) / 1_000_000;
+      }
+    );
+    return {items, abilities, houses};
+  },
+
+  // 单件装备估值（战力打造分口径）：强化等级大于 1 按强化成本，否则按市场左右价均值。
+  _calculateLegacyItemValue(item, clientData) {
+    const enhancementLevel = Number(item.enhancementLevel || 0);
+    if (enhancementLevel > 1) {
+      const best = this._findBestEnhanceStrategyWithPhiMirror(item.itemHrid, enhancementLevel, clientData);
+      const totalCost = best?.totalCost ? Math.round(best.totalCost) : 0;
+      return Math.max(totalCost, 0);
+    }
+    const marketRow = this.marketService.getMarketRow(item.itemHrid, 0);
+    if (!marketRow) return 0;
+    const ask = Number(marketRow.a) > 0 ? Number(marketRow.a) : 0;
+    const bid = Number(marketRow.b) > 0 ? Number(marketRow.b) : 0;
+    return ask * 0.5 + bid * 0.5;
   },
 
   _getWeightedMarketPrice(itemHrid, ratio = 0.5) {

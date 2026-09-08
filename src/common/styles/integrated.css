@@ -695,11 +695,13 @@
   box-sizing: border-box;
   margin-top: 0.375rem;
   padding: 0.25rem 0.5rem;
-  border: 0;
+  border: 1px solid var(--color-midnight-100, #454771);
   border-radius: var(--radius-sm, 0.25rem);
   font: inherit;
   font-size: var(--font-size-sm, 0.8125rem);
 }
+/* 悬浮菜单内的入口带游戏按钮类（Button_button/Button_fullWidth）时沿用游戏外观，
+   上面的规则只在游戏按钮类缺失时兜底，避免覆盖游戏按钮样式。 */
 /* 技能选择浮层在弹窗内容区内部覆盖（与装备提升选择装备一致），
    不遮挡弹窗边框；弹窗标题、关闭按钮和边框保持可见。 */
 .mst-ability-picker {
@@ -860,16 +862,30 @@
 }
 .mst-upgrade-calculator-dialog .swal2-title,
 .mst-equipment-compare-dialog .swal2-title,
-.mst-house-calculator-dialog .swal2-title {
+.mst-house-calculator-dialog .swal2-title,
+.mst-subscribe-dialog .swal2-title,
+.mst-character-card-modal .swal2-title {
   display: flex !important;
   align-items: center;
   gap: 0.6rem;
+}
+.mst-dialog-title-icon {
+  display: inline-flex;
+  width: 1.25rem;
+  height: 1.25rem;
+  flex: 0 0 auto;
+  align-self: center;
+}
+.mst-dialog-title-icon svg {
+  width: 100%;
+  height: 100%;
 }
 .mst-combat-help-anchor,
 .mst-ability-help-anchor,
 .mst-equipment-help-anchor,
 .mst-dungeon-help-anchor,
-.mst-house-help-anchor {
+.mst-house-help-anchor,
+.mst-subscribe-help-anchor {
   position: relative;
   display: inline-flex;
   width: var(--spacing-lg-plus, 1.25rem);
@@ -884,7 +900,8 @@
 .mst-ability-help-trigger,
 .mst-equipment-help-trigger,
 .mst-dungeon-help-trigger,
-.mst-house-help-trigger {
+.mst-house-help-trigger,
+.mst-subscribe-help-trigger {
   display: block;
   width: var(--spacing-lg-plus, 1.25rem);
   height: var(--spacing-lg-plus, 1.25rem);
@@ -904,7 +921,8 @@
 .mst-ability-help-trigger svg,
 .mst-equipment-help-trigger svg,
 .mst-dungeon-help-trigger svg,
-.mst-house-help-trigger svg {
+.mst-house-help-trigger svg,
+.mst-subscribe-help-trigger svg {
   display: block;
   width: 100%;
   height: 100%;
@@ -914,7 +932,8 @@
 .mst-ability-help-trigger:hover,
 .mst-equipment-help-trigger:hover,
 .mst-dungeon-help-trigger:hover,
-.mst-house-help-trigger:hover {
+.mst-house-help-trigger:hover,
+.mst-subscribe-help-trigger:hover {
   filter: brightness(1.12);
 }
 .mst-combat-help-trigger-error,
@@ -929,7 +948,8 @@
 .mst-ability-help-popover,
 .mst-equipment-help-popover,
 .mst-dungeon-help-popover,
-.mst-house-help-popover {
+.mst-house-help-popover,
+.mst-subscribe-help-popover {
   position: fixed;
   z-index: 2;
   width: max-content;
@@ -953,14 +973,16 @@
 .mst-ability-help-popover[hidden],
 .mst-equipment-help-popover[hidden],
 .mst-dungeon-help-popover[hidden],
-.mst-house-help-popover[hidden] {
+.mst-house-help-popover[hidden],
+.mst-subscribe-help-popover[hidden] {
   display: none;
 }
 .mst-combat-help-popover-title,
 .mst-ability-help-popover-title,
 .mst-equipment-help-popover-title,
 .mst-dungeon-help-popover-title,
-.mst-house-help-popover-title {
+.mst-house-help-popover-title,
+.mst-subscribe-help-popover-title {
   margin: 0;
   padding: 0;
   font-size: var(--font-size-md, 1rem);
@@ -971,7 +993,8 @@
 .mst-ability-help-popover-content,
 .mst-equipment-help-popover-content,
 .mst-dungeon-help-popover-content,
-.mst-house-help-popover-content {
+.mst-house-help-popover-content,
+.mst-subscribe-help-popover-content {
   margin-top: var(--spacing-xs, 0.25rem);
   padding-top: var(--spacing-xs, 0.25rem);
   border-top: 1px solid #000;
@@ -980,7 +1003,8 @@
 .mst-ability-help-popover-paragraph,
 .mst-equipment-help-popover-paragraph,
 .mst-dungeon-help-popover-paragraph,
-.mst-house-help-popover-paragraph {
+.mst-house-help-popover-paragraph,
+.mst-subscribe-help-popover-paragraph {
   margin-top: var(--spacing-xs, 0.25rem);
   padding-bottom: var(--spacing-xs, 0.25rem);
 }

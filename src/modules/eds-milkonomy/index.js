@@ -126,7 +126,10 @@ const edsMilkonomyGameController = {
         ? utils.getCollectionValues(data.characterAbilityMap)
         : raw.characterAbilities || [],
       characterHouseRoomMap: raw.characterHouseRoomMap || {},
-      characterAchievements: raw.characterAchievements || []
+      characterAchievements: raw.characterAchievements || [],
+      // 神龛生效等级来源：快照的公会增益与公会建筑等级（guild_buffs_updated/guild_updated 已实时同步）。
+      characterGuildBuffMap: raw.characterGuildBuffMap || {},
+      guildBuildingLevelMap: raw.guildBuildingLevelMap || {}
     };
     await feature.copyJsonToClipboard(
       feature.constructor.CombatSimulatorConverter.convert(loadout, characterData),

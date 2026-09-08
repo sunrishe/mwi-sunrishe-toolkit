@@ -250,6 +250,18 @@ const characterCardLoadoutDataAdapter = {
     const currentTools = (data.player.equipment || []).filter((item) =>
       String(item.itemLocationHrid || '').endsWith('_tool')
     );
+    // 游戏配装的“使用最高强化等级”（复选框勾选即 useExactEnhancement 为 falsy，与官方
+    // checked: !useExactEnhancement 一致）在穿戴时从库存与已穿戴中选该物品的最高强化等级；
+    // 生成名片时按同一规则取实时最高强化，而不是配装保存时的等级。
+    const maxEnhancementByHrid = new Map();
+    if (!loadout.useExactEnhancement) {
+      (raw.characterItems || []).forEach((item) => {
+        if (!item?.itemHrid) return;
+        const level = Number(item.enhancementLevel || 0);
+        const best = maxEnhancementByHrid.get(item.itemHrid);
+        if (best == null || level > best) maxEnhancementByHrid.set(item.itemHrid, level);
+      });
+    }
     const itemByHash = new Map(
       (raw.characterItems || []).map((item) => [
         item?.hash, item
@@ -261,16 +273,19 @@ const characterCardLoadoutDataAdapter = {
       ]) => {
         if (!hash) return [];
         const item = itemByHash.get(hash);
-        if (item) {
-          return [
-            {itemLocationHrid, itemHrid: item.itemHrid, enhancementLevel: item.enhancementLevel || 0}
-          ];
+        let itemHrid = item?.itemHrid || '';
+        let enhancementLevel = item?.enhancementLevel || 0;
+        if (!item) {
+          const parts = String(hash).split('::');
+          itemHrid = parts.find((part) => part.startsWith('/items/')) || '';
+          enhancementLevel = Number(parts[parts.length - 1] || 0);
         }
-        const parts = String(hash).split('::');
-        const itemHrid = parts.find((part) => part.startsWith('/items/')) || '';
         if (!itemHrid) return [];
+        if (maxEnhancementByHrid.has(itemHrid)) {
+          enhancementLevel = maxEnhancementByHrid.get(itemHrid);
+        }
         return [
-          {itemLocationHrid, itemHrid, enhancementLevel: Number(parts[parts.length - 1] || 0)}
+          {itemLocationHrid, itemHrid, enhancementLevel}
         ];
       }
     );

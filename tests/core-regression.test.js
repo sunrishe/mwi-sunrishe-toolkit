@@ -348,7 +348,11 @@ function loadMstEdsFeature({raw = {}, itemMap = {}, reactData = {}, runtime = {}
     ...runtime
   };
   const Feature = vm.runInNewContext(
-    `${readVmSource('src/modules/eds-milkonomy/converter.js', 'src/modules/eds-milkonomy/index.js')}
+    `${readVmSource(
+      'src/modules/combat-sim-import/export-builder.js',
+      'src/modules/eds-milkonomy/converter.js',
+      'src/modules/eds-milkonomy/index.js'
+    )}
         CombatSimulatorConverter.configure({utils});
         EdsMilkonomyFeature.configure({
             CONFIG,
@@ -428,7 +432,7 @@ function loadOriginalEdsConverter() {
 
 function loadMstCombatConverter() {
   return vm.runInNewContext(
-    `${readVmSource('src/modules/eds-milkonomy/converter.js')}
+    `${readVmSource('src/modules/combat-sim-import/export-builder.js', 'src/modules/eds-milkonomy/converter.js')}
         CombatSimulatorConverter.configure({utils});
         CombatSimulatorConverter;`,
     {
@@ -793,7 +797,10 @@ test('profile_shared 持久化时裁剪为最小字段集', () => {
           guildBuffHrid: '/guild_buffs/scholar_combat',
           level: 1,
           junk: true
-        }
+        },
+        // profile_shared 实际下发数字形态（官方名片神龛页签按数字渲染），不得丢弃。
+        '/guild_buffs/tempo_combat': 2,
+        '/guild_buffs/rarity_combat': 0
       },
       characterAchievements: [
         {achievementHrid: '/achievements/first_blood'}
@@ -820,10 +827,11 @@ test('profile_shared 持久化时裁剪为最小字段集', () => {
     {abilityHrid: '/abilities/slash', level: 3, slotNumber: 1}
   ]);
   assert.deepEqual(compact.characterHouseRoomMap, {'/house_rooms/dining_room': 4});
-  // 公会增益等级保持官方对象结构，只去掉时间戳等无关字段，供着装评分神龛计算使用。
+  // 公会增益等级两种官方形态都保留：对象去掉无关字段，数字按原样保留（0 视为无增益丢弃）。
   assert.deepEqual(compact.guildBuffLevelMap, {
     '/guild_buffs/force_combat': {guildBuffHrid: '/guild_buffs/force_combat', level: 3},
-    '/guild_buffs/scholar_combat': {guildBuffHrid: '/guild_buffs/scholar_combat', level: 1}
+    '/guild_buffs/scholar_combat': {guildBuffHrid: '/guild_buffs/scholar_combat', level: 1},
+    '/guild_buffs/tempo_combat': 2
   });
   assert.deepEqual(compact.sharableCharacter, {
     name: 'Tester',
@@ -833,14 +841,18 @@ test('profile_shared 持久化时裁剪为最小字段集', () => {
     gameMode: 'standard'
   });
   assert.equal(compact.combatLevel, 88);
-  assert.equal(compact.characterAchievements, undefined);
+  // 成就压缩成 hrid → isCompleted 映射，供战斗模拟导出复用；isCompleted 缺失按 false 处理。
+  assert.deepEqual(compact.characterAchievements, {'/achievements/first_blood': false});
+  assert.deepEqual(compact.abilityCombatTriggersMap, {});
+  assert.deepEqual(compact.consumableCombatTriggersMap, {});
   assert.equal(compact.sharableCharacter.avatarHrid, undefined);
 });
 
 test('名片缓存超过容量上限时按最旧资料淘汰', () => {
   const now = {value: 10_000};
   const store = loadProfileStore(now);
-  store.ctx.CONFIG.PROFILE_CACHE_MAX_BYTES = 500;
+  // 上限需覆盖单条压缩资料（含成就/触发器空映射）的最坏体积。
+  store.ctx.CONFIG.PROFILE_CACHE_MAX_BYTES = 800;
   const bigProfile = (char) => ({wearableItemMap: {a: {itemHrid: char.repeat(200)}}});
   store.characterData.profiles = {
     oldest: {characterID: 'oldest', timestamp: 1_000, profile: bigProfile('o')},
@@ -849,7 +861,8 @@ test('名片缓存超过容量上限时按最旧资料淘汰', () => {
   };
 
   store.persistProfiles();
-  assert.ok(store.localStorage.getItem('MST_CC_profiles').length <= 500);
+  const maxBytes = store.ctx.CONFIG.PROFILE_CACHE_MAX_BYTES;
+  assert.ok(store.localStorage.getItem('MST_CC_profiles').length <= maxBytes);
   const stored = JSON.parse(store.localStorage.getItem('MST_CC_profiles'));
   assert.equal(stored.oldest, undefined);
   assert.equal(stored.middle, undefined);
@@ -904,7 +917,8 @@ test('读取旧版未裁剪缓存后自动重写为紧凑格式', () => {
   store.loadStoredProfiles();
   const stored = JSON.parse(store.localStorage.getItem('MST_CC_profiles'));
   assert.deepEqual(stored['1'].profile.wearableItemMap.a, {itemHrid: '/items/x'});
-  assert.equal(stored['1'].profile.characterAchievements, undefined);
+  // 成就裁剪为 hrid → isCompleted 映射，无效条目丢弃。
+  assert.deepEqual(stored['1'].profile.characterAchievements, {});
 });
 
 test('名片技能数据统一兼容直接等级、官方技能数组和旧 power 字段', () => {
@@ -1123,6 +1137,88 @@ test('Firefox 下游戏名词可通过页面语言资源桥读取中文', () => 
   assert.equal(hub.getLocalizedGameName('equipmentTypeNames', '/equipment_types/main_hand', 'zh'), '主手');
 });
 
+test('游戏 store.data 中懒加载的语言包会并入名词索引', () => {
+  const hub = loadDataHub();
+  // 模拟英文启动会话：options/store 只有 en，zh 由 i18next 后端懒加载进 store.data。
+  hub.clientData.gameI18n = {
+    store: {
+      data: {
+        en: {translation: {itemNames: {'/items/cheese': 'Cheese'}}},
+        zh: {translation: {itemNames: {'/items/cheese': '奶酪'}}}
+      }
+    }
+  };
+  hub.initClientData({itemDetailMap: {'/items/cheese': {hrid: '/items/cheese', name: 'Cheese'}}}, 'test');
+  assert.equal(hub.resolveItemName('/items/cheese'), '奶酪');
+  assert.equal(hub.getLocalizedGameName('itemNames', '/items/cheese', 'en'), 'Cheese');
+});
+
+test('英文启动会话切中文时通过游戏 i18next 实例补拉语言包', async () => {
+  const events = [];
+  const listeners = new Map();
+  const hub = loadDataHub({
+    window: {
+      addEventListener(type, listener) {
+        if (!listeners.has(type)) listeners.set(type, []);
+        listeners.get(type).push(listener);
+      },
+      removeEventListener(type, listener) {
+        listeners.set(
+          type,
+          (listeners.get(type) || []).filter((item) => item !== listener)
+        );
+      },
+      dispatchEvent(event) {
+        events.push(event.type);
+        (listeners.get(event.type) || []).forEach((listener) => listener(event));
+      }
+    }
+  });
+  hub.ctx.CONFIG.isGameSite = true;
+  const loadedLangs = [];
+  const resources = {en: {translation: {itemNames: {'/items/cheese': 'Cheese'}}}};
+  const storeData = {en: {translation: {itemNames: {'/items/cheese': 'Cheese'}}}};
+  hub.clientData.gameI18n = {
+    options: {resources},
+    store: {data: storeData},
+    services: {
+      backendConnector: {
+        // 模拟 i18next 后端：webpack 动态 import 拉取 zh 包并写入 store.data。
+        loadLanguages(lngs, callback) {
+          loadedLangs.push(...lngs);
+          storeData.zh = {translation: {itemNames: {'/items/cheese': '奶酪'}}};
+          callback();
+        }
+      }
+    }
+  };
+  hub.initClientData({itemDetailMap: {'/items/cheese': {hrid: '/items/cheese', name: 'Cheese'}}}, 'test');
+  assert.equal(hub.resolveItemName('/items/cheese'), 'Cheese');
+
+  assert.equal(await hub.ensureGameLanguageResources('zh'), true);
+  assert.deepEqual(loadedLangs, [
+    'zh'
+  ]);
+  assert.equal(hub.resolveItemName('/items/cheese'), '奶酪');
+  assert.deepEqual(
+    events.filter((type) => type === 'mst:i18n:ready'),
+    [
+      'mst:i18n:ready'
+    ]
+  );
+  // 语言包已就绪后的重复调用不再触发加载（无循环刷新）。
+  assert.equal(await hub.ensureGameLanguageResources('zh'), false);
+  assert.deepEqual(loadedLangs, [
+    'zh'
+  ]);
+  assert.deepEqual(
+    events.filter((type) => type === 'mst:i18n:ready'),
+    [
+      'mst:i18n:ready'
+    ]
+  );
+});
+
 test('公开事件统一使用 mst 模块前缀并保留 WebSocket 收发事件', () => {
   const runtimeSource = readSourceFile('src', 'common', 'runtime.js');
   const webSocketSource = extractBetween(/^\s*const WebSocketService = \{/m, /^\s*return WebSocketService;/m);
@@ -1136,6 +1232,8 @@ test('公开事件统一使用 mst 模块前缀并保留 WebSocket 收发事件'
   assert.doesNotMatch(webSocketSource, /pageWindow\.WebSocket\s*=\s*IntegratedWebSocket/);
   assert.match(webSocketSource, /mst:ws:message-raw/);
   assert.match(webSocketSource, /mst:ws:send-raw/);
+  assert.match(webSocketSource, /mst:ws:state-raw/);
+  assert.match(webSocketSource, /self\.dispatch\('mst:ws:state', event\.detail\)/);
   assert.match(webSocketSource, /mst:ws:init-client-data/);
   assert.match(webSocketSource, /mst:ws:init-character-data/);
   assert.match(webSocketSource, /mst:ws:profile-shared/);
@@ -1511,13 +1609,27 @@ test('EDS 战斗配装导出与原脚本保持一致', () => {
     characterHouseRoomMap: {'/house_rooms/archery_range': {level: 7}},
     characterAchievements: [
       {achievementHrid: '/achievements/test', isCompleted: true}
-    ]
+    ],
+    characterGuildBuffMap: {'/guild_buffs/force_combat': {level: 3}},
+    guildBuildingLevelMap: {'/guild_shrines/force': 2}
   };
 
+  // MST 在原 EDS 输出之上补充 shrines 字段（与战斗模拟导入同源的 min 规则），
+  // 其余结构与原脚本保持逐字段一致。
+  const mstOutput = JSON.parse(JSON.stringify(integrated.convert(loadout, characterData)));
+  assert.deepEqual(mstOutput.shrines, {'/shrines/power': 2});
   assert.deepEqual(
-    JSON.parse(JSON.stringify(integrated.convert(loadout, characterData))),
+    JSON.parse(JSON.stringify({...mstOutput, shrines: undefined})),
     JSON.parse(JSON.stringify(original.convert(loadout, characterData)))
   );
+
+  // 无公会数据时神龛输出为空。
+  const withoutGuild = integrated.convert(loadout, {
+    ...characterData,
+    characterGuildBuffMap: {},
+    guildBuildingLevelMap: {}
+  });
+  assert.deepEqual(JSON.parse(JSON.stringify(withoutGuild.shrines)), {});
 });
 
 test('EDS 当前配装在 Firefox 读不到 React props 时回退到官方角色原包', () => {
@@ -1719,9 +1831,10 @@ test('市场价格统一按有效正数取值，缺价哨兵 0/-1 不再透传',
   assert.equal(service.getPrice('/items/coin', 0), 1);
 });
 
-test('构建开关只保留正式包实际消费的 showLanguageToggle', () => {
+test('构建开关只保留实际消费的 showLanguageToggle，并保留版本号 PACKAGE_VERSION', () => {
   const source = readSourceFile('src', 'common', 'build-flags.js');
   assert.match(source, /showLanguageToggle/);
+  assert.match(source, /PACKAGE_VERSION/);
   assert.doesNotMatch(source, /BUILD_ENV|showDebugInfo|enableDevMenu|isDev:/);
 });
 

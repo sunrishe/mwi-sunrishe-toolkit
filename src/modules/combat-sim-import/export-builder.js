@@ -100,9 +100,21 @@ function buildHouseRooms(characterHouseRoomMap) {
 
 function buildAchievements(characterAchievements) {
   const achievements = {};
-  for (const achievement of Object.values(characterAchievements || {})) {
-    if (achievement?.achievementHrid) {
-      achievements[achievement.achievementHrid] = achievement.isCompleted;
+  // 兼容官方数组结构（[{achievementHrid, isCompleted}]）与名片缓存压缩结构（{hrid: isCompleted}，
+  // 官方对象 map 形态同样兼容）。
+  const entries = Array.isArray(characterAchievements)
+    ? characterAchievements.map((achievement) => [
+        achievement?.achievementHrid, achievement?.isCompleted
+      ])
+    : Object.entries(characterAchievements || {});
+  for (const [
+    achievementHrid, isCompleted
+  ] of entries) {
+    if (achievementHrid) {
+      achievements[achievementHrid] =
+        isCompleted != null && typeof isCompleted === 'object'
+          ? Boolean(isCompleted.isCompleted)
+          : Boolean(isCompleted);
     }
   }
   return achievements;
@@ -171,7 +183,8 @@ function guessConsumablesByWeapon(wearableItemMap) {
 }
 
 // 队友：来自 profile_shared 资料 + new_battle 战斗快照（唯一能拿到队友实际消耗品的来源）。
-// shrineSource 覆盖默认神龛数据来源（同公会时用本人快照的公会建筑等级）。
+// shrineSource 覆盖默认神龛数据来源（优先其所在公会 guild_profile_shared 的建筑等级，
+// 同公会时复用本人快照）。
 export function buildProfilePlayerExport(profile, battlePlayer, abilityDetailMap, shrineSource = null) {
   const wearableItemMap = profile?.wearableItemMap || {};
   const food = [];
@@ -223,8 +236,9 @@ const BLANK_PLAYER_JSON =
   '{"player":{"attackLevel":1,"magicLevel":1,"meleeLevel":1,"rangedLevel":1,"defenseLevel":1,"staminaLevel":1,"intelligenceLevel":1,"equipment":[]},"food":{"/action_types/combat":[{"itemHrid":""},{"itemHrid":""},{"itemHrid":""}]},"drinks":{"/action_types/combat":[{"itemHrid":""},{"itemHrid":""},{"itemHrid":""}]},"abilities":[{"abilityHrid":"","level":"1"},{"abilityHrid":"","level":"1"},{"abilityHrid":"","level":"1"},{"abilityHrid":"","level":"1"},{"abilityHrid":"","level":"1"}],"triggerMap":{},"zone":"/actions/combat/fly","simulationTime":"100","houseRooms":{},"achievements":{},"shrines":{}}';
 
 // 组队导出总装：返回模拟器导入所需的全部信息。
-// 队友神龛的“公会神龛等级”只有在与本人同公会时才可知（复用本人快照的公会建筑等级）；
-// 跨公会拿不到对方公会数据，按 MWITools v26 口径退回个人增益等级。
+// 队友神龛生效等级 = min(个人增益等级, 所在公会神龛等级)：公会神龛等级优先用
+// guild_profile_shared（游戏内查看其公会资料）得到的对方公会建筑等级，
+// 同公会时复用本人快照；两者都拿不到时按 MWITools v26 口径退回个人增益等级。
 export function buildGroupExport({characterData, clientData, newBattle, profiles}) {
   const exportObj = {
     1: BLANK_PLAYER_JSON,
@@ -249,10 +263,18 @@ export function buildGroupExport({characterData, clientData, newBattle, profiles
   const ownGuildId = characterData?.guild?.id ?? null;
   const ownGuildBuildingLevelMap = characterData?.guildBuildingLevelMap || {};
   const resolveProfileShrineSource = (profile) => {
-    const sameGuild = profile?.guildId != null && profile.guildId === ownGuildId;
+    // 神龛生效等级 = min(个人增益等级, 所在公会神龛等级)：优先用查看其公会资料
+    // （guild_profile_shared）得到的对方公会神龛建筑等级；同公会时复用本人快照；
+    // 都拿不到时（未查看过其公会资料）按 MWITools v26 口径退回个人等级。
+    const guildBuildingMap =
+      profile?.guildBuildingLevelMap && Object.keys(profile.guildBuildingLevelMap).length
+        ? profile.guildBuildingLevelMap
+        : profile?.guildId != null && profile.guildId === ownGuildId
+          ? ownGuildBuildingLevelMap
+          : undefined;
     return {
       characterGuildBuffMap: profile?.guildBuffLevelMap,
-      guildBuildingLevelMap: sameGuild ? ownGuildBuildingLevelMap : undefined
+      guildBuildingLevelMap: guildBuildingMap
     };
   };
   if (!partySlotMap || !Object.keys(partySlotMap).length) {

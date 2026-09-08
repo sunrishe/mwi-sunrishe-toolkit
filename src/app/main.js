@@ -1,4 +1,4 @@
-import {BUILD_FLAGS} from '../common/build-flags.js';
+import {BUILD_FLAGS, PACKAGE_VERSION} from '../common/build-flags.js';
 import {
   AUTO_CALC_DELAY,
   HOUSE_MAX_FROM_LEVEL,
@@ -22,7 +22,7 @@ import {installAppBootstrap, installRuntimeInstances} from './app-controller.js'
 
 export function runMst() {
   // 加载成功日志：便于用户/自动化验证时确认脚本注入与构建版本（版本号由构建注入）。
-  console.info(`[MST] 脚本加载 v${__MST_VERSION__}`);
+  console.info(`[MST] 脚本加载 v${PACKAGE_VERSION}`);
   const pageWindow = typeof unsafeWindow !== 'undefined' ? unsafeWindow : window;
   // 就绪状态字段：初始化阶段逐步推进（loading → app-styles → app-features → 构建版本号），
   // 自动化验证轮询该字段精确判断脚本状态；脚本未加载时字段不存在。

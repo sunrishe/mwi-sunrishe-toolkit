@@ -1,8 +1,5 @@
 import {buildGroupExport} from './export-builder.js';
 
-// 队友资料缓存上限，与 MWITools profile_export_list 口径一致。
-const SIM_PROFILE_LIMIT = 20;
-
 // game-side-writer
 // 游戏站侧把模拟器导入所需的数据快照写入 GM 存储（脚本级存储跨域共享）。
 // 测试服数据与正式服不互通，测试服不写入（由 bootstrap 的 isTestServer 分流保证）。
@@ -38,67 +35,55 @@ const combatSimGameWriter = {
         if (data?.type !== 'new_battle') return;
         GmApi.setValue(STORAGE_KEYS.SIM_NEW_BATTLE, JSON.stringify(data));
       },
-      async writeProfile(detail) {
-        const profile = detail?.profile;
-        const characterID = String(detail.characterID ?? profile?.characterSkills?.[0]?.characterID ?? '');
-        if (!characterID || !profile) return;
-        const stored = JSON.parse((await GmApi.getValue(STORAGE_KEYS.SIM_PROFILES, '{}')) || '{}');
-        stored[characterID] = {
-          characterID,
-          characterName: profile.sharableCharacter?.name || '',
-          timestamp: Date.now(),
-          profile: {
-            guildId: profile.guildId,
-            wearableItemMap: Object.fromEntries(
-              Object.entries(profile.wearableItemMap || {}).map(
-                ([
-                  key, item
-                ]) => [
-                  key, {
-                    itemLocationHrid: item?.itemLocationHrid,
-                    itemHrid: item?.itemHrid,
-                    enhancementLevel: item?.enhancementLevel
-                  }
-                ]
-              )
-            ),
-            characterSkills: (profile.characterSkills || []).map((skill) => ({
-              skillHrid: skill?.skillHrid,
-              level: skill?.level
-            })),
-            equippedAbilities: (profile.equippedAbilities || []).map((ability) => ({
-              abilityHrid: ability?.abilityHrid,
-              level: ability?.level
-            })),
-            characterHouseRoomMap: profile.characterHouseRoomMap || {},
-            characterAchievements: profile.characterAchievements || {},
-            guildBuffLevelMap: profile.guildBuffLevelMap || {},
-            abilityCombatTriggersMap: profile.abilityCombatTriggersMap,
-            consumableCombatTriggersMap: profile.consumableCombatTriggersMap
+      // 队友资料直接镜像名片缓存（MST_CC_profiles 的 DataHub 内存态），不再单独维护一套裁剪数据；
+      // 条目结构与名片缓存一致（characterID/characterName/timestamp/profile 压缩版），
+      // 模拟器导入时按队伍成员 id 从缓存条目读取配置。
+      syncProfiles() {
+        const profiles = {};
+        Object.entries(DataHub.characterData.profiles || {}).forEach(
+          ([
+            id, entry
+          ]) => {
+            if (!entry?.profile) return;
+            // 队友所在公会的神龛建筑等级来自 guild_profile_shared（游戏内查看其公会资料后可得），
+            // 导出时按 min(个人增益等级, 该公会神龛等级) 计算，跨公会不再退回个人等级。
+            const guildProfile = DataHub.getGuildProfile(entry.profile.guildId);
+            const profile = DataHub.compactProfile(entry.profile);
+            if (guildProfile?.guildBuildingLevelMap) {
+              profile.guildBuildingLevelMap = guildProfile.guildBuildingLevelMap;
+            }
+            profiles[id] = {
+              characterID: entry.characterID ?? id,
+              characterName: entry.characterName || entry.profile?.sharableCharacter?.name || '',
+              timestamp: entry.timestamp || 0,
+              profile
+            };
           }
-        };
-        // 超上限时淘汰最旧资料，避免 GM 存储无限增长。
-        let entries = Object.entries(stored);
-        if (entries.length > SIM_PROFILE_LIMIT) {
-          entries.sort((a, b) => Number(b[1].timestamp || 0) - Number(a[1].timestamp || 0));
-          GmApi.setValue(
-            STORAGE_KEYS.SIM_PROFILES,
-            JSON.stringify(Object.fromEntries(entries.slice(0, SIM_PROFILE_LIMIT)))
-          );
-          return;
-        }
-        GmApi.setValue(STORAGE_KEYS.SIM_PROFILES, JSON.stringify(stored));
+        );
+        GmApi.setValue(STORAGE_KEYS.SIM_PROFILES, JSON.stringify(profiles));
       },
       install() {
         window.addEventListener('mst:data:character-ready', (event) => writer.writeCharacter(event.detail));
         window.addEventListener('mst:ws:init-client-data', (event) => writer.writeClientData(event.detail));
         window.addEventListener('mst:ws:battle-message', (event) => writer.writeNewBattle(event.detail));
-        window.addEventListener('mst:ws:profile-shared', (event) => {
-          writer.writeProfile(event.detail).catch((error) => console.warn('[MST] 战斗模拟队友资料写入失败:', error));
+        window.addEventListener('mst:data:profile-shared', () => writer.syncProfiles());
+        // 公会增益/建筑等级变化会影响神龛生效等级，收到更新后重写角色快照；
+        // 打开公会资料页（guild_profile_shared）后对方公会神龛等级入库，需要重新镜像队友资料，
+        // 否则 MST_SIM_profiles 里缓存的队友条目拿不到所在公会的神龛建筑等级。
+        window.addEventListener('mst:data:character-updated', (event) => {
+          const fields = event.detail?.fields || [];
+          if (fields.includes('guildProfiles')) {
+            writer.syncProfiles();
+          }
+          if (!fields.some((field) => field === 'characterGuildBuffMap' || field === 'guildBuildingLevelMap')) {
+            return;
+          }
+          if (DataHub.characterData.raw) writer.writeCharacter(DataHub.characterData.raw);
         });
         // 页面刷新晚于 WebSocket 建连时补写一次已有快照，保证 GM 存储不落后于当前页面状态。
         if (DataHub.characterData.raw) writer.writeCharacter(DataHub.characterData.raw);
         if (DataHub.clientData.raw) writer.writeClientData(DataHub.clientData.raw);
+        writer.syncProfiles();
       }
     };
     writer.install();

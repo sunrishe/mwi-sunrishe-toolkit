@@ -284,6 +284,103 @@ test('战斗模拟导入：跨公会队友拿不到公会建筑等级时退回�
   assert.deepEqual(JSON.parse(result.exportObj[1]).shrines, {'/shrines/power': 5});
 });
 
+test('战斗模拟导入：跨公会队友神龛按其所在公会（guild_profile_shared）等级取 min', () => {
+  const {buildGroupExport} = loadBuilder();
+  const characterData = {
+    character: {id: 42, name: 'tester'},
+    guild: {id: 7},
+    guildBuildingLevelMap: {'/guild_shrines/force': 2},
+    characterSkills: [],
+    characterItems: [],
+    combatUnit: {combatAbilities: []},
+    partyInfo: {
+      party: {actionHrid: '/actions/combat/fly', difficultyTier: 0},
+      partySlotMap: {a: {characterID: 300}}
+    }
+  };
+  // 队友所在公会（guild 9）的神龛建筑等级来自 guild_profile_shared，比其个人增益等级低。
+  const profiles = {
+    300: {
+      characterID: '300',
+      characterName: 'carol',
+      profile: {
+        guildId: 9,
+        characterSkills: [],
+        wearableItemMap: {},
+        equippedAbilities: [],
+        guildBuffLevelMap: {'/guild_buffs/force_combat': 5},
+        guildBuildingLevelMap: {'/guild_shrines/force': 3, '/guild_shrines/tempo': 1}
+      }
+    }
+  };
+  const result = normalize(buildGroupExport({characterData, clientData: {}, newBattle: null, profiles}));
+  const carol = JSON.parse(result.exportObj[1]);
+  // 个人 5 与其所在公会神龛 3 取 min；生活向增益不输出。
+  assert.deepEqual(carol.shrines, {'/shrines/power': 3});
+});
+
+test('战斗模拟导入：guild_profile_shared 入库公会神龛等级并随队友资料镜像', () => {
+  // 数据侧：view_guild_profile 的应答 guild_profile_shared 按公会 id 入库（内存缓存）。
+  assert.match(dataSourceFile, /type === 'guild_profile_shared'/);
+  assert.match(dataSourceFile, /rememberGuildProfile\(message\.guildProfile\)/);
+  assert.match(dataSourceFile, /guildProfiles: String\(guildId\)|guildProfiles\[/);
+  assert.match(dataSourceFile, /guildBuildingLevelMap: guildProfile\?\.guildBuildingLevelMap \|\| \{\}/);
+  assert.match(dataSourceFile, /characterData: \{raw: null, profiles: \{\}, guildProfiles: \{\}/);
+  // 写入侧：镜像队友资料时按其 guildId 附带所在公会神龛建筑等级。
+  assert.match(moduleSourceFile, /DataHub\.getGuildProfile\(entry\.profile\.guildId\)/);
+  assert.match(moduleSourceFile, /profile\.guildBuildingLevelMap = guildProfile\.guildBuildingLevelMap/);
+});
+
+test('战斗模拟导入：成就兼容官方数组与名片缓存压缩映射两种形态', () => {
+  const {buildSelfPlayerExport} = loadBuilder();
+  const base = {
+    character: {id: 42, name: 'tester'},
+    characterSkills: [],
+    characterItems: [],
+    combatUnit: {combatAbilities: []},
+    characterHouseRoomMap: {}
+  };
+  // 名片缓存压缩结构：{hrid: isCompleted}。
+  const compact = normalize(
+    buildSelfPlayerExport({...base, characterAchievements: {'/achievements/combat_1': true}}, {})
+  );
+  assert.deepEqual(compact.achievements, {'/achievements/combat_1': true});
+  // 官方对象 map 形态：{hrid: {achievementHrid, isCompleted}}。
+  const officialMap = normalize(
+    buildSelfPlayerExport(
+      {
+        ...base,
+        characterAchievements: {
+          '/achievements/combat_2': {achievementHrid: '/achievements/combat_2', isCompleted: false}
+        }
+      },
+      {}
+    )
+  );
+  assert.deepEqual(officialMap.achievements, {'/achievements/combat_2': false});
+});
+
+test('战斗模拟导入：队友资料镜像名片缓存，公会增益/建筑变化同步进角色快照', () => {
+  // 模块侧：写入器改为镜像名片缓存（DataHub profiles → MST_SIM_profiles），
+  // 并监听资料共享与公会字段更新事件，不再单独维护一套裁剪数据。
+  assert.match(moduleSourceFile, /syncProfiles\(\)/);
+  assert.match(moduleSourceFile, /DataHub\.compactProfile\(entry\.profile\)/);
+  assert.match(moduleSourceFile, /mst:data:profile-shared/);
+  assert.match(moduleSourceFile, /mst:data:character-updated/);
+  // 打开公会资料页（guildProfiles 入库）后必须重新镜像队友资料，否则拿不到对方公会神龛等级。
+  assert.match(moduleSourceFile, /fields\.includes\('guildProfiles'\)/);
+  assert.doesNotMatch(moduleSourceFile, /SIM_PROFILE_LIMIT/);
+  // 数据侧：公会增益与公会建筑等级（含神龛等级）更新要写入角色快照。
+  assert.match(dataSourceFile, /type === 'guild_buffs_updated'/);
+  assert.match(dataSourceFile, /message\.characterGuildBuffMap\) replace\('characterGuildBuffMap'/);
+  assert.match(dataSourceFile, /type === 'guild_updated'/);
+  assert.match(dataSourceFile, /message\.guildBuildingLevelMap\) replace\('guildBuildingLevelMap'/);
+  // 名片缓存压缩保留战斗模拟导出所需字段（公会归属、成就、战斗触发器）。
+  assert.match(dataSourceFile, /'combatLevel', 'hideWearableItems', 'guildId'/);
+  assert.match(dataSourceFile, /abilityCombatTriggersMap: profile\.abilityCombatTriggersMap \|\| \{\}/);
+  assert.match(dataSourceFile, /consumableCombatTriggersMap: profile\.consumableCombatTriggersMap \|\| \{\}/);
+});
+
 test('战斗模拟导入：装配链路覆盖测试服分流、站点匹配与存储键', () => {
   // CONFIG 提供测试服与模拟器站判断。
   assert.match(mainSourceFile, /isTestServer:\s*hostname\.startsWith\('test\.'\)/);

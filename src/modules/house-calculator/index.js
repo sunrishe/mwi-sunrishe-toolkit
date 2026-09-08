@@ -749,6 +749,7 @@ export class HouseCalculatorUI {
       html: () => TemplateRenderer.html`<div id="mst-hccp-house-calculator"></div>`,
       width: '27rem',
       popupClass: 'mst-house-calculator-dialog',
+      icon: 'house',
       didOpen: (popup) => {
         const container = popup.querySelector('#mst-hccp-house-calculator');
         if (!container) return;

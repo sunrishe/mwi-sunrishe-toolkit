@@ -83,6 +83,25 @@ export class BuildScoreService {
     return this._calculateLegacy(cardData, clientData, equipmentHidden);
   }
 
+  // 单物品评分：装备/技能/房屋各自的分值（折算到 M）；着装评分口径附带神龛逐项明细
+  // （每个已激活公会增益一行），战力打造分不计神龛。
+  // 勾选着装评分用 v26 口径，未勾选用 v25 战力打造分口径；供名片物品悬浮提示与评分明细浮层使用。
+  // 需在 calculate() 成功后调用（此时客户端字典与市场行情已就绪）。
+  calculateItemScores(cardData, useNewBuildScore = true) {
+    if (!cardData || typeof cardData !== 'object') return null;
+    const {DataHub} = this.ctx;
+    const clientData = DataHub.clientData.raw;
+    if (!clientData?.itemDetailMap || !clientData?.houseRoomDetailMap || !clientData?.levelExperienceTable) {
+      return null;
+    }
+    return useNewBuildScore
+      ? {
+          ...this._calculateNewItemScores(cardData, clientData),
+          shrines: this._calculateV26ShrineDetails(cardData, clientData)
+        }
+      : {...this._calculateLegacyItemScores(cardData, clientData), shrines: {battle: [], skilling: []}};
+  }
+
   _calculateLegacy(cardData, clientData, equipmentHidden) {
     const houseScore = this._calculateHouseScore(cardData, clientData);
     if (equipmentHidden) {

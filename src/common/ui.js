@@ -625,6 +625,21 @@ const toastNotifierMethods = {
 
 // swal-dialogs
 const swalDialogMethods = {
+  // 标题行前置图标：与工具箱菜单一致，使用 misc 精灵图片段。
+  _mountTitleIcon(popup, icon) {
+    const {TemplateRenderer, utils} = this.ctx;
+    const titleElement = popup?.querySelector?.('.swal2-title');
+    if (!titleElement || !icon) return;
+    const miscSprite = utils?.getSpriteUrl?.('misc') || '/static/media/misc_sprite.cfad291b.svg';
+    const host = document.createElement('span');
+    host.className = 'mst-dialog-title-icon';
+    TemplateRenderer.render(
+      () => TemplateRenderer.html`<svg aria-hidden="true"><use href=${miscSprite + '#' + icon}></use></svg>`,
+      host
+    );
+    titleElement.prepend(host);
+  },
+
   alert(message, type = 'info', title = '') {
     const {i18n} = this.ctx;
     if (typeof Swal === 'undefined') {
@@ -644,7 +659,7 @@ const swalDialogMethods = {
   },
 
   // 后续带关闭按钮的内容弹窗统一通过此入口创建。
-  html({title, html: content, width = '48rem', popupClass = '', containerClass = '', didOpen, willClose}) {
+  html({title, html: content, width = '48rem', popupClass = '', containerClass = '', icon = '', didOpen, willClose}) {
     const {TemplateRenderer} = this.ctx;
     if (typeof Swal === 'undefined') {
       console.warn('[MST]', title);
@@ -683,6 +698,7 @@ const swalDialogMethods = {
       },
       didOpen: (popup) => {
         this._enableBoundedDragging(popup);
+        if (icon) this._mountTitleIcon(popup, icon);
         didOpen?.(popup);
       },
       willClose: (popup) => {

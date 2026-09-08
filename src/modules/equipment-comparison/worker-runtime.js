@@ -2,6 +2,33 @@
 // combat-worker-runtime
 export function mstCombatWorkerRuntime() {
   (() => {
+    // 深拷贝替代 structuredClone（Chrome 98+），目标浏览器不支持。数据均为 JSON 型结构。
+    function deepClone(value) {
+      if (value === null || typeof value !== 'object') return value;
+      if (Array.isArray(value)) return value.map((item) => deepClone(item));
+      if (value instanceof Date) return new Date(value.getTime());
+      if (value instanceof Map)
+        return new Map(
+          [
+            ...value
+          ].map(
+            ([
+              key, item
+            ]) => [
+              deepClone(key), deepClone(item)
+            ]
+          )
+        );
+      if (value instanceof Set)
+        return new Set(
+          [
+            ...value
+          ].map((item) => deepClone(item))
+        );
+      const result = {};
+      for (const key of Object.keys(value)) result[key] = deepClone(value[key]);
+      return result;
+    }
     var __defProp = Object.defineProperty;
     var __defNormalProp = (obj, key, value) =>
       key in obj
@@ -2349,7 +2376,7 @@ export function mstCombatWorkerRuntime() {
         this.updateCombatDetails();
       }
       clearBuffs() {
-        this.combatBuffs = structuredClone(this.permanentBuffs);
+        this.combatBuffs = deepClone(this.permanentBuffs);
         this.updateCombatDetails();
       }
       clearCCs() {
@@ -3549,7 +3576,7 @@ export function mstCombatWorkerRuntime() {
           this.eventQueue.addEvent(consumableTickEvent);
         }
         for (const buff of consumable.buffs) {
-          let currentBuff = structuredClone(buff);
+          let currentBuff = deepClone(buff);
           if (source.combatDetails.combatStats.drinkConcentration > 0 && consumable.catagoryHrid.includes('drink')) {
             currentBuff.ratioBoost *= 1 + source.combatDetails.combatStats.drinkConcentration;
             currentBuff.flatBoost *= 1 + source.combatDetails.combatStats.drinkConcentration;
@@ -3681,7 +3708,7 @@ export function mstCombatWorkerRuntime() {
                   1 +
                   source.combatDetails[buff.multiplierForSkillHrid.split('/')[2] + 'Level'] *
                     buff.multiplierPerSkillLevel;
-                let currentBuff = structuredClone(buff);
+                let currentBuff = deepClone(buff);
                 currentBuff.flatBoost *= multiplier;
                 currentBuff.ratioBoost *= multiplier;
                 target.addBuff(currentBuff, this.simulationTime);
@@ -4499,7 +4526,7 @@ export function mstCombatWorkerRuntime() {
       try {
         const zone = new zone_default(event.data.zone.zoneHrid, event.data.zone.difficultyTier);
         const players = event.data.players.map((playerData) => {
-          const player = player_default.createFromDTO(structuredClone(playerData));
+          const player = player_default.createFromDTO(deepClone(playerData));
           player.zoneBuffs = zone.buffs || [];
           player.extraBuffs = [];
           return player;

@@ -3,7 +3,7 @@
 // @name:zh-CN         MWI Sunrishe 工具箱
 // @name:en            MWI Sunrishe Toolkit
 // @namespace          http://tampermonkey.net/
-// @version            2.15.0
+// @version            2.16.0
 // @description        MWI Sunrishe 综合工具箱：提供角色/队伍名片、技能/房屋/战斗升级规划、装备提升计算器、地下城收益、配装同步和市场伴侣增强。
 // @description:zh-CN  MWI Sunrishe 综合工具箱：提供角色/队伍名片、技能/房屋/战斗升级规划、装备提升计算器、地下城收益、配装同步和市场伴侣增强。
 // @description:en     MST toolkit for character/party cards, ability/house/combat upgrade planning, equipment comparison, dungeon profit, loadout sync, and Market Mate enhancements.
@@ -44,13 +44,18 @@
 // @connect            test.milkywayidlecn.com
 // @connect            www.milkywayidle.com
 // @connect            www.milkywayidlecn.com
+// @connect            oapi.dingtalk.com
+// @connect            qyapi.weixin.qq.com
+// @connect            open.feishu.cn
 // ==/UserScript==
 (function () {
   'use strict';
 
   // 构建脚本会静态替换这个占位符，业务代码不直接读取 Node 环境变量。
-  // 目前只有语言切换按钮需要区分 dev/prod：正式包不展示该调试入口。
+  const PACKAGE_VERSION = "2.16.0";
+
   const BUILD_FLAGS = Object.freeze({
+    // 目前只有语言切换按钮需要区分 dev/prod：正式包不展示该调试入口。
     showLanguageToggle: false
   });
 
@@ -97,7 +102,9 @@
     SIM_CHARACTER_DATA: 'MST_SIM_characterData',
     SIM_CLIENT_DATA: 'MST_SIM_clientData',
     SIM_NEW_BATTLE: 'MST_SIM_newBattle',
-    SIM_PROFILES: 'MST_SIM_profiles'
+    SIM_PROFILES: 'MST_SIM_profiles',
+    // 订阅通知：只持久化订阅与渠道配置；id 基线、计时器、发送队列等运行时状态一律只存内存。
+    SUBSCRIBE_NOTIFICATION: 'MST_SUBSCRIBE_config'
   };
 
   function isClientData(data) {
@@ -440,13 +447,142 @@
         read(() => pageWindow.mwiHelper?.lang) ||
         read(() => pageWindow.mwi?.lang) ||
         read(() => this.getGameObject()?.props?.i18n?.options?.resources) ||
-        this.requestI18nResourcesFromPage() ||
+        read(() => this.requestI18nResourcesFromPage()) ||
         null;
-      if (this.hasGameI18nResources(resources)) {
-        this.clientData.i18nResources = resources;
-        return resources;
+      // 游戏其他语言包由 i18next 后端懒加载进 store.data（options.resources 只含内置 en），
+      // 合并进来保证英文启动后补拉的语言包也能被索引。来源对象不变时直接复用上次合并结果，
+      // 避免每次取名称都重建大对象。
+      const storeResources = this.getGameI18nStoreResources();
+      const sources = [
+        resources || null, storeResources
+      ];
+      const previous = this.clientData.i18nSources;
+      if (previous && previous[0] === sources[0] && previous[1] === sources[1] && this.clientData.i18nResources) {
+        return this.clientData.i18nResources;
+      }
+      this.clientData.i18nSources = sources;
+      const combined = this.mergeGameI18nSources(resources, storeResources);
+      if (this.hasGameI18nResources(combined)) {
+        this.clientData.i18nResources = combined;
+        return combined;
       }
       return this.clientData.i18nResources;
+    },
+
+    // 定位游戏 i18next 实例：官方把实例传进根组件 props（i18n.options.resources），
+    // props 拿不到时沿 React fiber 链回退（MWITools 同款定位方式）。实例惰性缓存。
+    getGameI18nInstance() {
+      const cached = this.clientData.gameI18n;
+      if (cached && (cached.options?.resources || cached.store?.data)) return cached;
+      const fromFiber = (element) => {
+        const fiberKey = Reflect.ownKeys(element ?? {}).find((key) => String(key).startsWith('__reactFiber$'));
+        for (
+          let fiber = fiberKey ? element[fiberKey] : null, depth = 0;
+          fiber && depth < 80;
+          fiber = fiber.return, depth += 1
+        ) {
+          for (const candidate of [
+            fiber.memoizedProps?.i18n, fiber.pendingProps?.i18n, fiber.stateNode?.props?.i18n, fiber.stateNode?.i18n
+          ]) {
+            if (candidate?.options?.resources || candidate?.store?.data) return candidate;
+          }
+        }
+        return null;
+      };
+      let instance = null;
+      try {
+        instance = this.getGameObject()?.props?.i18n || null;
+      } catch {}
+      if (!instance) {
+        try {
+          for (const selector of [
+            '#root', '[class^="GamePage"]', 'body'
+          ]) {
+            for (const element of document.querySelectorAll(selector)) {
+              instance = fromFiber(element);
+              if (instance) break;
+            }
+            if (instance) break;
+          }
+        } catch {}
+      }
+      if (instance?.options?.resources || instance?.store?.data) {
+        this.clientData.gameI18n = instance;
+        return instance;
+      }
+      return null;
+    },
+
+    getGameI18nStoreResources() {
+      try {
+        return this.getGameI18nInstance()?.store?.data || null;
+      } catch {
+        return null;
+      }
+    },
+
+    // 合并两路资源（options.resources 与 store.data）：同语言以 primary 优先，
+    // primary 缺失的语言（如英文启动会话的 zh）用 secondary 补齐。
+    mergeGameI18nSources(primary, secondary) {
+      if (!secondary) return primary;
+      const langs = new Set([
+        ...Object.keys(primary || {}), ...Object.keys(secondary || {})
+      ]);
+      const result = {};
+      langs.forEach((lang) => {
+        const primaryTranslation = primary?.[lang]?.translation || {};
+        const secondaryTranslation = secondary?.[lang]?.translation || {};
+        if (!Object.keys(primaryTranslation).length && !Object.keys(secondaryTranslation).length) return;
+        result[lang] = {translation: {...secondaryTranslation, ...primaryTranslation}};
+      });
+      return Object.keys(result).length ? result : null;
+    },
+
+    // 游戏以英文启动时官方 i18next 未加载中文包（官方 itemDetailMap 又无 nameZh），MST 切中文
+    // 后物品名会退回 hrid。通过游戏 i18next 实例触发语言包加载（官方后端为 webpack 动态 import），
+    // 完成后刷新索引并广播 mst:i18n:ready。同一语言的尝试以 Promise 记忆，避免重复触发。
+    ensureGameLanguageResources(lang) {
+      if (lang !== 'zh' && lang !== 'en') return Promise.resolve(false);
+      this.ensureI18nPromises = this.ensureI18nPromises || {};
+      const pending = this.ensureI18nPromises[lang];
+      if (pending) return pending;
+      const attempt = async () => {
+        if (!this.ctx.CONFIG.isGameSite) return false;
+        const resources = this.getGameI18nResources();
+        if (resources?.[lang]?.translation && Object.keys(resources[lang].translation).length > 0) return false;
+        const instance = this.getGameI18nInstance();
+        const connector = instance?.services?.backendConnector;
+        const loader =
+          typeof instance?.loadLanguages === 'function'
+            ? (lngs, callback) => instance.loadLanguages(lngs, callback)
+            : connector && typeof connector.loadLanguages === 'function'
+              ? (lngs, callback) => connector.loadLanguages(lngs, callback)
+              : null;
+        if (!loader) return false;
+        await new Promise((resolve, reject) => {
+          loader(
+            [
+              lang
+            ],
+            (error) => (error ? reject(error) : resolve())
+          );
+        });
+        this.clientData.i18nSources = null; // store.data 就地变化，来源标记失效以强制重建合并
+        this.refreshI18nIndexes();
+        window.dispatchEvent(new CustomEvent('mst:i18n:ready', {detail: {source: 'load-languages'}}));
+        return true;
+      };
+      const promise = attempt()
+        .catch((error) => {
+          console.warn(`[MST] 游戏 ${lang} 语言资源加载失败:`, error);
+          return false;
+        })
+        .then((loaded) => {
+          delete this.ensureI18nPromises[lang];
+          return loaded;
+        });
+      this.ensureI18nPromises[lang] = promise;
+      return promise;
     },
 
     startI18nResourceWatcher() {
@@ -639,6 +775,26 @@
       return true;
     },
 
+    // 公会资料（含神龛等建筑等级 guildBuildingLevelMap）：官方 view_guild_profile 的应答
+    // guild_profile_shared，查看任意公会资料页即可获得；战斗模拟导出用它按
+    // min(个人增益等级, 该公会神龛等级) 计算队友神龛生效等级，跨公会不再退回个人等级。
+    rememberGuildProfile(guildProfile) {
+      const guildId = guildProfile?.id ?? guildProfile?.guild?.id;
+      if (guildId == null) return false;
+      this.characterData.guildProfiles[String(guildId)] = {
+        guildId: String(guildId),
+        guildName: guildProfile?.name || guildProfile?.guild?.name || '',
+        guildBuildingLevelMap: guildProfile?.guildBuildingLevelMap || {},
+        timestamp: Date.now()
+      };
+      return true;
+    },
+
+    getGuildProfile(guildId) {
+      if (guildId == null) return null;
+      return this.characterData.guildProfiles?.[String(guildId)] || null;
+    },
+
     getBattleUnit(characterId) {
       return this.characterData.battleUnits.get(String(characterId)) || null;
     },
@@ -706,6 +862,20 @@
       }
       if (type === 'character_friends_updated' && message.friendCharacterMap)
         replace('friendCharacterMap', message.friendCharacterMap);
+      if (type === 'guild_buffs_updated') {
+        // 公会增益与神龛生效等级直接相关：登录后增益变化（到期/重开/换公会）要同步进快照，
+        // 否则战斗模拟导出的神龛信息停留在 init_character_data 时的状态。
+        if (message.characterGuildBuffMap) replace('characterGuildBuffMap', message.characterGuildBuffMap);
+        if (message.guildActionTypeBuffsMap) replace('guildActionTypeBuffsMap', message.guildActionTypeBuffsMap);
+      }
+      if (type === 'guild_updated') {
+        if (message.guild) replace('guild', message.guild);
+        if (message.guildBuildingLevelMap) replace('guildBuildingLevelMap', message.guildBuildingLevelMap);
+      }
+      if (type === 'guild_profile_shared' && message.guildProfile) {
+        // 查看公会资料（官方 view_guild_profile 应答）携带该公会建筑等级，含神龛等级。
+        if (this.rememberGuildProfile(message.guildProfile)) changed.push('guildProfiles');
+      }
       if (type === 'guild_characters_updated') {
         if (message.guildCharacterMap) replace('guildCharacterMap', message.guildCharacterMap);
         if (message.guildSharableCharacterMap) replace('guildSharableCharacterMap', message.guildSharableCharacterMap);
@@ -872,23 +1042,50 @@
           }
         }
       );
-      // 公会增益等级保持官方对象结构（hrid → {guildBuffHrid, level}），只去掉时间戳等无关字段，
-      // 供着装评分公会神龛计算使用。
+      // 公会增益等级两种官方形态都保留：profile_shared 的 guildBuffLevelMap 值为数字
+      // （hrid → level，官方名片神龛页签直接按数字渲染），init_character_data 的
+      // characterGuildBuffMap 值为对象（hrid → {guildBuffHrid, level}，只去掉时间戳等无关字段）。
+      // 数字形态缺失会导致战斗模拟导出的队友神龛全部为 0。
       const guildBuffLevelMap = {};
       Object.entries(profile.guildBuffLevelMap || {}).forEach(
         ([
           hrid, record
         ]) => {
-          if (!record || typeof record !== 'object') return;
-          const compactRecord = pick(record, [
-            'guildBuffHrid', 'level'
-          ]);
-          if (compactRecord.level != null) guildBuffLevelMap[hrid] = compactRecord;
+          if (record == null) return;
+          if (typeof record === 'object') {
+            const compactRecord = pick(record, [
+              'guildBuffHrid', 'level'
+            ]);
+            if (compactRecord.level != null) guildBuffLevelMap[hrid] = compactRecord;
+          } else {
+            const level = Number(record);
+            if (Number.isSafeInteger(level) && level > 0) guildBuffLevelMap[hrid] = level;
+          }
+        }
+      );
+      // 成就压缩成 hrid → isCompleted 映射（未完成的成就对战斗模拟无意义），供战斗模拟导出复用；
+      // 兼容官方数组结构与上次压缩出的映射结构，保证重复压缩幂等。
+      const characterAchievements = {};
+      const achievementEntries = Array.isArray(profile.characterAchievements)
+        ? profile.characterAchievements.map((achievement) => [
+            achievement?.achievementHrid, achievement?.isCompleted
+          ])
+        : Object.entries(profile.characterAchievements || {});
+      achievementEntries.forEach(
+        ([
+          achievementHrid, isCompleted
+        ]) => {
+          if (achievementHrid) {
+            characterAchievements[achievementHrid] =
+              typeof isCompleted === 'object' && isCompleted != null
+                ? Boolean(isCompleted.isCompleted)
+                : Boolean(isCompleted);
+          }
         }
       );
       return {
         ...pick(profile, [
-          'combatLevel', 'hideWearableItems'
+          'combatLevel', 'hideWearableItems', 'guildId'
         ]),
         wearableItemMap,
         characterSkills: (profile.characterSkills || [])
@@ -910,7 +1107,10 @@
             'name', 'specialChatIconHrid', 'chatIconHrid', 'nameColorHrid', 'gameMode'
           ]) || {},
         characterHouseRoomMap,
-        guildBuffLevelMap
+        guildBuffLevelMap,
+        characterAchievements,
+        abilityCombatTriggersMap: profile.abilityCombatTriggersMap || {},
+        consumableCombatTriggersMap: profile.consumableCombatTriggersMap || {}
       };
     },
 
@@ -1002,10 +1202,13 @@
           houseHridToNameZh: new Map(),
           abilityBookByAbilityHrid: new Map()
         },
-        i18nResources: null
+        i18nResources: null,
+        gameI18n: null,
+        i18nSources: null
       },
-      characterData: {raw: null, profiles: {}, battleUnits: new Map(), source: '', updatedAt: 0},
+      characterData: {raw: null, profiles: {}, guildProfiles: {}, battleUnits: new Map(), source: '', updatedAt: 0},
       i18nWatcherStarted: false,
+      ensureI18nPromises: {},
       i18nBridgeInstalled: false,
       i18nBridgeInstallError: '',
       clientDataCacheSource: '',
@@ -1159,8 +1362,11 @@
         const self = this;
         const onMessage = (event) => self.handleMessage(event.detail);
         const onSend = (event) => self.dispatch('mst:ws:send', self.safeParse(event.detail) || event.detail);
+        // 会话状态（open/closed）原样转发：模块可按需监听 mst:ws:state 做断连处理。
+        const onState = (event) => self.dispatch('mst:ws:state', event.detail);
         window.addEventListener('mst:ws:message-raw', onMessage);
         window.addEventListener('mst:ws:send-raw', onSend);
+        window.addEventListener('mst:ws:state-raw', onState);
         const installed = ctx.PageBridgeService.install({
           key: 'websocket',
           label: '游戏 WebSocket 数据桥',
@@ -1183,6 +1389,9 @@
             ws.addEventListener('message', (event) => {
               if (typeof event.data === 'string') emit('mst:ws:message-raw', event.data);
             });
+            // 连接生命周期：open/close 转发给用户脚本侧，供会话监控（断连暂停定时推送等）按需订阅。
+            ws.addEventListener('open', () => emit('mst:ws:state-raw', {state: 'open', url}));
+            ws.addEventListener('close', () => emit('mst:ws:state-raw', {state: 'closed', url}));
             return ws;
           }
           IntegratedWebSocket.prototype = OriginalWebSocket.prototype;
@@ -1198,6 +1407,7 @@
         if (!installed) {
           window.removeEventListener('mst:ws:message-raw', onMessage);
           window.removeEventListener('mst:ws:send-raw', onSend);
+          window.removeEventListener('mst:ws:state-raw', onState);
           return;
         }
         this.installed = true;
@@ -1810,6 +2020,12 @@
     algorithmSourceMwiTools: {zh: '算法来源：MWITools', en: 'Algorithm source: MWITools'},
     battleGearScore: {zh: '战斗着装评分', en: 'Combat Gear Score'},
     skillingGearScore: {zh: '生活着装评分', en: 'Skilling Gear Score'},
+    gearScoreLabel: {zh: '着装评分', en: 'Gear Score'},
+    scoreDetailTitle: {zh: '评分明细', en: 'Score details'},
+    scoreDetailHint: {zh: '点击查看评分明细', en: 'Click for score details'},
+    copyScoreDetail: {zh: '复制明细', en: 'Copy details'},
+    scoreDetailCopied: {zh: '评分明细已复制', en: 'Score details copied'},
+    copyScoreDetailFailed: {zh: '复制评分明细失败', en: 'Failed to copy score details'},
     useNewBuildScore: {zh: '启用着装评分', en: 'Use gear score'},
     newBuildScoreBadge: {zh: '着装评分（MWITools 口径）', en: 'Gear score (MWITools)'},
     skillingTools: {zh: '生活工具', en: 'Skilling Tools'},
@@ -1882,7 +2098,75 @@
     dungeonProfitCalculator: {zh: '地下城收益计算器', en: 'Dungeon Profit Calculator'},
     houseUpgradeCalculator: {zh: '房屋升级材料计算器', en: 'House Upgrade Calculator'},
     combatUpgradeCalculator: {zh: '战斗升级计算器', en: 'Combat Upgrade Calculator'},
-    abilityUpgradeCalculator: {zh: '技能升级计算器', en: 'Ability Upgrade Calculator'}
+    abilityUpgradeCalculator: {zh: '技能升级计算器', en: 'Ability Upgrade Calculator'},
+    subscribeNotification: {zh: '订阅通知', en: 'Notifications'}
+  };
+
+  // subscribe-notification-messages
+  const SUBSCRIBE_NOTIFICATION_MESSAGES = {
+    subscribeNotificationTitle: {zh: '订阅通知', en: 'Subscription Notifications'},
+    subscribeNotificationSectionGeneral: {zh: '通用配置', en: 'General'},
+    subscribeNotificationSectionChannel: {zh: '渠道配置', en: 'Channel'},
+    subscribeNotificationDocLink: {zh: '官方配置说明', en: 'Official setup guide'},
+    subscribeNotificationEnabled: {zh: '启用订阅通知', en: 'Enable subscription notifications'},
+    subscribeNotificationChannel: {zh: '通知渠道', en: 'Channel'},
+    subscribeNotificationChannelDingtalk: {zh: '钉钉机器人', en: 'DingTalk robot'},
+    subscribeNotificationChannelWeCom: {zh: '企业微信机器人', en: 'WeCom robot'},
+    subscribeNotificationChannelFeishu: {zh: '飞书机器人', en: 'Feishu bot'},
+    subscribeNotificationDingtalkUrl: {
+      zh: '钉钉 Webhook 地址（含 access_token）',
+      en: 'DingTalk webhook URL (with access_token)'
+    },
+    subscribeNotificationDingtalkSecret: {zh: '钉钉加签密钥（可选）', en: 'DingTalk sign secret (optional)'},
+    subscribeNotificationWeComKey: {zh: '企业微信机器人 key', en: 'WeCom bot key'},
+    subscribeNotificationFeishuUrl: {zh: '飞书 Webhook 地址', en: 'Feishu webhook URL'},
+    subscribeNotificationFeishuSecret: {zh: '飞书签名密钥（可选）', en: 'Feishu sign secret (optional)'},
+    subscribeNotificationMinInterval: {zh: '最小推送间隔（秒）', en: 'Min push interval (s)'},
+    subscribeNotificationProgressInterval: {
+      zh: '定期进度推送间隔（分钟，0 关闭）',
+      en: 'Progress push interval (min, 0 to disable)'
+    },
+    subscribeNotificationPushLimit: {zh: '每分钟推送上限（条）', en: 'Push limit per minute'},
+    subscribeNotificationMsgType: {zh: '消息类型', en: 'Message types'},
+    subscribeNotificationTypeQueue: {zh: '行动队列', en: 'Action queue'},
+    subscribeNotificationTypeComplete: {zh: '任务完成', en: 'Task completion'},
+    subscribeNotificationTypeProgress: {zh: '定期进度', en: 'Periodic progress'},
+    subscribeNotificationTypeEmpty: {zh: '队列为空', en: 'Empty queue'},
+    subscribeNotificationTypeCompleteTitle: {
+      zh: '当前行动结束、下一个行动开始时推送，附等待执行的前 3 项队列；队列腾空时随通知附加提醒',
+      en: 'Pushes when the current action ends and the next starts, with up to 3 waiting queue entries; an alert is appended when the queue becomes empty.'
+    },
+    subscribeNotificationTypeProgressTitle: {
+      zh: '当前任务长时间未完成时，按设定间隔推送进度（已完成与剩余次数）并附等待队列，间隔在通用配置中调整',
+      en: 'Pushes progress (completed and remaining counts) plus the waiting queue at the configured interval while the current task keeps running; the interval is set in General.'
+    },
+    subscribeNotificationTypeEmptyTitle: {
+      zh: '队列腾空后，固定每分钟推送一条空队列提醒，直到补充新任务',
+      en: 'Pushes an empty-queue reminder every minute after the queue becomes empty, until new tasks are added.'
+    },
+    subscribeNotificationTestSend: {zh: '测试发送', en: 'Send test'},
+    subscribeNotificationTestBody: {
+      zh: '这是一条 MST 订阅通知测试消息',
+      en: 'This is a test message from MST subscription notifications.'
+    },
+    subscribeNotificationTestOk: {zh: '测试消息已发送', en: 'Test message sent'},
+    subscribeNotificationTestFail: {zh: '测试发送失败', en: 'Test send failed'},
+    subscribeNotificationInvalid: {zh: '请先填写当前渠道的配置', en: 'Fill in the channel configuration first'},
+    subscribeNotificationHint: {
+      zh: '仅在游戏页面打开期间监听队列变化，离线期间不感知、不补推；密钥只保存在本地浏览器。',
+      en: 'Queue changes are tracked only while the game page is open; offline changes are not tracked. Secrets stay in this browser.'
+    },
+    subscribeNotificationMsgTitle: {zh: '行动队列', en: 'Action Queue'},
+    subscribeNotificationTaskCompleted: {zh: '完成', en: 'Completed'},
+    subscribeNotificationTaskStarted: {zh: '开始', en: 'Started'},
+    subscribeNotificationTaskWithCount: {zh: '{0}（{1}/{2}）', en: '{0} ({1}/{2})'},
+    subscribeNotificationTaskUnlimited: {zh: '{0}（无上限）', en: '{0} (unlimited)'},
+    subscribeNotificationQueueLabel: {zh: '等待队列：', en: 'Waiting queue:'},
+    subscribeNotificationQueueMore: {zh: '…共 {0} 项', en: '…{0} in total'},
+    subscribeNotificationQueueEmpty: {zh: '行动队列已空，请及时补充', en: 'Action queue is empty, please refill it'},
+    subscribeNotificationProgressDone: {zh: '{0}：已完成 {1} 次', en: '{0}: {1} done'},
+    subscribeNotificationProgressRemaining: {zh: '，剩余 {0} 次', en: ', {0} remaining'},
+    subscribeNotificationServerTest: {zh: '测试服', en: 'Test server'}
   };
 
   // dungeon-calculator-messages
@@ -2157,7 +2441,8 @@
     equipmentComparison: EQUIPMENT_COMPARISON_MESSAGES,
     combatCalculator: COMBAT_CALCULATOR_MESSAGES,
     abilityCalculator: ABILITY_CALCULATOR_MESSAGES,
-    combatSimImport: COMBAT_SIM_IMPORT_MESSAGES
+    combatSimImport: COMBAT_SIM_IMPORT_MESSAGES,
+    subscribeNotification: SUBSCRIBE_NOTIFICATION_MESSAGES
   };
 
   // style-service
@@ -3668,6 +3953,21 @@
 
   // swal-dialogs
   const swalDialogMethods = {
+    // 标题行前置图标：与工具箱菜单一致，使用 misc 精灵图片段。
+    _mountTitleIcon(popup, icon) {
+      const {TemplateRenderer, utils} = this.ctx;
+      const titleElement = popup?.querySelector?.('.swal2-title');
+      if (!titleElement || !icon) return;
+      const miscSprite = utils?.getSpriteUrl?.('misc') || '/static/media/misc_sprite.cfad291b.svg';
+      const host = document.createElement('span');
+      host.className = 'mst-dialog-title-icon';
+      TemplateRenderer.render(
+        () => TemplateRenderer.html`<svg aria-hidden="true"><use href=${miscSprite + '#' + icon}></use></svg>`,
+        host
+      );
+      titleElement.prepend(host);
+    },
+
     alert(message, type = 'info', title = '') {
       const {i18n} = this.ctx;
       if (typeof Swal === 'undefined') {
@@ -3687,7 +3987,7 @@
     },
 
     // 后续带关闭按钮的内容弹窗统一通过此入口创建。
-    html({title, html: content, width = '48rem', popupClass = '', containerClass = '', didOpen, willClose}) {
+    html({title, html: content, width = '48rem', popupClass = '', containerClass = '', icon = '', didOpen, willClose}) {
       const {TemplateRenderer} = this.ctx;
       if (typeof Swal === 'undefined') {
         console.warn('[MST]', title);
@@ -3726,6 +4026,7 @@
         },
         didOpen: (popup) => {
           this._enableBoundedDragging(popup);
+          if (icon) this._mountTitleIcon(popup, icon);
           didOpen?.(popup);
         },
         willClose: (popup) => {
@@ -4527,7 +4828,7 @@
           const grids = [
             ...panel.querySelectorAll('[class*="AbilitiesPanel_abilityGrid"]')
           ];
-          if (ability.closest('[class*="AbilitiesPanel_abilityGrid"]') !== grids.at(-1)) {
+          if (ability.closest('[class*="AbilitiesPanel_abilityGrid"]') !== grids[grids.length - 1]) {
             feature.lastClickedAbilityHrid = '';
             return;
           }
@@ -4836,6 +5137,7 @@
         html: this.getDialogHtml(),
         width: 'min(51rem, calc(100vw - 1rem))',
         popupClass: 'mst-upgrade-calculator-dialog',
+        icon: 'skills',
         didOpen: (popup) => this.bind(popup),
         willClose: () => {
           this.bindController?.abort();
@@ -4867,72 +5169,120 @@
 
   // build-score-legacy（MWITools v25 及以下的“战力打造分”算法，与 v26.js 着装评分并行可选）
   // 对应参考：references/legacy-scripts/MWITools/MWITools_v25.14.js（Ratatatata 算法）
+  // v25 战力打造分只统计战斗向房屋（该版本口径）。
+  const legacyBattleHouseIds = new Set([
+    'dining_room', 'library', 'dojo', 'gym', 'armory',
+    'archery_range', 'mystical_study'
+  ]);
   const buildScoreLegacyCalculators = {
     _calculateHouseScore(cardData, clientData) {
-      const battleHouseIds = new Set([
-        'dining_room', 'library', 'dojo', 'gym', 'armory',
-        'archery_range', 'mystical_study'
-      ]);
       let cost = 0;
       Object.entries(cardData.characterHouseRoomMap || cardData.houseRooms || {}).forEach(
         ([
           key, room
         ]) => {
           const houseRoomHrid = room?.houseRoomHrid || (key.startsWith('/house_rooms/') ? key : '');
-          const houseId = this.ctx.utils.substrLastSlash(houseRoomHrid);
-          if (!battleHouseIds.has(houseId)) return;
           const level = Number(typeof room === 'object' ? room?.level : room) || 0;
-          const upgradeCostsMap = clientData.houseRoomDetailMap[houseRoomHrid]?.upgradeCostsMap || {};
-          for (let currentLevel = 1; currentLevel <= level; currentLevel++) {
-            (upgradeCostsMap[currentLevel] || []).forEach((item) => {
-              cost += Number(item.count || 0) * this._getWeightedMarketPrice(item.itemHrid);
-            });
-          }
+          cost += this._calculateLegacyHouseRoomCost(houseRoomHrid, level, clientData);
         }
       );
       return cost / 1_000_000;
     },
 
+    // 单个房间造价（战力打造分口径）：只统计战斗向房屋，材料按加权市场价。
+    _calculateLegacyHouseRoomCost(houseRoomHrid, level, clientData) {
+      const houseId = this.ctx.utils.substrLastSlash(houseRoomHrid);
+      if (!legacyBattleHouseIds.has(houseId)) return 0;
+      const upgradeCostsMap = clientData.houseRoomDetailMap[houseRoomHrid]?.upgradeCostsMap || {};
+      let cost = 0;
+      for (let currentLevel = 1; currentLevel <= level; currentLevel++) {
+        (upgradeCostsMap[currentLevel] || []).forEach((item) => {
+          cost += Number(item.count || 0) * this._getWeightedMarketPrice(item.itemHrid);
+        });
+      }
+      return cost;
+    },
+
     _calculateAbilityScore(cardData, clientData) {
-      const basicAbilityIds = [
-        'poke', 'scratch', 'smack', 'quick_shot', 'water_strike',
-        'fireball', 'entangle', 'minor_heal'
-      ];
       const allAbilities = cardData.abilities || [];
       const equippedAbilities = allAbilities.filter((ability) => Number(ability.slotNumber) > 0);
       const abilities = equippedAbilities.length ? equippedAbilities : allAbilities;
       let cost = 0;
       abilities.forEach((ability) => {
-        const targetLevel = Number(ability.level || 0);
-        const experience = Number(clientData.levelExperienceTable[targetLevel] || 0);
-        const experiencePerBook = basicAbilityIds.some((id) => ability.abilityHrid?.includes(id)) ? 50 : 500;
-        const bookCount = Number((experience / experiencePerBook + 1).toFixed(1));
-        const itemHrid = String(ability.abilityHrid || '').replace('/abilities/', '/items/');
-        cost += bookCount * this._getWeightedMarketPrice(itemHrid);
+        cost += this._calculateLegacyAbilityCost(ability, clientData);
       });
       return cost / 1_000_000;
     },
 
+    // 单个技能的技能书成本（战力打造分口径）。
+    _calculateLegacyAbilityCost(ability, clientData) {
+      const basicAbilityIds = [
+        'poke', 'scratch', 'smack', 'quick_shot', 'water_strike',
+        'fireball', 'entangle', 'minor_heal'
+      ];
+      const targetLevel = Number(ability.level || 0);
+      const experience = Number(clientData.levelExperienceTable[targetLevel] || 0);
+      const experiencePerBook = basicAbilityIds.some((id) => ability.abilityHrid?.includes(id)) ? 50 : 500;
+      const bookCount = Number((experience / experiencePerBook + 1).toFixed(1));
+      const itemHrid = String(ability.abilityHrid || '').replace('/abilities/', '/items/');
+      return bookCount * this._getWeightedMarketPrice(itemHrid);
+    },
+
     _calculateEquipmentScore(cardData, clientData) {
       const equipment = cardData.player?.equipment || cardData.player?.characterItems || [];
-      let networthAsk = 0;
-      let networthBid = 0;
+      let networth = 0;
       for (const item of equipment) {
-        const count = Number(item.count || 1);
-        const enhancementLevel = Number(item.enhancementLevel || 0);
-        if (enhancementLevel > 1) {
-          const best = this._findBestEnhanceStrategyWithPhiMirror(item.itemHrid, enhancementLevel, clientData);
-          const totalCost = best?.totalCost ? Math.round(best.totalCost) : 0;
-          networthAsk += count * Math.max(totalCost, 0);
-          networthBid += count * Math.max(totalCost, 0);
-          continue;
-        }
-        const marketRow = this.marketService.getMarketRow(item.itemHrid, 0);
-        if (!marketRow) continue;
-        networthAsk += count * (Number(marketRow.a) > 0 ? Number(marketRow.a) : 0);
-        networthBid += count * (Number(marketRow.b) > 0 ? Number(marketRow.b) : 0);
+        networth += Number(item.count || 1) * this._calculateLegacyItemValue(item, clientData);
       }
-      return (networthAsk * 0.5 + networthBid * 0.5) / 1_000_000;
+      return networth / 1_000_000;
+    },
+
+    // 单物品评分（战力打造分口径）：装备/技能/房屋各自的分值（折算到 M），供名片物品悬浮提示
+    // 使用；房屋只统计战斗向（v25 口径），生活房间为 0。
+    _calculateLegacyItemScores(cardData, clientData) {
+      const items = {};
+      const equipment = cardData.player?.equipment || cardData.player?.characterItems || [];
+      for (const item of equipment) {
+        if (item.itemLocationHrid === '/item_locations/inventory') continue;
+        if (!item.itemHrid) continue;
+        const value = Number(item.count || 1) * this._calculateLegacyItemValue(item, clientData);
+        if (!(value > 0)) continue;
+        items[`${item.itemHrid}::${Number(item.enhancementLevel || 0)}::${item.itemLocationHrid}`] = value / 1_000_000;
+      }
+      const abilities = {};
+      (cardData.abilities || []).forEach((ability) => {
+        if (!ability.abilityHrid) return;
+        const cost = this._calculateLegacyAbilityCost(ability, clientData);
+        if (!(cost > 0)) return;
+        abilities[`${ability.abilityHrid}::${Number(ability.level || 0)}`] = cost / 1_000_000;
+      });
+      const houses = {};
+      Object.entries(cardData.characterHouseRoomMap || cardData.houseRooms || {}).forEach(
+        ([
+          key, room
+        ]) => {
+          const houseRoomHrid = room?.houseRoomHrid || (key.startsWith('/house_rooms/') ? key : '');
+          const level = Number(typeof room === 'object' ? room?.level : room) || 0;
+          if (!houseRoomHrid || level <= 0) return;
+          houses[houseRoomHrid] = this._calculateLegacyHouseRoomCost(houseRoomHrid, level, clientData) / 1_000_000;
+        }
+      );
+      return {items, abilities, houses};
+    },
+
+    // 单件装备估值（战力打造分口径）：强化等级大于 1 按强化成本，否则按市场左右价均值。
+    _calculateLegacyItemValue(item, clientData) {
+      const enhancementLevel = Number(item.enhancementLevel || 0);
+      if (enhancementLevel > 1) {
+        const best = this._findBestEnhanceStrategyWithPhiMirror(item.itemHrid, enhancementLevel, clientData);
+        const totalCost = best?.totalCost ? Math.round(best.totalCost) : 0;
+        return Math.max(totalCost, 0);
+      }
+      const marketRow = this.marketService.getMarketRow(item.itemHrid, 0);
+      if (!marketRow) return 0;
+      const ask = Number(marketRow.a) > 0 ? Number(marketRow.a) : 0;
+      const bid = Number(marketRow.b) > 0 ? Number(marketRow.b) : 0;
+      return ask * 0.5 + bid * 0.5;
     },
 
     _getWeightedMarketPrice(itemHrid, ratio = 0.5) {
@@ -5202,7 +5552,7 @@
     },
 
     _v26SuccessRateAt(table, level) {
-      const value = Number(table[level] ?? table.at(-1));
+      const value = Number(table[level] ?? table[table.length - 1]);
       if (!Number.isFinite(value)) return 0;
       return value > 1 ? value / 100 : value;
     },
@@ -6022,6 +6372,41 @@
       return scores;
     },
 
+    // 单物品评分（着装评分口径）：装备/技能/房屋各自的分值（折算到 M），供名片物品悬浮提示使用。
+    _calculateNewItemScores(cardData, clientData) {
+      const context = {cache: new Map(), visited: new Set()};
+      const items = {};
+      const equipment = cardData.player?.equipment || cardData.player?.characterItems || [];
+      for (const item of equipment) {
+        if (item.itemLocationHrid === '/item_locations/inventory') continue;
+        if (!item.itemHrid) continue;
+        const value = Number(item.count ?? 1) * this._getItemValue(item, clientData, context);
+        if (!(value > 0)) continue;
+        items[`${item.itemHrid}::${Number(item.enhancementLevel || 0)}::${item.itemLocationHrid}`] = value / 1_000_000;
+      }
+      const abilities = {};
+      (cardData.abilities || []).forEach((ability) => {
+        if (!ability.abilityHrid) return;
+        const cost = this._calculateV26AbilityCost(ability, clientData);
+        if (!(cost > 0)) return;
+        abilities[`${ability.abilityHrid}::${Number(ability.level || 0)}`] = cost / 1_000_000;
+      });
+      const houses = {};
+      Object.entries(cardData.characterHouseRoomMap || cardData.houseRooms || {}).forEach(
+        ([
+          key, room
+        ]) => {
+          const houseRoomHrid = room?.houseRoomHrid || (key.startsWith('/house_rooms/') ? key : '');
+          const level = Number(typeof room === 'object' ? room?.level : room) || 0;
+          if (!houseRoomHrid || level <= 0) return;
+          const cost = this._calculateV26HouseRoomCost(houseRoomHrid, level, clientData);
+          if (!(cost > 0)) return;
+          houses[houseRoomHrid] = cost / 1_000_000;
+        }
+      );
+      return {items, abilities, houses};
+    },
+
     // 房屋分按房间可用动作类型分为战斗/生活两类，造价逐级按公平价值累加，口径与 MWITools 一致。
     _calculateHouseScores(cardData, clientData) {
       let combat = 0;
@@ -6043,14 +6428,7 @@
               actionTypeHrid, isUsable
             ]) => actionTypeHrid !== '/action_types/combat' && Boolean(isUsable)
           );
-          let cost = 0;
-          const upgradeCostsMap = houseDetail.upgradeCostsMap || {};
-          for (let currentLevel = 1; currentLevel <= level; currentLevel++) {
-            (upgradeCostsMap[currentLevel] || []).forEach((item) => {
-              cost += Number(item.count || 0) * this._fairValue(item.itemHrid);
-            });
-          }
-          const value = cost / 1_000_000;
+          const value = this._calculateV26HouseRoomCost(houseRoomHrid, level, clientData) / 1_000_000;
           all += value;
           if (isCombat) combat += value;
           if (isSkilling) skilling += value;
@@ -6059,23 +6437,42 @@
       return {combat, skilling, all};
     },
 
+    // 单个房间造价（着装评分口径）：逐级材料按公平价值累加。
+    _calculateV26HouseRoomCost(houseRoomHrid, level, clientData) {
+      const houseDetail = clientData.houseRoomDetailMap[houseRoomHrid];
+      if (!houseDetail) return 0;
+      let cost = 0;
+      const upgradeCostsMap = houseDetail.upgradeCostsMap || {};
+      for (let currentLevel = 1; currentLevel <= level; currentLevel++) {
+        (upgradeCostsMap[currentLevel] || []).forEach((item) => {
+          cost += Number(item.count || 0) * this._fairValue(item.itemHrid);
+        });
+      }
+      return cost;
+    },
+
     // 技能分按等级所需经验折算技能书数量（8 个基础技能每本 50 经验，其余 500），再按公平价值计价。
     _calculateNewAbilityScore(abilities, clientData) {
+      let cost = 0;
+      abilities.forEach((ability) => {
+        cost += this._calculateV26AbilityCost(ability, clientData);
+      });
+      return cost / 1_000_000;
+    },
+
+    // 单个技能的技能书成本（着装评分口径）。
+    _calculateV26AbilityCost(ability, clientData) {
       const basicAbilityIds = [
         'poke', 'scratch', 'smack', 'quick_shot', 'water_strike',
         'fireball', 'entangle', 'minor_heal'
       ];
-      let cost = 0;
-      abilities.forEach((ability) => {
-        const targetLevel = Number(ability.level || 0);
-        const experience = Number(clientData.levelExperienceTable[targetLevel] || 0);
-        const experiencePerBook = basicAbilityIds.some((id) => ability.abilityHrid?.includes(id)) ? 50 : 500;
-        const bookCount = Number((experience / experiencePerBook + 1).toFixed(1));
-        const itemHrid = String(ability.abilityHrid || '').replace('/abilities/', '/items/');
-        const fairValue = this._fairValue(itemHrid, 0);
-        if (fairValue > 0) cost += bookCount * fairValue;
-      });
-      return cost / 1_000_000;
+      const targetLevel = Number(ability.level || 0);
+      const experience = Number(clientData.levelExperienceTable[targetLevel] || 0);
+      const experiencePerBook = basicAbilityIds.some((id) => ability.abilityHrid?.includes(id)) ? 50 : 500;
+      const bookCount = Number((experience / experiencePerBook + 1).toFixed(1));
+      const itemHrid = String(ability.abilityHrid || '').replace('/abilities/', '/items/');
+      const fairValue = this._fairValue(itemHrid, 0);
+      return fairValue > 0 ? bookCount * fairValue : 0;
     },
 
     // 公会 Buff 当前等级（MWITools getGuildBuffLevel）：支持数组或按 hrid 索引的对象。
@@ -6085,6 +6482,61 @@
         : levels?.[guildBuffHrid];
       const level = Number(typeof record === 'object' ? (record?.level ?? record?.currentLevel) : record);
       return Number.isSafeInteger(level) && level > 0 ? level : 0;
+    },
+
+    // 单个公会神龛增益的分值（着装评分口径）：生效等级内逐级代币与信用成本。
+    // valid 为 false 表示数据不可估值（与聚合口径一致，该组整体不计入）。
+    _calculateV26GuildShrineBuffValue(detail, buffLevel, shrineLevel, clientData, context) {
+      const currentLevel = shrineLevel > 0 ? Math.min(buffLevel, shrineLevel) : buffLevel;
+      let value = 0;
+      const levelCosts = detail.levelCosts;
+      if (!levelCosts) return {value, valid: false};
+      for (let level = 1; level <= currentLevel; level++) {
+        const cost = levelCosts[level] ?? levelCosts[String(level)];
+        if (!cost) return {value, valid: false};
+        const guildTokenCount = Number(cost.guildTokenCost);
+        if (guildTokenCount) {
+          const tokenValue = this._v26GuildTokenValue(clientData, context);
+          if (!(tokenValue > 0)) return {value, valid: false};
+          value += guildTokenCount * tokenValue;
+        }
+        for (const creditCost of cost.creditCosts ?? []) {
+          const count = Number(creditCost?.count);
+          if (!count) continue;
+          const creditValue = this._v26GuildCreditValue(creditCost.itemHrid, clientData);
+          if (!(creditValue > 0)) return {value, valid: false};
+          value += count * creditValue;
+        }
+      }
+      return {value, valid: true};
+    },
+
+    // 公会神龛逐项明细：每个已激活公会增益一行（生效等级取 min(个人增益, 公会神龛等级)），
+    // 供评分明细浮层展示。
+    _calculateV26ShrineDetails(cardData, clientData, context = {cache: new Map(), visited: new Set()}) {
+      const levels = cardData.characterGuildBuffMap;
+      const details = Object.values(clientData.guildBuffDetailMap || {});
+      if (!levels || typeof levels !== 'object' || !details.length) return {battle: [], skilling: []};
+      const buildingLevels = cardData.guildBuildingLevelMap || {};
+      const out = {battle: [], skilling: []};
+      for (const detail of details) {
+        const guildBuffHrid = detail?.guildBuffHrid ?? detail?.hrid;
+        if (!guildBuffHrid) continue;
+        const buffLevel = this._v26GuildBuffLevel(guildBuffHrid, levels);
+        if (!buffLevel) continue;
+        const shrineLevel = Number(buildingLevels?.[detail?.shrineHrid]) || 0;
+        if (typeof detail?.isCombat !== 'boolean') continue;
+        const result = this._calculateV26GuildShrineBuffValue(detail, buffLevel, shrineLevel, clientData, context);
+        if (!result.valid || !(result.value > 0)) continue;
+        out[detail.isCombat ? 'battle' : 'skilling'].push({
+          hrid: guildBuffHrid,
+          // 官方 UI 用 guildShrineNames.<神龛hrid> 显示名称（游戏无独立公会增益名称键）。
+          shrineHrid: detail.shrineHrid,
+          level: shrineLevel > 0 ? Math.min(buffLevel, shrineLevel) : buffLevel,
+          value: result.value / 1_000_000
+        });
+      }
+      return out;
     },
 
     // 公会神龛分数（MWITools v26.4.14 起计入着装评分）：按公会 Buff 等级累加每级
@@ -6105,43 +6557,16 @@
         if (!guildBuffHrid) continue;
         const buffLevel = this._v26GuildBuffLevel(guildBuffHrid, levels);
         if (!buffLevel) continue;
-        const shrineLevel = Number(buildingLevels?.[detail?.shrineHrid]) || 0;
-        const currentLevel = shrineLevel > 0 ? Math.min(buffLevel, shrineLevel) : buffLevel;
         if (typeof detail?.isCombat !== 'boolean') return {battle: null, skilling: null};
         const group = detail.isCombat ? 'battle' : 'skilling';
         if (!valid[group]) continue;
-        const levelCosts = detail.levelCosts;
-        if (!levelCosts) {
+        const shrineLevel = Number(buildingLevels?.[detail?.shrineHrid]) || 0;
+        const result = this._calculateV26GuildShrineBuffValue(detail, buffLevel, shrineLevel, clientData, context);
+        if (!result.valid) {
           valid[group] = false;
           continue;
         }
-        for (let level = 1; level <= currentLevel; level++) {
-          const cost = levelCosts[level] ?? levelCosts[String(level)];
-          if (!cost) {
-            valid[group] = false;
-            break;
-          }
-          const guildTokenCount = Number(cost.guildTokenCost);
-          if (guildTokenCount) {
-            const tokenValue = this._v26GuildTokenValue(clientData, context);
-            if (!(tokenValue > 0)) {
-              valid[group] = false;
-              break;
-            }
-            values[group] += guildTokenCount * tokenValue;
-          }
-          for (const creditCost of cost.creditCosts ?? []) {
-            const count = Number(creditCost?.count);
-            if (!count) continue;
-            const creditValue = this._v26GuildCreditValue(creditCost.itemHrid, clientData);
-            if (!(creditValue > 0)) {
-              valid[group] = false;
-              break;
-            }
-            values[group] += count * creditValue;
-          }
-          if (!valid[group]) break;
-        }
+        values[group] += result.value;
       }
       return {
         battle: valid.battle ? values.battle / 1_000_000 : null,
@@ -6231,6 +6656,25 @@
         return this._calculateNew(cardData, clientData, equipmentHidden);
       }
       return this._calculateLegacy(cardData, clientData, equipmentHidden);
+    }
+
+    // 单物品评分：装备/技能/房屋各自的分值（折算到 M）；着装评分口径附带神龛逐项明细
+    // （每个已激活公会增益一行），战力打造分不计神龛。
+    // 勾选着装评分用 v26 口径，未勾选用 v25 战力打造分口径；供名片物品悬浮提示与评分明细浮层使用。
+    // 需在 calculate() 成功后调用（此时客户端字典与市场行情已就绪）。
+    calculateItemScores(cardData, useNewBuildScore = true) {
+      if (!cardData || typeof cardData !== 'object') return null;
+      const {DataHub} = this.ctx;
+      const clientData = DataHub.clientData.raw;
+      if (!clientData?.itemDetailMap || !clientData?.houseRoomDetailMap || !clientData?.levelExperienceTable) {
+        return null;
+      }
+      return useNewBuildScore
+        ? {
+            ...this._calculateNewItemScores(cardData, clientData),
+            shrines: this._calculateV26ShrineDetails(cardData, clientData)
+          }
+        : {...this._calculateLegacyItemScores(cardData, clientData), shrines: {battle: [], skilling: []}};
     }
 
     _calculateLegacy(cardData, clientData, equipmentHidden) {
@@ -6545,6 +6989,18 @@
       const currentTools = (data.player.equipment || []).filter((item) =>
         String(item.itemLocationHrid || '').endsWith('_tool')
       );
+      // 游戏配装的“使用最高强化等级”（复选框勾选即 useExactEnhancement 为 falsy，与官方
+      // checked: !useExactEnhancement 一致）在穿戴时从库存与已穿戴中选该物品的最高强化等级；
+      // 生成名片时按同一规则取实时最高强化，而不是配装保存时的等级。
+      const maxEnhancementByHrid = new Map();
+      if (!loadout.useExactEnhancement) {
+        (raw.characterItems || []).forEach((item) => {
+          if (!item?.itemHrid) return;
+          const level = Number(item.enhancementLevel || 0);
+          const best = maxEnhancementByHrid.get(item.itemHrid);
+          if (best == null || level > best) maxEnhancementByHrid.set(item.itemHrid, level);
+        });
+      }
       const itemByHash = new Map(
         (raw.characterItems || []).map((item) => [
           item?.hash, item
@@ -6556,16 +7012,19 @@
         ]) => {
           if (!hash) return [];
           const item = itemByHash.get(hash);
-          if (item) {
-            return [
-              {itemLocationHrid, itemHrid: item.itemHrid, enhancementLevel: item.enhancementLevel || 0}
-            ];
+          let itemHrid = item?.itemHrid || '';
+          let enhancementLevel = item?.enhancementLevel || 0;
+          if (!item) {
+            const parts = String(hash).split('::');
+            itemHrid = parts.find((part) => part.startsWith('/items/')) || '';
+            enhancementLevel = Number(parts[parts.length - 1] || 0);
           }
-          const parts = String(hash).split('::');
-          const itemHrid = parts.find((part) => part.startsWith('/items/')) || '';
           if (!itemHrid) return [];
+          if (maxEnhancementByHrid.has(itemHrid)) {
+            enhancementLevel = maxEnhancementByHrid.get(itemHrid);
+          }
           return [
-            {itemLocationHrid, itemHrid, enhancementLevel: Number(parts[parts.length - 1] || 0)}
+            {itemLocationHrid, itemHrid, enhancementLevel}
           ];
         }
       );
@@ -6619,6 +7078,28 @@
     );
 
     return CardDataAdapter;
+  }
+
+  // 评分明细装备行固定顺序：主手、副手、头部、身体、腿部、手部、脚部、袋子、背部、
+  // 项链、戒指、耳环、护符；双手武器随主手槽位，官方未列出的饰品槽排护符之后，未知位置排最后。
+  const SCORE_DETAIL_SLOT_ORDER = [
+    '/item_locations/main_hand', '/item_locations/two_hand', '/item_locations/off_hand', '/item_locations/head', '/item_locations/body',
+    '/item_locations/legs', '/item_locations/hands', '/item_locations/feet', '/item_locations/pouch', '/item_locations/back',
+    '/item_locations/neck', '/item_locations/ring', '/item_locations/earrings', '/item_locations/charm', '/item_locations/trinket'
+  ];
+
+  // 生活工具槽位顺序：按官方技能顺序（skillDetailMap 的 sortIndex）排列，即
+  // 挤奶、采集、伐木、奶酪锻造、制作、缝纫、烹饪、冲泡、炼金、强化。
+  function getToolSlotOrder(clientData) {
+    return Object.values(clientData?.houseRoomDetailMap || {})
+      .filter((detail) => detail?.hrid && detail?.skillHrid && !detail.usableInActionTypeMap?.['/action_types/combat'])
+      .sort(
+        (left, right) =>
+          (Number(clientData.skillDetailMap?.[left.skillHrid]?.sortIndex) || 0) -
+            (Number(clientData.skillDetailMap?.[right.skillHrid]?.sortIndex) || 0) ||
+          String(left.hrid).localeCompare(String(right.hrid))
+      )
+      .map((detail) => `/item_locations/${String(detail.skillHrid).split('/').pop()}_tool`);
   }
 
   class CharacterCardIconRenderer {
@@ -6759,6 +7240,7 @@
       this.ctx = deps.ctx;
       this.state = deps.state;
       this.i18n = deps.ctx.i18n;
+      this.getAbilityDisplayNames = deps.getAbilityDisplayNames;
     }
 
     registerBuildScoreSource(data) {
@@ -6843,10 +7325,27 @@
             this.renderBuildScore(scoreElement, this.i18n.t('calculating'));
           }
           try {
-            const score = await this.ctx.buildScoreService.calculate(data, this.getUseNewBuildScore());
+            const useNewBuildScore = this.getUseNewBuildScore();
+            const score = await this.ctx.buildScoreService.calculate(data, useNewBuildScore);
             if (scoreElement.dataset.buildScoreKey !== key) return;
             this.renderBuildScore(scoreElement, score);
             scoreElement.title = this.buildScoreTooltip(score);
+            // 名片内容区的装备/技能/房屋逐项悬浮提示（第一行名称+等级，第二行评分）。
+            const itemScores = this.ctx.buildScoreService.calculateItemScores(data, useNewBuildScore);
+            this.applyCardItemScoreTooltips(scoreElement.closest('.mst-character-card'), itemScores, useNewBuildScore);
+            // 评分块可点击：打开评分明细浮层；结果缓存供浮层展示（超量时淘汰最旧）。
+            scoreElement.classList.add('mst-card-build-score-clickable');
+            scoreElement.onclick = (event) => {
+              event.stopPropagation();
+              this.toggleScoreDetail(scoreElement);
+            };
+            const results = this.state.buildScore.results;
+            if (results) {
+              results.set(key, {cardData: data, score, itemScores, useNewBuildScore});
+              if (results.size > 40) {
+                results.delete(results.keys().next().value);
+              }
+            }
             scoreElement.dataset.scoreState = 'complete';
             scoreElement.dataset.renderedScoreKey = key;
           } catch (error) {
@@ -6864,23 +7363,371 @@
       );
     }
 
+    // 名片内容区逐项悬浮提示：第一行物品名称（装备带强化等级、技能/房屋带等级），
+    // 第二行评分数值，标签随“启用着装评分”开关切换（着装评分 / 战力打造分）。
+    applyCardItemScoreTooltips(card, itemScores, useNewBuildScore) {
+      if (!card || !itemScores) return;
+      const label = this.i18n.t(useNewBuildScore ? 'gearScoreLabel' : 'buildScore');
+      card.querySelectorAll('[data-card-item-hrid]').forEach((el) => {
+        const level = Number(el.dataset.cardItemLevel || 0);
+        const score = itemScores.items[`${el.dataset.cardItemHrid}::${level}::${el.dataset.cardItemLocation || ''}`];
+        if (score == null) return;
+        const name = el.dataset.cardItemName || el.title || '';
+        el.title = `${name}${level > 0 ? ` +${level}` : ''}\n${label}: ${score.toFixed(1)}`;
+      });
+      card.querySelectorAll('[data-card-ability-hrid]').forEach((el) => {
+        const score = itemScores.abilities[`${el.dataset.cardAbilityHrid}::${Number(el.dataset.cardAbilityLevel || 0)}`];
+        if (score == null) return;
+        const name = el.dataset.cardAbilityName || el.title || '';
+        el.title = `${name} Lv.${el.dataset.cardAbilityLevel}\n${label}: ${score.toFixed(1)}`;
+      });
+      card.querySelectorAll('[data-card-house-hrid]').forEach((el) => {
+        const score = itemScores.houses[el.dataset.cardHouseHrid];
+        if (score == null) return;
+        const name = el.dataset.cardHouseName || el.title || '';
+        el.title = `${name} Lv.${el.dataset.cardHouseLevel}\n${label}: ${score.toFixed(1)}`;
+      });
+    }
+
+    // 评分明细浮层：点击评分块展开分项明细（房屋/技能/装备/神龛逐项），再点同一评分块
+    // 或浮层外部关闭。Swal 同实例只能有一个 popup，明细挂 body 用固定浮层承载。
+    toggleScoreDetail(scoreElement) {
+      const key = scoreElement.dataset.buildScoreKey;
+      const existing = document.querySelector('.mst-score-detail-panel');
+      if (existing) {
+        const same = existing.dataset.buildScoreKey === key;
+        existing.remove();
+        if (same) return;
+      }
+      const result = this.state.buildScore.results?.get(key);
+      if (!result?.itemScores) return;
+      this.renderScoreDetailPanel(scoreElement, result);
+    }
+
+    renderScoreDetailPanel(scoreElement, result) {
+      const panel = document.createElement('div');
+      panel.className = 'mst-score-detail-panel';
+      panel.dataset.buildScoreKey = scoreElement.dataset.buildScoreKey || '';
+      panel.innerHTML = this.buildScoreDetailHtml(result);
+      document.body.appendChild(panel);
+      // 浮层挂在 body 上，不随名片整体刷新；订阅语言切换，切换中英文时重建明细内容。
+      const unsubscribeLanguage = this.ctx.LanguageEvents?.subscribe(() => {
+        if (!panel.isConnected) {
+          unsubscribeLanguage?.();
+          return;
+        }
+        panel.innerHTML = this.buildScoreDetailHtml(result);
+        bindPanelActions();
+      });
+      const removePanel = () => {
+        unsubscribeLanguage?.();
+        panel.remove();
+      };
+      // 复制明细：输出名称与分数同一行的固定格式文本，粘贴后直接可读。
+      const copyDetail = async (event) => {
+        const button = event.currentTarget;
+        button.disabled = true;
+        try {
+          await this.ctx.utils.writeClipboard(this.buildScoreDetailText(result));
+          this.ctx.Notifier?.toast(this.i18n.t('scoreDetailCopied'), 'success');
+        } catch (error) {
+          console.warn('[MST] 复制评分明细失败:', error);
+          this.ctx.Notifier?.toast(this.i18n.t('copyScoreDetailFailed'), 'error');
+        } finally {
+          button.disabled = false;
+        }
+      };
+      const bindPanelActions = () => {
+        panel.querySelector('.mst-score-detail-close')?.addEventListener('click', () => removePanel());
+        panel.querySelector('.mst-score-detail-copy')?.addEventListener('click', copyDetail);
+      };
+      bindPanelActions();
+      // 定位在评分块下方，放不下时改到上方；右缘与名片头部（mst-card-header）右侧
+      // 垂直对齐，并夹在视口内。
+      const rect = scoreElement.getBoundingClientRect();
+      const header = scoreElement.closest('.mst-card-header');
+      const headerRect = (header || scoreElement).getBoundingClientRect();
+      const left = Math.min(
+        Math.max(8, headerRect.right - panel.offsetWidth),
+        Math.max(8, window.innerWidth - panel.offsetWidth - 8)
+      );
+      let top = rect.bottom + 6;
+      if (top + panel.offsetHeight > window.innerHeight - 8) {
+        top = Math.max(8, rect.top - panel.offsetHeight - 6);
+      }
+      panel.style.left = `${left}px`;
+      panel.style.top = `${top}px`;
+      const closeOnOutside = (event) => {
+        if (panel.contains(event.target) || scoreElement.contains(event.target)) return;
+        removePanel();
+        document.removeEventListener('mousedown', closeOnOutside);
+      };
+      document.addEventListener('mousedown', closeOnOutside);
+    }
+
+    // 明细数据装配：把单物品评分按“房屋/技能/装备/神龛”分组（着装评分分战斗/生活两组，
+    // 战力打造分为单组，房屋只有战斗向房间计入）。顺序固定：装备按位置、技能按槽位号、
+    // 神龛按官方神龛顺序，房屋保持数据自身顺序；HTML 与复制文本共用本方法。
+    buildScoreDetailSections({cardData, score, itemScores, useNewBuildScore}) {
+      const {DataHub, buildScoreService} = this.ctx;
+      const language = this.i18n.languageKey;
+      const clientData = DataHub.clientData.raw || {};
+      const itemLabel = (hrid, level) => {
+        const name = DataHub.getLocalizedGameName('itemNames', hrid, language);
+        return `${name}${Number(level || 0) > 0 ? ` +${Number(level)}` : ''}`;
+      };
+      const abilityLabel = (hrid, level) => {
+        const names = this.getAbilityDisplayNames?.(hrid);
+        const name = names ? this.i18n.pick(names) : hrid;
+        return `${name} Lv.${level}`;
+      };
+      const houseName = (hrid) =>
+        String(DataHub.getGameI18nResources()?.[language]?.translation?.houseRoomNames?.[hrid] || hrid);
+      // 装备行：与聚合口径一致，按分类同时计入战斗/工具/生活装备；另存一份全量用于
+      // 战力打造分。装备槽按 SCORE_DETAIL_SLOT_ORDER 排列；工具槽按生活工具面板槽位
+      // （从左到右、第一排到第二排）排在装备之后，未知位置排最后。
+      const toolSlotOrder = getToolSlotOrder(clientData);
+      const slotRank = (hrid) => {
+        const equipmentIndex = SCORE_DETAIL_SLOT_ORDER.indexOf(hrid);
+        if (equipmentIndex >= 0) return equipmentIndex;
+        const toolIndex = toolSlotOrder.indexOf(hrid);
+        if (toolIndex >= 0) return SCORE_DETAIL_SLOT_ORDER.length + toolIndex;
+        return SCORE_DETAIL_SLOT_ORDER.length + toolSlotOrder.length;
+      };
+      const equipmentList = [
+        ...(cardData.player?.equipment || cardData.player?.characterItems || [])
+      ].sort(
+        (left, right) =>
+          slotRank(left.itemLocationHrid) - slotRank(right.itemLocationHrid) ||
+          String(left.itemLocationHrid).localeCompare(String(right.itemLocationHrid))
+      );
+      const battleItems = [];
+      const toolItems = [];
+      const skillingItems = [];
+      const allItems = [];
+      equipmentList.forEach((item) => {
+        if (item.itemLocationHrid === '/item_locations/inventory') return;
+        const key = `${item.itemHrid}::${Number(item.enhancementLevel || 0)}::${item.itemLocationHrid}`;
+        const value = itemScores.items[key];
+        if (value == null) return;
+        const row = {name: itemLabel(item.itemHrid, item.enhancementLevel), value};
+        allItems.push(row);
+        const classification = buildScoreService._classifyEquippedItem(item, clientData);
+        if (classification.isCombat) battleItems.push(row);
+        if (classification.isTool) toolItems.push(row);
+        else if (classification.isSkilling) skillingItems.push(row);
+      });
+      // 技能行：与聚合口径一致（有已装备技能时只列已装备），按槽位顺序排列。
+      const allAbilities = [
+        ...(cardData.abilities || [])
+      ].sort(
+        (left, right) =>
+          (Number(left.slotNumber) || 0) - (Number(right.slotNumber) || 0) ||
+          String(left.abilityHrid).localeCompare(String(right.abilityHrid))
+      );
+      const equippedAbilities = allAbilities.filter((ability) => Number(ability.slotNumber) > 0);
+      const abilityRows = (equippedAbilities.length ? equippedAbilities : allAbilities).flatMap((ability) => {
+        const value = itemScores.abilities[`${ability.abilityHrid}::${Number(ability.level || 0)}`];
+        return value == null ? [] : [
+              {name: abilityLabel(ability.abilityHrid, ability.level), value}
+            ];
+      });
+      // 房屋等级映射，供行名称与战力打造分房屋行使用。
+      const houseLevels = {};
+      Object.entries(cardData.characterHouseRoomMap || cardData.houseRooms || {}).forEach(
+        ([
+          key, room
+        ]) => {
+          const houseRoomHrid = room?.houseRoomHrid || (key.startsWith('/house_rooms/') ? key : '');
+          if (houseRoomHrid) houseLevels[houseRoomHrid] = Number(typeof room === 'object' ? room?.level : room) || 0;
+        }
+      );
+      // 房屋行：着装评分按房间可用动作类型分战斗/生活；战力打造分口径只有战斗向房间有分值。
+      const battleHouses = [];
+      const skillingHouses = [];
+      Object.entries(itemScores.houses).forEach(
+        ([
+          houseRoomHrid, value
+        ]) => {
+          if (!(value > 0)) return;
+          const row = {name: `${houseName(houseRoomHrid)} Lv.${houseLevels[houseRoomHrid] || 0}`, value};
+          const usableInActionTypeMap = clientData.houseRoomDetailMap?.[houseRoomHrid]?.usableInActionTypeMap || {};
+          if (usableInActionTypeMap['/action_types/combat']) battleHouses.push(row);
+          if (
+            Object.entries(usableInActionTypeMap).some(
+              ([
+                actionTypeHrid, isUsable
+              ]) => actionTypeHrid !== '/action_types/combat' && Boolean(isUsable)
+            )
+          ) {
+            skillingHouses.push(row);
+          }
+        }
+      );
+      // 神龛行：每个已激活公会增益一行（着装评分口径，战力打造分不计神龛）；
+      // 游戏无独立公会增益名称键，官方 UI 按 guildShrineNames.<神龛hrid> 显示名称；
+      // 按官方神龛顺序（guildShrineDetailMap 的 sortIndex）排列，缺序时按 hrid 稳定排序。
+      const shrineRows = (group) =>
+        (itemScores.shrines?.[group] || [])
+          .map((row) => ({
+            hrid: String(row.hrid || row.shrineHrid || ''),
+            name: `${DataHub.getLocalizedGameName('guildShrineNames', row.shrineHrid, language)} Lv.${row.level}`,
+            value: row.value,
+            sortIndex: Number(clientData.guildShrineDetailMap?.[row.shrineHrid]?.sortIndex) || Number.MAX_SAFE_INTEGER
+          }))
+          .sort((left, right) => left.sortIndex - right.sortIndex || left.hrid.localeCompare(right.hrid))
+          .map(({name, value}) => ({name, value}));
+      if (useNewBuildScore) {
+        return [
+          {
+            title: `${this.i18n.t('battleGearScore')}: ${score.battle.total.toFixed(1)}`,
+            groups: [
+              {
+                label: this.i18n.t('houseScore'),
+                rows: battleHouses
+              }, {label: this.i18n.t('abilityScore'), rows: abilityRows}, {
+                label: this.i18n.t('equipmentScore'),
+                rows: battleItems
+              }, {label: this.i18n.t('battleShrineScore'), rows: shrineRows('battle')}
+            ]
+          }, {
+            title: `${this.i18n.t('skillingGearScore')}: ${score.skilling.available ? score.skilling.total.toFixed(1) : '-'}`,
+            groups: [
+              {
+                label: this.i18n.t('houseScore'),
+                rows: skillingHouses
+              }, {label: this.i18n.t('toolScore'), rows: toolItems}, {
+                label: this.i18n.t('equipmentScore'),
+                rows: skillingItems
+              }, {label: this.i18n.t('skillingShrineScore'), rows: shrineRows('skilling')}
+            ]
+          }
+        ];
+      }
+      return [
+        {
+          title: `${this.i18n.t('buildScore')}: ${score.total.toFixed(1)}`,
+          groups: [
+            {
+              label: this.i18n.t('houseScore'),
+              rows: Object.entries(itemScores.houses).flatMap(
+                ([
+                  hrid, value
+                ]) => {
+                  if (!(value > 0)) return [];
+                  return [
+                    {name: `${houseName(hrid)} Lv.${houseLevels[hrid] || 0}`, value}
+                  ];
+                }
+              )
+            }, {label: this.i18n.t('abilityScore'), rows: abilityRows}, {
+              label: this.i18n.t('equipmentScore'),
+              rows: allItems
+            }
+          ]
+        }
+      ];
+    }
+
+    buildScoreDetailGroups(result) {
+      return this.buildScoreDetailSections(result).map((section) => ({
+        title: section.title,
+        html: this.renderScoreDetailGroupsHtml(section.groups)
+      }));
+    }
+
+    // 分组渲染：组合计分数右对齐，组间画分隔线；最后一组后不画线（分组边界由
+    // 下一分节的顶边线提供，避免出现双线）。
+    renderScoreDetailGroupsHtml(groups) {
+      const escape = (value) => this.ctx.utils.escapeHtml(String(value));
+      const rowHtml = (row) =>
+        `<div class="mst-score-detail-row"><span class="mst-score-detail-name">${escape(row.name)}</span><span class="mst-score-detail-value">${row.value.toFixed(1)}</span></div>`;
+      const rendered = groups
+        .filter((group) => group.rows.length)
+        .map((group) => ({
+          label: group.label,
+          total: group.rows.reduce((sum, row) => sum + row.value, 0),
+          html: group.rows.map(rowHtml).join('')
+        }));
+      return rendered
+        .map(
+          (group, index) =>
+            `<div class="mst-score-detail-group-title"><span class="mst-score-detail-group-label">${escape(group.label)}</span><span class="mst-score-detail-group-value">${group.total.toFixed(1)}</span></div>${group.html}${
+            index < rendered.length - 1 ? '<div class="mst-score-detail-divider"></div>' : ''
+          }`
+        )
+        .join('');
+    }
+
+    // 复制用纯文本：明细行名称与分数在同一行（明细行是 flex 布局的两个节点，手动
+    // 选取复制会被浏览器拆成两行，因此提供“复制明细”按钮输出固定格式文本）。
+    buildScoreDetailText(result) {
+      const sections = this.buildScoreDetailSections(result);
+      const lines = [
+        this.i18n.t('scoreDetailTitle')
+      ];
+      sections.forEach((section) => {
+        lines.push(section.title);
+        section.groups
+          .filter((group) => group.rows.length)
+          .forEach((group) => {
+            const total = group.rows.reduce((sum, row) => sum + row.value, 0);
+            lines.push(`${group.label}: ${total.toFixed(1)}`);
+            group.rows.forEach((row) => lines.push(`  ${row.name}  ${row.value.toFixed(1)}`));
+          });
+      });
+      return lines.join('\n');
+    }
+
+    buildScoreDetailHtml(result) {
+      const {utils} = this.ctx;
+      const groups = this.buildScoreDetailGroups(result);
+      return `
+  <div class="mst-score-detail-header">
+    <span>${utils.escapeHtml(this.i18n.t('scoreDetailTitle'))}</span>
+    <span class="mst-score-detail-header-actions">
+      <button type="button" class="mst-score-detail-copy" title="${utils.escapeHtml(this.i18n.t('copyScoreDetail'))}">${utils.escapeHtml(this.i18n.t('copyScoreDetail'))}</button>
+      <button type="button" class="mst-score-detail-close" title="${utils.escapeHtml(this.i18n.t('close'))}">✕</button>
+    </span>
+  </div>
+  <div class="mst-score-detail-body">
+    ${groups
+      .map(
+        (group) => `
+  <div class="mst-score-detail-section">
+    <div class="mst-score-detail-section-title">${utils.escapeHtml(group.title)}</div>
+    ${group.html}
+  </div>`
+      )
+      .join('')}
+  </div>`;
+    }
+
     // 悬浮提示参考 MWITools：战斗分（房屋/技能/装备/战斗神龛）与生活分（房屋/工具/装备/生活神龛）。
+    // 标题随“启用着装评分”开关切换：勾选显示着装评分口径，未勾选显示战力打造分总分；
+    // 首行提示评分块可点击查看明细。
     buildScoreTooltip(score) {
       if (!score.newVersion) {
+        const hiddenText = score.equipmentHidden ? ` (${this.i18n.t('equipmentHidden')})` : '';
         return [
-          `${this.i18n.t('houseScore')}: ${score.house.toFixed(1)}`, `${this.i18n.t('abilityScore')}: ${score.ability.toFixed(1)}`, `${this.i18n.t('equipmentScore')}: ${score.equipment.toFixed(1)}`, this.i18n.t('algorithmSourceMwiTools')
+          this.i18n.t(
+            'scoreDetailHint'
+          ), `${this.i18n.t('buildScore')}: ${score.total.toFixed(1)}${hiddenText}`, `${this.i18n.t('houseScore')}: ${score.house.toFixed(1)}`, `${this.i18n.t('abilityScore')}: ${score.ability.toFixed(1)}`, `${this.i18n.t('equipmentScore')}: ${score.equipment.toFixed(1)}`,
+          this.i18n.t('algorithmSourceMwiTools')
         ].join('\n');
       }
       const {battle, skilling} = score;
       const hiddenText = score.equipmentHidden ? ` (${this.i18n.t('equipmentHidden')})` : '';
       return [
-        `${this.i18n.t('battleGearScore')}: ${battle.total.toFixed(1)}${hiddenText}`, `  ${this.i18n.t('houseScore')}: ${battle.house.toFixed(1)}`, `  ${this.i18n.t('abilityScore')}: ${battle.abilities.toFixed(1)}`, `  ${this.i18n.t('equipmentScore')}: ${battle.equipment.toFixed(1)}`, ...(Number.isFinite(battle.shrine) ? [
+        this.i18n.t(
+          'scoreDetailHint'
+        ), `${this.i18n.t('battleGearScore')}: ${battle.total.toFixed(1)}${hiddenText}`, `  ${this.i18n.t('houseScore')}: ${battle.house.toFixed(1)}`, `  ${this.i18n.t('abilityScore')}: ${battle.abilities.toFixed(1)}`, `  ${this.i18n.t('equipmentScore')}: ${battle.equipment.toFixed(1)}`,
+        ...(Number.isFinite(battle.shrine) ? [
               `  ${this.i18n.t('battleShrineScore')}: ${battle.shrine.toFixed(1)}`
-            ] : []),
-        `${this.i18n.t('skillingGearScore')}: ${skilling.available ? skilling.total.toFixed(1) : '-'}${hiddenText}`, `  ${this.i18n.t('houseScore')}: ${skilling.house.toFixed(1)}`, `  ${this.i18n.t('toolScore')}: ${skilling.tools.toFixed(1)}`, `  ${this.i18n.t('equipmentScore')}: ${skilling.equipment.toFixed(1)}`, ...(Number.isFinite(skilling.shrine) ? [
+            ] : []), `${this.i18n.t('skillingGearScore')}: ${skilling.available ? skilling.total.toFixed(1) : '-'}${hiddenText}`, `  ${this.i18n.t('houseScore')}: ${skilling.house.toFixed(1)}`, `  ${this.i18n.t('toolScore')}: ${skilling.tools.toFixed(1)}`, `  ${this.i18n.t('equipmentScore')}: ${skilling.equipment.toFixed(1)}`,
+        ...(Number.isFinite(skilling.shrine) ? [
               `  ${this.i18n.t('skillingShrineScore')}: ${skilling.shrine.toFixed(1)}`
-            ] : []),
-        this.i18n.t('algorithmSourceMwiTools')
+            ] : []), this.i18n.t('algorithmSourceMwiTools')
       ].join('\n');
     }
 
@@ -6972,7 +7819,7 @@
             const itemLevel = Number(this.DataHub.clientData.raw?.itemDetailMap?.[item.itemHrid]?.itemLevel || 0);
             const itemName = this.DataHub.getLocalizedGameName('itemNames', item.itemHrid, this.i18n.languageKey);
 
-            html += `<div class="Item_item__2De2O Item_clickable__3viV6" style="position:relative;" title="${this.utils.escapeHtml(itemName)}">`;
+            html += `<div class="Item_item__2De2O Item_clickable__3viV6" style="position:relative;" title="${this.utils.escapeHtml(itemName)}" data-card-item-name="${this.utils.escapeHtml(itemName)}" data-card-item-hrid="${this.utils.escapeHtml(item.itemHrid)}" data-card-item-level="${enhancementLevel}" data-card-item-location="${this.utils.escapeHtml(item.itemLocationHrid)}">`;
             html += '<div class="Item_iconContainer__5z7j4">';
             html += this.createSvgIcon(item.itemHrid, 'items');
             html += '</div>';
@@ -7057,7 +7904,11 @@
           const enhancementLevel = Number(item?.enhancementLevel || 0);
           const itemLevel = Number(this.DataHub.clientData.raw?.itemDetailMap?.[item?.itemHrid]?.itemLevel || 0);
           return `
-  <div class="mst-life-tool-slot" title="${this.utils.escapeHtml(itemName)}">
+  <div class="mst-life-tool-slot" title="${this.utils.escapeHtml(itemName)}"${
+    item
+      ? ` data-card-item-name="${this.utils.escapeHtml(itemName)}" data-card-item-hrid="${this.utils.escapeHtml(item.itemHrid)}" data-card-item-level="${enhancementLevel}" data-card-item-location="${this.utils.escapeHtml(item.itemLocationHrid)}"`
+      : ''
+  }>
     <div class="ItemSelector_itemSelector__2eTV6">
       <div class="ItemSelector_itemContainer__3olqe">
         ${
@@ -7124,7 +7975,7 @@
       <span class="mst-life-progress-icon">${this.createSvgIcon(definition.skillHrid, 'skills')}</span>
       ${renderLevel(skillLevel)}
     </div>
-    <div class="mst-life-house-row" title="${this.utils.escapeHtml(roomName)}">
+    <div class="mst-life-house-row" title="${this.utils.escapeHtml(roomName)}" data-card-house-name="${this.utils.escapeHtml(roomName)}" data-card-house-hrid="${this.utils.escapeHtml(definition.houseHrid)}" data-card-house-level="${roomLevel ?? 0}">
       <span class="mst-life-progress-icon">${this.createSvgIcon(definition.houseHrid)}</span>
       ${renderLevel(roomLevel, true)}
     </div>
@@ -7159,7 +8010,7 @@
         }
         const skillName = this.i18n.pick(this.getAbilityDisplayNames(ability.abilityHrid));
         html += '<div>';
-        html += `<div class="Ability_ability__1njrh" title="${this.utils.escapeHtml(skillName)}">`;
+        html += `<div class="Ability_ability__1njrh" title="${this.utils.escapeHtml(skillName)}" data-card-ability-name="${this.utils.escapeHtml(skillName)}" data-card-ability-hrid="${this.utils.escapeHtml(ability.abilityHrid)}" data-card-ability-level="${ability.level}">`;
         html += '<div class="Ability_iconContainer__3syNQ">';
         html += this.createSvgIcon(ability.abilityHrid, 'abilities');
         html += '</div>';
@@ -7215,7 +8066,7 @@
           if (selectedSkill) {
             const skillName = this.i18n.pick(this.getAbilityDisplayNames(selectedSkill.abilityHrid));
             html += '<div>';
-            html += `<div class="Ability_ability__1njrh Ability_clickable__w9HcM mst-skill-slot" data-skill-index="${i}" title="${this.utils.escapeHtml(skillName)}">`;
+            html += `<div class="Ability_ability__1njrh Ability_clickable__w9HcM mst-skill-slot" data-skill-index="${i}" title="${this.utils.escapeHtml(skillName)}" data-card-ability-name="${this.utils.escapeHtml(skillName)}" data-card-ability-hrid="${this.utils.escapeHtml(selectedSkill.abilityHrid)}" data-card-ability-level="${selectedSkill.level}">`;
             html += '<div class="Ability_iconContainer__3syNQ">';
             html += this.createSvgIcon(selectedSkill.abilityHrid, 'abilities');
             html += '</div>';
@@ -7265,6 +8116,7 @@
       this.createSvgIcon = deps.createSvgIcon;
       this.DataHub = deps.ctx.DataHub;
       this.i18n = deps.ctx.i18n;
+      this.utils = deps.ctx.utils;
     }
 
     calculateCombatLevel(characterObj) {
@@ -7394,7 +8246,7 @@
           const house = row.house;
           const houseCell = house.hrid
             ? `
-  <div class="mst-progression-row mst-house-row">
+  <div class="mst-progression-row mst-house-row" data-card-house-name="${this.utils.escapeHtml(house.name)}" data-card-house-hrid="${this.utils.escapeHtml(house.hrid)}" data-card-house-level="${getHouseLevel(house.hrid) ?? 0}">
     <div class="mst-progression-icon">${this.createSvgIcon(house.hrid)}</div>
     <span class="mst-progression-name">${house.name}</span>
     ${renderLevel(getHouseLevel(house.hrid), true)}
@@ -7435,7 +8287,7 @@
     const createSvgIcon = iconRenderer.createSvgIcon.bind(iconRenderer);
     const getAbilityDisplayNames = iconRenderer.getAbilityDisplayNames.bind(iconRenderer);
     const identityRenderer = new CharacterCardIdentityRenderer({ctx, state});
-    const buildScoreRenderer = new CharacterCardBuildScoreRenderer({ctx, state});
+    const buildScoreRenderer = new CharacterCardBuildScoreRenderer({ctx, state, getAbilityDisplayNames});
     const equipmentRenderer = new CharacterCardEquipmentRenderer({ctx, createSvgIcon});
     const lifeRenderer = new CharacterCardLifeRenderer({ctx, CardDataAdapter, createSvgIcon});
     const skillRenderer = new CharacterCardSkillRenderer({ctx, state, createSvgIcon, getAbilityDisplayNames});
@@ -8096,6 +8948,26 @@
 .mst-card-header .mst-card-name span{display:inline-flex;align-items:center;height:auto;min-height:20px;line-height:20px;font-size:inherit;font-weight:inherit;vertical-align:middle}
 .mst-card-game-mode{font-size:9px;opacity:.8}
 .mst-card-build-score{flex:0 0 auto;min-width:88px;min-height:25px;display:flex;flex-direction:column;align-items:flex-end;color:orange;font-weight:700;line-height:1.15;white-space:nowrap;cursor:help;gap:.1rem}
+.mst-card-build-score-clickable{cursor:pointer}
+.mst-card-build-score-clickable:hover{filter:brightness(1.25)}
+.mst-score-detail-panel{position:fixed;z-index:var(--mst-z-popup);box-sizing:border-box;display:flex;flex-direction:column;min-width:18rem;max-width:min(22rem,calc(100vw - 1rem));max-height:min(26rem,calc(100svh - 2rem));padding:var(--spacing-sm, .5rem);border:var(--border-width-thin, 1px) solid var(--color-midnight-100, #454771);border-radius:var(--radius-sm, .25rem);background:var(--color-midnight-900, #131419);color:var(--color-text-dark-mode, #e7e7e7);box-shadow:0 .375rem .875rem #00000073;font:var(--font-weight-medium, 500) var(--font-size-sm, .8125rem)/1.4 Roboto,Helvetica,Arial,sans-serif}
+.mst-score-detail-header{flex:0 0 auto;display:flex;align-items:center;justify-content:space-between;gap:var(--spacing-sm, .5rem);font-weight:600}
+.mst-score-detail-body{min-height:0;overflow-y:auto}
+.mst-score-detail-close{display:inline-flex;align-items:center;justify-content:center;width:1.25rem;height:1.25rem;padding:0;border:0;border-radius:var(--radius-xs, .125rem);background:transparent;color:var(--color-text-dark-mode, #e7e7e7);font-size:12px;line-height:1;cursor:pointer}
+.mst-score-detail-close:hover{background:var(--color-midnight-500, #2c2e45)}
+.mst-score-detail-header-actions{display:inline-flex;flex:0 0 auto;align-items:center;gap:var(--spacing-xxs, .125rem)}
+.mst-score-detail-copy{display:inline-flex;align-items:center;height:1.25rem;padding:0 var(--spacing-xs, .25rem);border:0;border-radius:var(--radius-xs, .125rem);background:transparent;color:var(--color-space-300, #98a7e9);font-size:12px;line-height:1;cursor:pointer}
+.mst-score-detail-copy:hover{background:var(--color-midnight-500, #2c2e45)}
+.mst-score-detail-copy:disabled{color:var(--color-neutral-400, #a7a7a7);cursor:default}
+.mst-score-detail-section{margin-top:var(--spacing-sm, .5rem);padding-top:var(--spacing-xs, .25rem);border-top:var(--border-width-thin, 1px) solid var(--color-midnight-100, #454771)}
+.mst-score-detail-section-title{font-weight:600;color:var(--color-space-300, #98a7e9)}
+.mst-score-detail-group-title{display:flex;align-items:baseline;justify-content:space-between;gap:var(--spacing-sm, .5rem);margin-top:var(--spacing-xs, .25rem);color:var(--color-mango-500, #ffa53d);font-size:.875rem;font-weight:700}
+.mst-score-detail-group-label{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.mst-score-detail-group-value{flex:0 0 auto;font-variant-numeric:tabular-nums}
+.mst-score-detail-divider{height:0;margin-top:var(--spacing-xs, .25rem);border-bottom:var(--border-width-thin, 1px) solid var(--color-midnight-100, #454771)}
+.mst-score-detail-row{display:flex;align-items:baseline;justify-content:space-between;gap:var(--spacing-sm, .5rem);padding-left:.75rem;font-weight:400}
+.mst-score-detail-name{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.mst-score-detail-value{flex:0 0 auto;font-variant-numeric:tabular-nums;font-weight:600}
 .mst-card-build-score-row{display:inline-flex;align-items:center;gap:.3rem}
 .mst-card-build-score-row.mst-card-build-score-legacy{flex-direction:column;align-items:flex-end;gap:.1rem}
 .mst-card-build-score-row[hidden]{display:none}
@@ -8341,7 +9213,7 @@
       this.activeCard = null;
       this.initialCard = null;
       this.teamCard = {members: [], teamName: '', refreshTimer: null};
-      this.buildScore = {sequence: 0, sources: new Map()};
+      this.buildScore = {sequence: 0, sources: new Map(), results: new Map()};
     }
   }
 
@@ -8357,12 +9229,13 @@
       return document.querySelector('.mst-character-card-modal:not(.mst-team-card-modal) #mst-character-card');
     }
 
-    open({title, html, width = this.getDefaultWidth(), team = false, didOpen, willClose}) {
+    open({title, html, width = this.getDefaultWidth(), team = false, icon = '', didOpen, willClose}) {
       this.state.svgTool.refreshSpritePathsFromDOM();
       return this.Notifier.html({
         title,
         html,
         width,
+        icon,
         popupClass: 'mst-character-card-modal' + (team ? ' mst-team-card-modal' : ''),
         didOpen: (modal) => {
           didOpen?.(modal);
@@ -8517,6 +9390,10 @@
     refreshCardLayoutLanguage(modal) {
       const columnLabel = modal.querySelector('.mst-card-column-toggle span');
       if (columnLabel) columnLabel.textContent = this.i18n.t('twoColumns');
+      // “启用着装评分”开关与双列开关共用 mst-card-column-toggle 样式类，
+      // 需按专属类单独刷新文案，否则语言切换后停留在打开时的语言。
+      const newScoreLabel = modal.querySelector('.mst-card-new-score-toggle span');
+      if (newScoreLabel) newScoreLabel.textContent = this.i18n.t('useNewBuildScore');
       const select = modal.querySelector('.mst-card-layout-select');
       if (!select) return;
       select.setAttribute('aria-label', this.i18n.t('cardLayout'));
@@ -9305,6 +10182,7 @@
         dialogController.open({
           title: i18n.t('characterCard'),
           html: modalTemplate,
+          icon: 'social',
           didOpen: (modal) => {
             bindStandaloneCharacterCardControls(modal);
             refreshCharacterCard(modal);
@@ -9375,6 +10253,7 @@
         dialogController.open({
           title: i18n.t('characterCard'),
           html: modalTemplate,
+          icon: 'social',
           didOpen: (modal) => {
             bindStandaloneCharacterCardControls(modal);
             refreshCharacterCard(modal);
@@ -9446,6 +10325,7 @@
       dialogController.open({
         title: i18n.t('loadoutCharacterCard'),
         html: modalTemplate,
+        icon: 'loadout',
         didOpen: (modal) => {
           modal.querySelector('.mst-download-card-btn').onclick = CardImageExporter.downloadCharacter;
           modal.querySelector('.mst-copy-card-btn').onclick = CardImageExporter.copyCharacter;
@@ -9848,6 +10728,7 @@
           html: modalTemplate,
           width: teamView.getTeamDialogWidth(state.teamCard.members.length),
           team: true,
+          icon: 'social',
           didOpen: (modal) => {
             teamView.renderTeamCardDialog(modal);
 
@@ -10072,6 +10953,7 @@
       this.standaloneController = deps.standaloneController;
       this.teamController = deps.teamController;
       this.entryController = deps.entryController;
+      this.ctx = deps.ctx;
       this.i18n = deps.ctx.i18n;
     }
 
@@ -10123,6 +11005,9 @@
     setLanguage() {
       this.entryController.refreshEntryLanguage();
       this.refreshOpenCardLanguage();
+      // 游戏以英文启动时官方 i18next 未加载中文包，此时切中文物品名会退回 hrid；
+      // 触发游戏自身语言包加载，完成后 mst:i18n:ready 会再次进入本方法完成刷新。
+      this.ctx?.DataHub?.ensureGameLanguageResources?.(this.i18n.languageKey);
     }
   }
 
@@ -10400,6 +11285,8 @@
       if (document.body) start();
       else document.addEventListener('DOMContentLoaded', start, {once: true});
       LanguageEvents.subscribe(() => OriginalCharacterCardFeature.setLanguage());
+      // 游戏语言包补拉完成（英文启动后切中文等场景）时再刷新一次打开的名片。
+      window.addEventListener('mst:i18n:ready', () => OriginalCharacterCardFeature.setLanguage());
       window.addEventListener('pagehide', OriginalCharacterCardFeature.cleanup, {once: true});
     }
   }
@@ -10506,9 +11393,21 @@
 
   function buildAchievements(characterAchievements) {
     const achievements = {};
-    for (const achievement of Object.values(characterAchievements || {})) {
-      if (achievement?.achievementHrid) {
-        achievements[achievement.achievementHrid] = achievement.isCompleted;
+    // 兼容官方数组结构（[{achievementHrid, isCompleted}]）与名片缓存压缩结构（{hrid: isCompleted}，
+    // 官方对象 map 形态同样兼容）。
+    const entries = Array.isArray(characterAchievements)
+      ? characterAchievements.map((achievement) => [
+          achievement?.achievementHrid, achievement?.isCompleted
+        ])
+      : Object.entries(characterAchievements || {});
+    for (const [
+      achievementHrid, isCompleted
+    ] of entries) {
+      if (achievementHrid) {
+        achievements[achievementHrid] =
+          isCompleted != null && typeof isCompleted === 'object'
+            ? Boolean(isCompleted.isCompleted)
+            : Boolean(isCompleted);
       }
     }
     return achievements;
@@ -10577,7 +11476,8 @@
   }
 
   // 队友：来自 profile_shared 资料 + new_battle 战斗快照（唯一能拿到队友实际消耗品的来源）。
-  // shrineSource 覆盖默认神龛数据来源（同公会时用本人快照的公会建筑等级）。
+  // shrineSource 覆盖默认神龛数据来源（优先其所在公会 guild_profile_shared 的建筑等级，
+  // 同公会时复用本人快照）。
   function buildProfilePlayerExport(profile, battlePlayer, abilityDetailMap, shrineSource = null) {
     const wearableItemMap = profile?.wearableItemMap || {};
     const food = [];
@@ -10629,8 +11529,9 @@
     '{"player":{"attackLevel":1,"magicLevel":1,"meleeLevel":1,"rangedLevel":1,"defenseLevel":1,"staminaLevel":1,"intelligenceLevel":1,"equipment":[]},"food":{"/action_types/combat":[{"itemHrid":""},{"itemHrid":""},{"itemHrid":""}]},"drinks":{"/action_types/combat":[{"itemHrid":""},{"itemHrid":""},{"itemHrid":""}]},"abilities":[{"abilityHrid":"","level":"1"},{"abilityHrid":"","level":"1"},{"abilityHrid":"","level":"1"},{"abilityHrid":"","level":"1"},{"abilityHrid":"","level":"1"}],"triggerMap":{},"zone":"/actions/combat/fly","simulationTime":"100","houseRooms":{},"achievements":{},"shrines":{}}';
 
   // 组队导出总装：返回模拟器导入所需的全部信息。
-  // 队友神龛的“公会神龛等级”只有在与本人同公会时才可知（复用本人快照的公会建筑等级）；
-  // 跨公会拿不到对方公会数据，按 MWITools v26 口径退回个人增益等级。
+  // 队友神龛生效等级 = min(个人增益等级, 所在公会神龛等级)：公会神龛等级优先用
+  // guild_profile_shared（游戏内查看其公会资料）得到的对方公会建筑等级，
+  // 同公会时复用本人快照；两者都拿不到时按 MWITools v26 口径退回个人增益等级。
   function buildGroupExport({characterData, clientData, newBattle, profiles}) {
     const exportObj = {
       1: BLANK_PLAYER_JSON,
@@ -10655,10 +11556,18 @@
     const ownGuildId = characterData?.guild?.id ?? null;
     const ownGuildBuildingLevelMap = characterData?.guildBuildingLevelMap || {};
     const resolveProfileShrineSource = (profile) => {
-      const sameGuild = profile?.guildId != null && profile.guildId === ownGuildId;
+      // 神龛生效等级 = min(个人增益等级, 所在公会神龛等级)：优先用查看其公会资料
+      // （guild_profile_shared）得到的对方公会神龛建筑等级；同公会时复用本人快照；
+      // 都拿不到时（未查看过其公会资料）按 MWITools v26 口径退回个人等级。
+      const guildBuildingMap =
+        profile?.guildBuildingLevelMap && Object.keys(profile.guildBuildingLevelMap).length
+          ? profile.guildBuildingLevelMap
+          : profile?.guildId != null && profile.guildId === ownGuildId
+            ? ownGuildBuildingLevelMap
+            : undefined;
       return {
         characterGuildBuffMap: profile?.guildBuffLevelMap,
-        guildBuildingLevelMap: sameGuild ? ownGuildBuildingLevelMap : undefined
+        guildBuildingLevelMap: guildBuildingMap
       };
     };
     if (!partySlotMap || !Object.keys(partySlotMap).length) {
@@ -10711,9 +11620,6 @@
     return {exportObj, playerIDs, importedPlayerPositions, zone, difficultyTier, isZoneDungeon, isParty};
   }
 
-  // 队友资料缓存上限，与 MWITools profile_export_list 口径一致。
-  const SIM_PROFILE_LIMIT = 20;
-
   // game-side-writer
   // 游戏站侧把模拟器导入所需的数据快照写入 GM 存储（脚本级存储跨域共享）。
   // 测试服数据与正式服不互通，测试服不写入（由 bootstrap 的 isTestServer 分流保证）。
@@ -10749,67 +11655,55 @@
           if (data?.type !== 'new_battle') return;
           GmApi.setValue(STORAGE_KEYS.SIM_NEW_BATTLE, JSON.stringify(data));
         },
-        async writeProfile(detail) {
-          const profile = detail?.profile;
-          const characterID = String(detail.characterID ?? profile?.characterSkills?.[0]?.characterID ?? '');
-          if (!characterID || !profile) return;
-          const stored = JSON.parse((await GmApi.getValue(STORAGE_KEYS.SIM_PROFILES, '{}')) || '{}');
-          stored[characterID] = {
-            characterID,
-            characterName: profile.sharableCharacter?.name || '',
-            timestamp: Date.now(),
-            profile: {
-              guildId: profile.guildId,
-              wearableItemMap: Object.fromEntries(
-                Object.entries(profile.wearableItemMap || {}).map(
-                  ([
-                    key, item
-                  ]) => [
-                    key, {
-                      itemLocationHrid: item?.itemLocationHrid,
-                      itemHrid: item?.itemHrid,
-                      enhancementLevel: item?.enhancementLevel
-                    }
-                  ]
-                )
-              ),
-              characterSkills: (profile.characterSkills || []).map((skill) => ({
-                skillHrid: skill?.skillHrid,
-                level: skill?.level
-              })),
-              equippedAbilities: (profile.equippedAbilities || []).map((ability) => ({
-                abilityHrid: ability?.abilityHrid,
-                level: ability?.level
-              })),
-              characterHouseRoomMap: profile.characterHouseRoomMap || {},
-              characterAchievements: profile.characterAchievements || {},
-              guildBuffLevelMap: profile.guildBuffLevelMap || {},
-              abilityCombatTriggersMap: profile.abilityCombatTriggersMap,
-              consumableCombatTriggersMap: profile.consumableCombatTriggersMap
+        // 队友资料直接镜像名片缓存（MST_CC_profiles 的 DataHub 内存态），不再单独维护一套裁剪数据；
+        // 条目结构与名片缓存一致（characterID/characterName/timestamp/profile 压缩版），
+        // 模拟器导入时按队伍成员 id 从缓存条目读取配置。
+        syncProfiles() {
+          const profiles = {};
+          Object.entries(DataHub.characterData.profiles || {}).forEach(
+            ([
+              id, entry
+            ]) => {
+              if (!entry?.profile) return;
+              // 队友所在公会的神龛建筑等级来自 guild_profile_shared（游戏内查看其公会资料后可得），
+              // 导出时按 min(个人增益等级, 该公会神龛等级) 计算，跨公会不再退回个人等级。
+              const guildProfile = DataHub.getGuildProfile(entry.profile.guildId);
+              const profile = DataHub.compactProfile(entry.profile);
+              if (guildProfile?.guildBuildingLevelMap) {
+                profile.guildBuildingLevelMap = guildProfile.guildBuildingLevelMap;
+              }
+              profiles[id] = {
+                characterID: entry.characterID ?? id,
+                characterName: entry.characterName || entry.profile?.sharableCharacter?.name || '',
+                timestamp: entry.timestamp || 0,
+                profile
+              };
             }
-          };
-          // 超上限时淘汰最旧资料，避免 GM 存储无限增长。
-          let entries = Object.entries(stored);
-          if (entries.length > SIM_PROFILE_LIMIT) {
-            entries.sort((a, b) => Number(b[1].timestamp || 0) - Number(a[1].timestamp || 0));
-            GmApi.setValue(
-              STORAGE_KEYS.SIM_PROFILES,
-              JSON.stringify(Object.fromEntries(entries.slice(0, SIM_PROFILE_LIMIT)))
-            );
-            return;
-          }
-          GmApi.setValue(STORAGE_KEYS.SIM_PROFILES, JSON.stringify(stored));
+          );
+          GmApi.setValue(STORAGE_KEYS.SIM_PROFILES, JSON.stringify(profiles));
         },
         install() {
           window.addEventListener('mst:data:character-ready', (event) => writer.writeCharacter(event.detail));
           window.addEventListener('mst:ws:init-client-data', (event) => writer.writeClientData(event.detail));
           window.addEventListener('mst:ws:battle-message', (event) => writer.writeNewBattle(event.detail));
-          window.addEventListener('mst:ws:profile-shared', (event) => {
-            writer.writeProfile(event.detail).catch((error) => console.warn('[MST] 战斗模拟队友资料写入失败:', error));
+          window.addEventListener('mst:data:profile-shared', () => writer.syncProfiles());
+          // 公会增益/建筑等级变化会影响神龛生效等级，收到更新后重写角色快照；
+          // 打开公会资料页（guild_profile_shared）后对方公会神龛等级入库，需要重新镜像队友资料，
+          // 否则 MST_SIM_profiles 里缓存的队友条目拿不到所在公会的神龛建筑等级。
+          window.addEventListener('mst:data:character-updated', (event) => {
+            const fields = event.detail?.fields || [];
+            if (fields.includes('guildProfiles')) {
+              writer.syncProfiles();
+            }
+            if (!fields.some((field) => field === 'characterGuildBuffMap' || field === 'guildBuildingLevelMap')) {
+              return;
+            }
+            if (DataHub.characterData.raw) writer.writeCharacter(DataHub.characterData.raw);
           });
           // 页面刷新晚于 WebSocket 建连时补写一次已有快照，保证 GM 存储不落后于当前页面状态。
           if (DataHub.characterData.raw) writer.writeCharacter(DataHub.characterData.raw);
           if (DataHub.clientData.raw) writer.writeClientData(DataHub.clientData.raw);
+          writer.syncProfiles();
         }
       };
       writer.install();
@@ -12177,6 +13071,7 @@
         html: this.getDialogHtml(),
         width: 'min(56rem, calc(100vw - 1rem))',
         popupClass: 'mst-upgrade-calculator-dialog',
+        icon: 'experience',
         didOpen: (popup) => this.bind(popup),
         willClose: () => {
           this.bindController?.abort();
@@ -14458,6 +15353,7 @@
         html: () => TemplateRenderer.html`<div id="mst-dungeon-calculator-root"></div>`,
         width: 'min(38rem, calc(100vw - 1rem))',
         popupClass: 'mst-upgrade-calculator-dialog mst-dungeon-dialog',
+        icon: 'loot_tracker',
         didOpen: (popup) => {
           this.popup = popup;
           this.root = popup.querySelector('#mst-dungeon-calculator-root');
@@ -14485,6 +15381,8 @@
       LanguageEvents.subscribe(() => this.refreshLanguage());
     }
   }
+
+  // 与战斗模拟导入共用神龛生效等级规则：min(个人公会增益等级, 公会神龛等级)。
 
   // eds-milkonomy-constants
   // 与 EDS 的 INCLUDE_ITEMS 和各类同步配置保持一致；装备详情仍使用游戏官方 clientData。
@@ -14611,7 +15509,11 @@
         abilities: this.getAbilities(loadout.abilityMap, characterData.characterAbilities),
         triggerMap: {...(loadout.abilityCombatTriggersMap || {}), ...(loadout.consumableCombatTriggersMap || {})},
         houseRooms: this.getHouseRooms(characterData.characterHouseRoomMap),
-        achievements: this.getAchievements(characterData.characterAchievements)
+        achievements: this.getAchievements(characterData.characterAchievements),
+        shrines: computeShrineLevels({
+          characterGuildBuffMap: characterData.characterGuildBuffMap,
+          guildBuildingLevelMap: characterData.guildBuildingLevelMap
+        })
       };
     }
 
@@ -14984,7 +15886,10 @@
           ? utils.getCollectionValues(data.characterAbilityMap)
           : raw.characterAbilities || [],
         characterHouseRoomMap: raw.characterHouseRoomMap || {},
-        characterAchievements: raw.characterAchievements || []
+        characterAchievements: raw.characterAchievements || [],
+        // 神龛生效等级来源：快照的公会增益与公会建筑等级（guild_buffs_updated/guild_updated 已实时同步）。
+        characterGuildBuffMap: raw.characterGuildBuffMap || {},
+        guildBuildingLevelMap: raw.guildBuildingLevelMap || {}
       };
       await feature.copyJsonToClipboard(
         feature.constructor.CombatSimulatorConverter.convert(loadout, characterData),
@@ -15372,6 +16277,33 @@
   // combat-worker-runtime
   function mstCombatWorkerRuntime() {
     (() => {
+      // 深拷贝替代 structuredClone（Chrome 98+），目标浏览器不支持。数据均为 JSON 型结构。
+      function deepClone(value) {
+        if (value === null || typeof value !== 'object') return value;
+        if (Array.isArray(value)) return value.map((item) => deepClone(item));
+        if (value instanceof Date) return new Date(value.getTime());
+        if (value instanceof Map)
+          return new Map(
+            [
+              ...value
+            ].map(
+              ([
+                key, item
+              ]) => [
+                deepClone(key), deepClone(item)
+              ]
+            )
+          );
+        if (value instanceof Set)
+          return new Set(
+            [
+              ...value
+            ].map((item) => deepClone(item))
+          );
+        const result = {};
+        for (const key of Object.keys(value)) result[key] = deepClone(value[key]);
+        return result;
+      }
       var __defProp = Object.defineProperty;
       var __defNormalProp = (obj, key, value) =>
         key in obj
@@ -17719,7 +18651,7 @@
           this.updateCombatDetails();
         }
         clearBuffs() {
-          this.combatBuffs = structuredClone(this.permanentBuffs);
+          this.combatBuffs = deepClone(this.permanentBuffs);
           this.updateCombatDetails();
         }
         clearCCs() {
@@ -18919,7 +19851,7 @@
             this.eventQueue.addEvent(consumableTickEvent);
           }
           for (const buff of consumable.buffs) {
-            let currentBuff = structuredClone(buff);
+            let currentBuff = deepClone(buff);
             if (source.combatDetails.combatStats.drinkConcentration > 0 && consumable.catagoryHrid.includes('drink')) {
               currentBuff.ratioBoost *= 1 + source.combatDetails.combatStats.drinkConcentration;
               currentBuff.flatBoost *= 1 + source.combatDetails.combatStats.drinkConcentration;
@@ -19048,7 +19980,7 @@
                     1 +
                     source.combatDetails[buff.multiplierForSkillHrid.split('/')[2] + 'Level'] *
                       buff.multiplierPerSkillLevel;
-                  let currentBuff = structuredClone(buff);
+                  let currentBuff = deepClone(buff);
                   currentBuff.flatBoost *= multiplier;
                   currentBuff.ratioBoost *= multiplier;
                   target.addBuff(currentBuff, this.simulationTime);
@@ -19866,7 +20798,7 @@
         try {
           const zone = new zone_default(event.data.zone.zoneHrid, event.data.zone.difficultyTier);
           const players = event.data.players.map((playerData) => {
-            const player = player_default.createFromDTO(structuredClone(playerData));
+            const player = player_default.createFromDTO(deepClone(playerData));
             player.zoneBuffs = zone.buffs || [];
             player.extraBuffs = [];
             return player;
@@ -21959,6 +22891,7 @@
         html: () => TemplateRenderer.html`<div id="mst-equipment-compare-root"></div>`,
         width: 'min(34.5rem, calc(100vw - 1rem))',
         popupClass: 'mst-equipment-compare-dialog',
+        icon: 'loadout',
         didOpen: (popup) => {
           this.root = popup.querySelector('#mst-equipment-compare-root');
           this.render();
@@ -22844,6 +23777,7 @@
         html: () => TemplateRenderer.html`<div id="mst-hccp-house-calculator"></div>`,
         width: '27rem',
         popupClass: 'mst-house-calculator-dialog',
+        icon: 'house',
         didOpen: (popup) => {
           const container = popup.querySelector('#mst-hccp-house-calculator');
           if (!container) return;
@@ -23700,11 +24634,1230 @@
     }
   }
 
+  // 队列跟踪器：以官方 CharacterAction.id 为准判定行动队列变动事件。
+  // 纯逻辑边界，不依赖 DOM、DataHub 或 i18n，事件文案由装配层生成。
+  // 官方合并语义（main.*.chunk.js handleMessageActionsUpdated，v1.20260814.0）：
+  // endCharacterActions 中 isDone=true 的行动从队列移除，其余按 id upsert，
+  // 最后 partyID 非 0（组队/战斗行动）排在前、partyID 为 0 的在后、各组按 ordinal 升序。
+
+  // 队列排序：partyID 非 0（组队/战斗行动）在前，个人行动在后，同组按 ordinal 升序。
+  function sortActions(actions) {
+    return [
+      ...actions
+    ].sort((a, b) => {
+      if (a.partyID !== 0 && b.partyID === 0) return -1;
+      if (a.partyID === 0 && b.partyID !== 0) return 1;
+      return a.ordinal - b.ordinal;
+    });
+  }
+
+  class QueueChangeTracker {
+    constructor() {
+      this.queue = [];
+      this.currentId = null;
+      this.characterId = null;
+      // 进度计数基线：组队战斗重新准备后从当前次数重新起算（{id, count}）。
+      this.progressBaseline = null;
+    }
+
+    // 内存态整体重置：切角色时旧任务的跟踪状态立即释放，不保留跨任务残留。
+    reset(characterId = null) {
+      this.queue = [];
+      this.currentId = null;
+      this.characterId = characterId;
+      this.progressBaseline = null;
+    }
+
+    // 基线快照：页面加载 / 断线重连时以 init_character_data 全量重建，不产生事件。
+    setQueue(actions, characterId = null) {
+      if (characterId != null) this.characterId = characterId;
+      this.queue = sortActions(Array.isArray(actions) ? actions.filter(Boolean) : []);
+      this.currentId = this.queue[0]?.id ?? null;
+      this.progressBaseline = null;
+    }
+
+    // 官方 actions_updated 增量合并。
+    // 返回事件 {type:'completed', completedTask, newTask, queue, isEmpty} 或 null：
+    // 只有“上一当前任务以 isDone=true 结束”且队首变化才视为一次任务完成；
+    // 同 id 的进度更新、取消、插入、排序调整一律静默重建基线（多步任务期间
+    // 官方会持续推送 action_completed 但 id 不变，不能当成变动推送）。
+    applyActionsUpdate(endCharacterActions) {
+      const updates = Array.isArray(endCharacterActions) ? endCharacterActions.filter(Boolean) : [];
+      if (!updates.length) return null;
+      const prevCurrentId = this.currentId;
+      const doneIds = new Set();
+      for (const update of updates) {
+        if (update.isDone) doneIds.add(update.id);
+      }
+      this.queue = this.queue.filter((action) => !doneIds.has(action.id));
+      for (const update of updates) {
+        if (update.isDone) continue;
+        const index = this.queue.findIndex((action) => action.id === update.id);
+        if (index >= 0) this.queue[index] = update;
+        else this.queue.push(update);
+      }
+      this.queue = sortActions(this.queue);
+      this.currentId = this.queue[0]?.id ?? null;
+      if (this.currentId !== prevCurrentId) this.progressBaseline = null;
+      if (prevCurrentId == null || prevCurrentId === this.currentId) return null;
+      if (!doneIds.has(prevCurrentId)) return null;
+      const completedTask = updates.find((update) => update.id === prevCurrentId) || null;
+      // 取消启发：有限次数任务在未达到上限时被移除，按用户取消处理（静默重建，不推送）。
+      // 无上限任务（战斗/迷宫等）与已完成任务无法区分取消，一律按任务结束推送。
+      if (completedTask?.hasMaxCount && Number(completedTask.currentCount ?? 0) < Number(completedTask.maxCount ?? 0)) {
+        return null;
+      }
+      return {
+        type: 'completed',
+        completedTask,
+        newTask: this.queue[0] || null,
+        queue: this.queue.slice(),
+        isEmpty: this.queue.length === 0
+      };
+    }
+
+    // 官方 action_completed：单次行动完成明细（含掉落、经验）。
+    // 同 id 只更新进度返回 null；isDone=true 时按完成处理（单步任务可能只有该消息没有移除增量）。
+    applyActionCompleted(endCharacterAction) {
+      const action = endCharacterAction;
+      if (!action || typeof action !== 'object') return null;
+      if (!action.isDone) {
+        const index = this.queue.findIndex((item) => item.id === action.id);
+        if (index >= 0) this.queue[index] = action;
+        return null;
+      }
+      return this.applyActionsUpdate([
+        action
+      ]);
+    }
+
+    getCurrentTask() {
+      return this.queue[0] || null;
+    }
+
+    // 组队战斗会话重置（本方角色重新准备）时调用：记录当前任务的已完成为基线，
+    // 后续进度通知按会话内增量统计。官方在同一条组队行动上持续累加 currentCount，
+    // 重新准备不会更换 id，不重置基线则进度次数会一直累计。
+    resetProgressBaseline() {
+      const task = this.queue[0];
+      if (!task) return;
+      this.progressBaseline = {id: task.id, count: Number(task.currentCount ?? 0)};
+    }
+
+    // 进度通知的已完成次数：当前任务存在基线（且未回退）时返回会话内增量，否则返回原始累计值。
+    getProgressCount(task) {
+      if (!task) return 0;
+      const current = Number(task.currentCount ?? 0);
+      const baseline = this.progressBaseline;
+      if (baseline && baseline.id === task.id && current >= baseline.count) return current - baseline.count;
+      return current;
+    }
+
+    getQueuePreview(count) {
+      return this.queue.slice(0, count);
+    }
+
+    getQueueLength() {
+      return this.queue.length;
+    }
+
+    // 等待执行的任务：排除队首正在执行的行动（进度/完成通知的队列概览用这个口径）。
+    getWaitingQueuePreview(count) {
+      return this.queue.slice(1, 1 + count);
+    }
+
+    getWaitingQueueLength() {
+      return Math.max(0, this.queue.length - 1);
+    }
+  }
+
+  // 渠道请求构造与推送限速：纯逻辑边界，不依赖 DOM 与 DataHub。
+  // 签名算法按官方文档核对：
+  // - 钉钉：sign = urlencode(base64(HmacSHA256(key=secret, msg="{毫秒时间戳}\n{secret}")))，追加在 URL 参数。
+  // - 飞书：sign = base64(HMAC-SHA256(key="{秒时间戳}\n{secret}", msg=空))，放请求头 X-Lark-Request-Timestamp/Sign。
+  //   注意飞书官方示例是“以待签串为密钥、消息体为空”，与钉钉的 key=secret 相反；
+  //   shell 里 `openssl dgst -hmac "$SECRET"`（key=secret）与官方 Python 口径不一致，实现以官方文档为准。
+  // - 企业微信：无签名环节。
+
+  const CHANNEL_LIMITS = {
+    // 钉钉 text.content 最短 1、最长 500 字符（按字符截断）。
+    dingtalk: {maxChars: 500},
+    // 企业微信官方限制请求体 4096 字节，text.content 按 2048 字节保守截断（UTF-8 字节）。
+    wecom: {maxBytes: 2048},
+    // 飞书请求体不能超过 20KB。
+    feishu: {maxBytes: 20 * 1024}
+  };
+
+  // 按字符截断，保留 UTF-16 码元完整（用于钉钉字符数限制）。
+  function truncateByChars(text, maxChars) {
+    const value = String(text ?? '');
+    if (value.length <= maxChars) return value;
+    return value.slice(0, Math.max(1, maxChars - 1)) + '…';
+  }
+
+  function utf8ByteLength(text) {
+    return new TextEncoder().encode(text).length;
+  }
+
+  // 按 UTF-8 字节截断，逐字节回退避免截出残缺多字节字符，超长以 … 收尾。
+  function truncateByUtf8Bytes(text, maxBytes) {
+    const value = String(text ?? '');
+    if (utf8ByteLength(value) <= maxBytes) return value;
+    const bytes = new TextEncoder().encode(value);
+    const suffix = new TextEncoder().encode('…');
+    let end = maxBytes - suffix.length;
+    while (end > 0 && (bytes[end] & 0xc0) === 0x80) end--;
+    let head = bytes.slice(0, Math.max(0, end));
+    return new TextDecoder().decode(head) + '…';
+  }
+
+  function truncateForChannel(channel, text) {
+    const limits = CHANNEL_LIMITS[channel];
+    if (!limits) return String(text ?? '');
+    if (limits.maxChars != null) return truncateByChars(text, limits.maxChars);
+    return truncateByUtf8Bytes(text, limits.maxBytes);
+  }
+
+  // 默认 HMAC-SHA256 助手：key 与 message 都是 UTF-8 字符串，返回 base64。
+  // 通过 WebCrypto 实现；环境不支持时返回 null，由调用方决定降级行为。
+  function createDefaultHmac() {
+    const subtle = globalThis.crypto?.subtle;
+    const encoder = globalThis.TextEncoder ? new TextEncoder() : null;
+    if (!subtle || !encoder) return null;
+    return async (keyString, messageString) => {
+      const key = await subtle.importKey(
+        'raw',
+        encoder.encode(String(keyString)),
+        {name: 'HMAC', hash: 'SHA-256'},
+        false,
+        [
+          'sign'
+        ]
+      );
+      const signature = await subtle.sign('HMAC', key, encoder.encode(String(messageString ?? '')));
+      return btoa(Array.from(new Uint8Array(signature), (byte) => String.fromCharCode(byte)).join(''));
+    };
+  }
+
+  // 钉钉：加签后把 timestamp/sign 追加到 Webhook URL；body 为纯文本消息。
+  const buildDingTalkRequest = async ({url, secret, content}, {timestampMs = Date.now(), hmac} = {}) => {
+    let requestUrl = String(url || '');
+    if (secret) {
+      const sign = await hmac(secret, `${timestampMs}\n${secret}`);
+      const joiner = requestUrl.includes('?') ? '&' : '?';
+      requestUrl = `${requestUrl}${joiner}timestamp=${timestampMs}&sign=${encodeURIComponent(sign)}`;
+    }
+    return {
+      url: requestUrl,
+      headers: {'Content-Type': 'application/json;charset=utf-8'},
+      body: JSON.stringify({msgtype: 'text', text: {content}})
+    };
+  };
+
+  // 企业微信：key 已在 URL 内，无签名。
+  function buildWeComRequest({url, content}) {
+    return {
+      url: String(url || ''),
+      headers: {'Content-Type': 'application/json;charset=utf-8'},
+      body: JSON.stringify({msgtype: 'text', text: {content}})
+    };
+  }
+
+  // 飞书：签名放请求头（秒级时间戳），待签串为 "{timestamp}\n{secret}"、消息体为空。
+  const buildFeishuRequest = async (
+    {url, secret, content},
+    {timestampSec = Math.floor(Date.now() / 1000), hmac} = {}
+  ) => {
+    const headers = {'Content-Type': 'application/json;charset=utf-8'};
+    if (secret) {
+      const sign = await hmac(`${timestampSec}\n${secret}`, '');
+      headers['X-Lark-Request-Timestamp'] = String(timestampSec);
+      headers['X-Lark-Request-Sign'] = sign;
+    }
+    return {
+      url: String(url || ''),
+      headers,
+      body: JSON.stringify({msg_type: 'text', content: {text: content}})
+    };
+  };
+
+  // 飞书 Hook 地址归一化：允许粘贴完整地址，也允许只填 hook-id（自动拼接官方地址）。
+  function normalizeFeishuHookUrl(raw) {
+    const value = String(raw ?? '').trim();
+    if (!value) return '';
+    if (/^https?:\/\//i.test(value)) return value;
+    return `https://open.feishu.cn/open-apis/bot/v2/hook/${value.replace(/^\/+/, '')}`;
+  }
+
+  // 统一解析官方响应：钉钉/企微看 errcode，飞书看 code。
+  function parseChannelResponse(channel, responseText) {
+    let parsed = null;
+    try {
+      parsed = JSON.parse(String(responseText ?? ''));
+    } catch {
+      parsed = null;
+    }
+    if (!parsed || typeof parsed !== 'object') {
+      const snippet = String(responseText ?? '').slice(0, 120);
+      return {ok: false, code: null, msg: snippet || 'empty response'};
+    }
+    if (channel === 'feishu') {
+      return {ok: parsed.code === 0, code: parsed.code ?? null, msg: parsed.msg || parsed.StatusCode || ''};
+    }
+    return {ok: parsed.errcode === 0, code: parsed.errcode ?? null, msg: parsed.errmsg || ''};
+  }
+
+  // 推送限速器：两层限制同时生效——
+  // 1) 两次推送至少间隔 minIntervalMs（渠道推送频率下限）；
+  // 2) perMinuteLimit 每分钟推送上限（滑动 60 秒窗口），超限时推迟到窗口最早一条过期；
+  // 间隔内或等待重试期间的多次提交合并为一条、只保留最新内容；
+  // 发送失败按 retryDelaysMs 指数退避重试，重试次数用尽后丢弃并回调 onGiveUp。
+  class NotificationSender {
+    constructor({send, minIntervalMs = 10000, perMinuteLimit = null, retryDelaysMs = [
+        60000, 120000, 240000
+      ], clock = () =>
+        Date.now(), schedule = (fn, ms) => setTimeout(fn, ms), cancel = (timer) => clearTimeout(timer), onGiveUp = null} = {}) {
+      this.send = send;
+      this.minIntervalMs = minIntervalMs;
+      this.perMinuteLimit = perMinuteLimit;
+      this.retryDelaysMs = retryDelaysMs;
+      this.clock = clock;
+      this.schedule = schedule;
+      this.cancel = cancel;
+      this.onGiveUp = onGiveUp;
+      this.lastSentAt = 0;
+      this.sentTimestamps = [];
+      this.pendingText = null;
+      this.pendingTimer = null;
+      this.retryTimer = null;
+      this.retryCount = 0;
+    }
+
+    // 计算下次可发送还需等待的毫秒数：最小间隔与每分钟滑动窗口（60 秒）取较大者。
+    nextWaitMs() {
+      const now = this.clock();
+      let wait = Math.max(0, this.lastSentAt + this.minIntervalMs - now);
+      if (this.perMinuteLimit != null && this.perMinuteLimit > 0) {
+        this.sentTimestamps = this.sentTimestamps.filter((timestamp) => now - timestamp < 60000);
+        if (this.sentTimestamps.length >= this.perMinuteLimit) {
+          wait = Math.max(wait, this.sentTimestamps[0] + 60000 - now);
+        }
+      }
+      return wait;
+    }
+
+    // 提交一条待发内容：总是先记录最新文案，再按限速/重试状态安排发送。
+    submit(text) {
+      this.pendingText = text;
+      if (this.pendingTimer || this.retryTimer) return {queued: true};
+      const wait = this.nextWaitMs();
+      if (wait === 0) {
+        this.pendingText = null;
+        this.dispatch(text);
+        return {queued: false};
+      }
+      this.pendingTimer = this.schedule(() => this.flush(), wait);
+      return {queued: true};
+    }
+
+    flush() {
+      this.pendingTimer = null;
+      const text = this.pendingText;
+      this.pendingText = null;
+      if (text == null) return;
+      const wait = this.nextWaitMs();
+      if (wait > 0) {
+        // 等待期间限速参数被调小等场景：仍未到可发送时间则继续等待。
+        this.pendingText = text;
+        this.pendingTimer = this.schedule(() => this.flush(), wait);
+        return;
+      }
+      this.dispatch(text);
+    }
+
+    async dispatch(text) {
+      // 发送开始即占坑，避免发送期间的新提交绕过限速。
+      const now = this.clock();
+      this.lastSentAt = now;
+      if (this.perMinuteLimit != null && this.perMinuteLimit > 0) {
+        this.sentTimestamps.push(now);
+      }
+      try {
+        await this.send(text);
+        this.retryCount = 0;
+      } catch (error) {
+        this.handleFailure(text, error);
+      }
+    }
+
+    handleFailure(text, error) {
+      if (this.retryCount >= this.retryDelaysMs.length) {
+        this.retryCount = 0;
+        this.pendingText = null;
+        this.onGiveUp?.(error);
+        return;
+      }
+      const delay = this.retryDelaysMs[this.retryCount++];
+      this.pendingText = text;
+      this.retryTimer = this.schedule(() => {
+        this.retryTimer = null;
+        const retryText = this.pendingText;
+        this.pendingText = null;
+        if (retryText != null) this.dispatch(retryText);
+      }, delay);
+    }
+
+    dispose() {
+      if (this.pendingTimer) this.cancel(this.pendingTimer);
+      if (this.retryTimer) this.cancel(this.retryTimer);
+      this.pendingTimer = null;
+      this.retryTimer = null;
+      this.pendingText = null;
+    }
+  }
+
+  var MST_SUBSCRIBE_CSS = String.raw`.mst-subscribe-form{display:flex;flex-direction:column;gap:.7rem;text-align:left}
+.mst-subscribe-section-title{margin-top:.2rem;border-bottom:1px solid var(--color-midnight-100, #454771);padding-bottom:.3rem;color:var(--color-text-dark-mode, #e7e7e7);font-weight:600}
+.mst-subscribe-field{display:flex;flex-direction:column;gap:.25rem}
+.mst-subscribe-field>span{font-size:.85rem;opacity:.85}
+.mst-subscribe-field input[type=text],.mst-subscribe-field input[type=password],.mst-subscribe-field input[type=number],.mst-subscribe-field select{box-sizing:border-box;height:var(--button-height-normal, 1.875rem);border:1px solid var(--color-midnight-100, #454771);border-radius:var(--radius-sm, .25rem);padding:.2rem .45rem;outline:0;background:var(--color-midnight-700, #20212f);color:var(--color-text-dark-mode, #e7e7e7);font:inherit;color-scheme:dark}
+.mst-subscribe-form select option{background:var(--color-midnight-700, #20212f);color:var(--color-text-dark-mode, #e7e7e7)}
+.mst-subscribe-row{display:flex;gap:.75rem}
+.mst-subscribe-row .mst-subscribe-field{flex:1 1 0}
+.mst-subscribe-detail{display:flex;flex-direction:column;gap:.7rem}
+.mst-subscribe-form [hidden]{display:none!important}
+.mst-subscribe-checkbox{display:inline-flex;width:100%;min-width:0;height:var(--button-height-normal, 1.875rem);box-sizing:border-box;align-items:center;justify-content:center;gap:.3rem;padding:0 .5rem;border:1px solid var(--color-midnight-100, #454771);border-radius:var(--radius-sm, .25rem);background:var(--color-midnight-500, #2c2e45);color:var(--color-space-100, #dde2f8);font-size:.9rem;cursor:pointer}
+.mst-subscribe-checkbox:hover{border-color:var(--color-space-300, #98a7e9)}
+.mst-subscribe-checkbox input{width:1rem!important;height:1rem!important;margin:0;flex:0 0 1rem;cursor:inherit}
+.mst-subscribe-type-row{display:flex;align-items:center;gap:.6rem}
+.mst-subscribe-type-label{font-size:.85rem;opacity:.85}
+.mst-subscribe-type-checkbox{display:inline-flex;align-items:center;gap:.3rem;font-size:.85rem;cursor:pointer}
+.mst-subscribe-type-checkbox input{width:1rem!important;height:1rem!important;margin:0;cursor:inherit}
+.mst-subscribe-doc-link{margin-left:.35rem;color:var(--color-space-300, #98a7e9);font-size:.8rem;text-decoration:underline;word-break:break-all}
+.mst-subscribe-actions{display:flex;align-items:center;gap:.5rem}
+.mst-subscribe-status{flex:1 1 auto;min-width:0;align-self:center;font-size:.8rem;opacity:.75;white-space:pre-wrap;word-break:break-all}`;
+
+  // 订阅通知：行动队列变动推送到钉钉 / 企业微信 / 飞书机器人。
+  // 需求与渠道限制见 docs/analysis/订阅通知需求说明书.md。
+  // 核心口径：
+  // - 只在游戏页面打开期间监听（离线变化不感知、不补推）；
+  // - 以 CharacterAction.id 为准：同 id 的 action_completed 是任务内部变动不推送，
+  //   只有当前任务以 isDone 结束且队首变化才推送“完成 + 队列前 3 项”；
+  // - 长时间未完成任务按周期推送进度（默认 30 分钟）；
+  // - 组队战斗在同一条行动上持续累加 currentCount：监听 party_updated，本方角色
+  //   重新准备视为新战斗会话，进度次数从重新准备起重新计数并重置进度计时；
+  // - 会话监控：监听公共 mst:ws:state，游戏 WebSocket 断开（含同账号被其他
+  //   登录挤掉）时暂停定时推送，避免断连页面继续用陈旧队列数据推送；
+  // - 只有配置持久化（MST_SUBSCRIBE_config），id 基线、计时器、发送队列全部只存内存。
+
+  // 进度推送的检查节拍：轻量 setTimeout 链，不引入高频常驻轮询。
+  const PROGRESS_TICK_MS = 15000;
+  // 完成通知中展示的队列条目数。
+  const QUEUE_PREVIEW_COUNT = 3;
+  const RETRY_DELAYS_MS = [
+    60000, 120000, 240000
+  ];
+
+  // 各渠道官方限流默认值（条/分钟）：切换渠道时作为分钟推送上限的默认值带出。
+  const CHANNEL_PER_MINUTE_DEFAULTS = {dingtalk: 20, wecom: 20, feishu: 100};
+  // 队列为空提醒的固定推送周期：每分钟一条。
+  const EMPTY_REMIND_INTERVAL_MS = 60000;
+
+  function createDefaultConfig() {
+    return {
+      enabled: false,
+      channel: 'dingtalk',
+      minIntervalSec: 10,
+      progressIntervalMin: 30,
+      pushPerMinute: CHANNEL_PER_MINUTE_DEFAULTS.dingtalk,
+      // 消息类型开关：默认全勾。
+      notifyComplete: true,
+      notifyProgress: true,
+      notifyEmpty: true,
+      dingtalk: {url: '', secret: ''},
+      wecom: {key: ''},
+      feishu: {url: '', secret: ''}
+    };
+  }
+
+  function clampInt(value, min, max, fallback) {
+    const parsed = Number.parseInt(value, 10);
+    if (!Number.isFinite(parsed)) return fallback;
+    return Math.min(max, Math.max(min, parsed));
+  }
+
+  class SubscribeNotificationFeature {
+    // 各渠道官方配置说明链接（设置弹窗渠道配置区内展示）。
+    static CHANNEL_DOCS = {
+      dingtalk: 'https://open.dingtalk.com/document/robots/custom-robot-access',
+      wecom: 'https://developer.work.weixin.qq.com/document/path/99110',
+      feishu: 'https://open.feishu.cn/document/client-docs/bot-v3/add-custom-bot'
+    };
+
+    // 渠道默认分钟推送上限（与官方限流一致：钉钉/企微约 20 条每分钟、飞书 100 条每分钟）。
+    static get CHANNEL_PER_MINUTE_DEFAULTS() {
+      return CHANNEL_PER_MINUTE_DEFAULTS;
+    }
+
+    constructor(ctx) {
+      this.ctx = ctx;
+      this.inited = false;
+      this.config = null;
+      this.tracker = new QueueChangeTracker();
+      this.sender = null;
+      this.hmac = null;
+      this.progressTimer = null;
+      this.lastProgressAt = 0;
+      this.lastEmptyRemindAt = 0;
+      this.partyReady = false;
+      // 游戏会话状态：默认视为在线（init_character_data 与 WS open 事件会确认），
+      // WS close 后置为 false 暂停定时推送，重连后恢复。
+      this.wsConnected = true;
+      this.characterName = '';
+      this.characterId = null;
+      this.lastResult = null;
+      this.settingsRoot = null;
+    }
+
+    init() {
+      const {CONFIG} = this.ctx;
+      if (!CONFIG.isGameSite || this.inited) return;
+      this.inited = true;
+      // 设置弹窗样式为模块私有 CSS，注入一次即可。
+      StyleService.ensure('mst-subscribe-notification-style', MST_SUBSCRIBE_CSS);
+      this.config = this.readConfig();
+      // 监听与节拍常驻但代价极低，处理器内部按 isFeatureActive 过滤，
+      // 订阅开关变化后无需重载页面即可生效。
+      window.addEventListener('mst:ws:init-character-data', (event) => this.onInitCharacterData(event.detail));
+      window.addEventListener('mst:ws:message', (event) => this.onWsMessage(event.detail));
+      window.addEventListener('mst:ws:state', (event) => this.onWsState(event.detail));
+      // 设置弹窗打开时切换语言：重绘标题、帮助提示与设置表单（配置实时回写，重绘无状态丢失）。
+      this.ctx.LanguageEvents?.subscribe(() => this.refreshLanguage());
+      this.startProgressLoop();
+    }
+
+    // 功能激活条件：游戏站 + 订阅总开关打开。
+    isFeatureActive() {
+      const {CONFIG} = this.ctx;
+      if (!CONFIG.isGameSite) return false;
+      return Boolean(this.config?.enabled);
+    }
+
+    // ---- 配置（唯一持久化内容） ----
+
+    // 配置按角色分用户存储：同一键下以 characterId 分桶，不同角色互不影响。
+    // 页内切换角色时 URL 参数可能不变，因此优先取 init_character_data 里的实际角色 id，
+    // URL 参数只作为基线到达前的兜底。
+    getStorageCharacterId() {
+      return String(this.characterId || this.ctx.CONFIG.characterId || 'default');
+    }
+
+    readCharacterStore(key) {
+      const parsed = JSON.parse(localStorage.getItem(key) || 'null');
+      if (parsed && typeof parsed === 'object' && parsed.characters && typeof parsed.characters === 'object') {
+        return parsed.characters;
+      }
+      // 旧版单角色扁平结构：迁移到当前角色名下（配置只保存在本机浏览器）。
+      if (parsed && typeof parsed.enabled === 'boolean') {
+        return {[this.getStorageCharacterId()]: parsed};
+      }
+      return {};
+    }
+
+    readConfig() {
+      const key = this.ctx.STORAGE_KEYS?.SUBSCRIBE_NOTIFICATION || 'MST_SUBSCRIBE_config';
+      try {
+        const store = this.readCharacterStore(key);
+        return this.normalizeConfig(store[this.getStorageCharacterId()]);
+      } catch {
+        return createDefaultConfig();
+      }
+    }
+
+    normalizeConfig(raw) {
+      const defaults = createDefaultConfig();
+      const source = raw && typeof raw === 'object' ? raw : {};
+      return {
+        enabled: Boolean(source.enabled),
+        channel: [
+          'dingtalk', 'wecom', 'feishu'
+        ].includes(source.channel) ? source.channel : defaults.channel,
+        minIntervalSec: clampInt(source.minIntervalSec, 5, 600, defaults.minIntervalSec),
+        progressIntervalMin: clampInt(source.progressIntervalMin, 0, 240, defaults.progressIntervalMin),
+        pushPerMinute: clampInt(
+          source.pushPerMinute,
+          1,
+          100,
+          CHANNEL_PER_MINUTE_DEFAULTS[source.channel] || defaults.pushPerMinute
+        ),
+        // 未显式关闭（含旧配置缺字段）视为勾选。
+        notifyComplete: source.notifyComplete !== false,
+        notifyProgress: source.notifyProgress !== false,
+        notifyEmpty: source.notifyEmpty !== false,
+        dingtalk: {
+          url: String(source.dingtalk?.url || ''),
+          secret: String(source.dingtalk?.secret || '')
+        },
+        wecom: {key: String(source.wecom?.key || '')},
+        feishu: {
+          url: String(source.feishu?.url || ''),
+          secret: String(source.feishu?.secret || '')
+        }
+      };
+    }
+
+    saveConfig() {
+      const key = this.ctx.STORAGE_KEYS?.SUBSCRIBE_NOTIFICATION || 'MST_SUBSCRIBE_config';
+      try {
+        const store = this.readCharacterStore(key);
+        store[this.getStorageCharacterId()] = this.config;
+        localStorage.setItem(key, JSON.stringify({characters: store}));
+      } catch (error) {
+        console.warn('[MST] 订阅通知配置保存失败:', error);
+      }
+    }
+
+    updateConfig(patch) {
+      this.config = this.normalizeConfig({...this.config, ...patch});
+      this.saveConfig();
+      this.ensureSender();
+    }
+
+    updateChannelConfig(channel, patch) {
+      this.config[channel] = {...this.config[channel], ...patch};
+      this.saveConfig();
+    }
+
+    isChannelConfigured(channel = this.config.channel) {
+      if (channel === 'dingtalk') return Boolean(this.config.dingtalk.url);
+      if (channel === 'wecom') return Boolean(this.config.wecom.key);
+      if (channel === 'feishu') return Boolean(this.config.feishu.url);
+      return false;
+    }
+
+    // ---- 官方消息接入 ----
+
+    onInitCharacterData(data) {
+      const actions = Array.isArray(data?.characterActions) ? data.characterActions : [];
+      const nextCharacterId =
+        data?.character?.id ?? data?.characterID ?? this.ctx.CONFIG.characterId ?? this.tracker.characterId ?? null;
+      const characterChanged = nextCharacterId != null && String(nextCharacterId) !== String(this.characterId ?? '');
+      this.characterId = nextCharacterId ?? this.characterId;
+      this.characterName = data?.character?.name || this.ctx.DataHub?.characterData?.raw?.character?.name || '';
+      // 能收到 init_character_data 说明当前页面 WS 会话在线（重连成功同样走这里）。
+      this.wsConnected = true;
+      // 基线重建不触发推送；进度计时从基线建立时刻起算。
+      this.tracker.setQueue(actions, this.characterId);
+      // 同步本方组队准备状态作为基线：基线建立时的已准备不算重新准备。
+      this.partyReady = this.readOwnPartyReady(data?.partyInfo);
+      this.markTaskActivity();
+      if (characterChanged) {
+        // 配置按角色分桶：切角色后必须重读当前角色配置并重置发送队列，
+        // 否则会沿用上一个角色的渠道与凭据推送（内存态不落盘，重读即切换）。
+        this.config = this.readConfig();
+        this.sender?.dispose();
+        this.sender = null;
+        this.lastResult = null;
+      }
+    }
+
+    onWsMessage(message) {
+      if (!this.isFeatureActive()) return;
+      const type = message?.type;
+      if (type === 'actions_updated') {
+        this.handleEvent(this.tracker.applyActionsUpdate(message.endCharacterActions));
+      } else if (type === 'action_completed') {
+        this.handleEvent(this.tracker.applyActionCompleted(message.endCharacterAction));
+      } else if (type === 'party_updated') {
+        this.handlePartyUpdated(message);
+      }
+    }
+
+    // 会话监控：游戏 WebSocket close（网络断开或同账号被其他登录挤掉）后，当前页面
+    // 不再收到任何队列消息，继续定时推送只会发出陈旧数据（多开页面时表现为同一
+    // 任务收到两条数据差异很大的进度通知）。断连期间暂停进度与空队列提醒，重连
+    // （open / init_character_data 重建基线）后自动恢复。
+    onWsState(detail) {
+      this.wsConnected = detail?.state !== 'closed';
+    }
+
+    // 读取本方角色在队伍槽位中的准备状态（partyInfo.partySlotMap 按 characterID 匹配）。
+    readOwnPartyReady(partyInfo) {
+      const slotMap = partyInfo?.partySlotMap;
+      if (!slotMap || typeof slotMap !== 'object') return false;
+      const ownId = String(this.characterId ?? '');
+      if (!ownId) return false;
+      const ownSlot = Object.values(slotMap).find((slot) => String(slot?.characterID ?? '') === ownId);
+      return Boolean(ownSlot?.isReady);
+    }
+
+    // 组队战斗行动在同一条 CharacterAction 上持续累加 currentCount，取消准备再重新准备
+    // 不会更换 id、也没有 actions_updated/action_completed，官方只在 party_updated 里
+    // 携带准备状态。本方角色从未准备变为已准备（取消准备后再准备、战后再次准备）视为
+    // 新的战斗会话：重置进度计数基线与进度计时，定期进度通知从重新准备起重新计数。
+    handlePartyUpdated(message) {
+      const isReady = this.readOwnPartyReady(message?.partyInfo);
+      const wasReady = this.partyReady;
+      this.partyReady = isReady;
+      if (!isReady || wasReady) return;
+      const task = this.tracker.getCurrentTask();
+      if (!task || task.partyID === 0) return;
+      this.tracker.resetProgressBaseline();
+      this.markTaskActivity();
+    }
+
+    handleEvent(event) {
+      if (!event) return;
+      // 任务切换后重置进度计时，避免旧任务的计时周期污染新任务。
+      this.markTaskActivity();
+      // 消息类型开关：任务完成通知可单独关闭（计时仍重置）。
+      if (this.config?.notifyComplete === false) return;
+      this.submitText(this.buildCompletionText(event));
+    }
+
+    // ---- 定期进度推送 ----
+
+    startProgressLoop() {
+      if (this.progressTimer) return;
+      const tick = () => {
+        this.progressTimer = setTimeout(tick, PROGRESS_TICK_MS);
+        try {
+          this.checkProgress();
+        } catch (error) {
+          console.warn('[MST] 订阅通知进度推送检查失败:', error);
+        }
+      };
+      this.progressTimer = setTimeout(tick, PROGRESS_TICK_MS);
+    }
+
+    checkProgress() {
+      if (!this.isFeatureActive()) return;
+      // 会话已断开（被挤掉/断网）：暂停定时推送，恢复后由重连基线重建继续。
+      if (this.wsConnected === false) return;
+      const now = Date.now();
+      const task = this.tracker.getCurrentTask();
+      if (!task) {
+        // 消息类型开关：队列为空提醒可单独关闭；队列空时固定每分钟推送一条提醒。
+        if (this.config?.notifyEmpty === false) return;
+        if (now - this.lastEmptyRemindAt < EMPTY_REMIND_INTERVAL_MS) return;
+        this.lastEmptyRemindAt = now;
+        this.submitText(this.buildEmptyText());
+        return;
+      }
+      // 有任务期间持续刷新，保证队列腾空后从下一分钟起开始提醒。
+      this.lastEmptyRemindAt = now;
+      // 消息类型开关：定期进度通知可单独关闭。
+      if (this.config?.notifyProgress === false) return;
+      const intervalMin = Number(this.config.progressIntervalMin) || 0;
+      if (intervalMin <= 0) return;
+      if (now - this.lastProgressAt < intervalMin * 60000) return;
+      this.lastProgressAt = now;
+      this.submitText(this.buildProgressText(task));
+    }
+
+    markTaskActivity() {
+      this.lastProgressAt = Date.now();
+      this.lastEmptyRemindAt = Date.now();
+    }
+
+    // ---- 推送链路 ----
+
+    ensureSender() {
+      const minIntervalMs = Math.max(5, Number(this.config.minIntervalSec) || 10) * 1000;
+      const perMinuteLimit = Math.max(1, Number(this.config.pushPerMinute) || 20);
+      if (!this.sender) {
+        this.sender = new NotificationSender({
+          send: (text) => this.sendToChannel(text),
+          minIntervalMs,
+          perMinuteLimit,
+          retryDelaysMs: RETRY_DELAYS_MS,
+          onGiveUp: () => {
+            this.lastResult = {time: new Date().toLocaleString(), ok: false, code: null, msg: 'retry exhausted'};
+            this.refreshStatusLine();
+          }
+        });
+      } else {
+        this.sender.minIntervalMs = minIntervalMs;
+        this.sender.perMinuteLimit = perMinuteLimit;
+      }
+      return this.sender;
+    }
+
+    submitText(text) {
+      if (!this.isChannelConfigured()) return;
+      this.ensureSender().submit(truncateForChannel(this.config.channel, text));
+    }
+
+    async sendToChannel(text) {
+      const {GmApi, CONFIG} = this.ctx;
+      const request = GmApi?.xmlHttpRequestApi?.();
+      if (!request) throw new Error('GM request API unavailable');
+      if (!CONFIG.isGameSite) throw new Error('invalid site');
+      const channel = this.config.channel;
+      this.hmac = this.hmac || createDefaultHmac();
+      if (channel === 'dingtalk' && this.config.dingtalk.secret && !this.hmac) {
+        throw new Error('WebCrypto unavailable');
+      }
+      let built;
+      if (channel === 'dingtalk') {
+        built = await buildDingTalkRequest(
+          {url: this.config.dingtalk.url, secret: this.config.dingtalk.secret, content: text},
+          {hmac: this.hmac}
+        );
+      } else if (channel === 'wecom') {
+        built = buildWeComRequest({
+          url: `https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=${encodeURIComponent(this.config.wecom.key)}`,
+          content: text
+        });
+      } else {
+        built = await buildFeishuRequest(
+          {url: normalizeFeishuHookUrl(this.config.feishu.url), secret: this.config.feishu.secret, content: text},
+          {hmac: this.hmac}
+        );
+      }
+      const responseText = await new Promise((resolve, reject) => {
+        request({
+          method: 'POST',
+          url: built.url,
+          headers: built.headers,
+          data: built.body,
+          timeout: 15000,
+          onload: (response) => resolve(response?.responseText || ''),
+          onerror: () => reject(new Error('network error')),
+          ontimeout: () => reject(new Error('timeout'))
+        });
+      });
+      const result = parseChannelResponse(channel, responseText);
+      this.lastResult = {time: new Date().toLocaleString(), ...result};
+      this.refreshStatusLine();
+      if (!result.ok) throw new Error(result.msg || `code ${result.code}`);
+      return result;
+    }
+
+    // ---- 文案 ----
+
+    buildHeader() {
+      return `【MST】${this.ctx.i18n.t('subscribeNotificationMsgTitle')}`;
+    }
+
+    // 时间行带完整日期：yyyy-MM-dd HH:mm:ss（不依赖本地化的 toLocaleString 输出）。
+    buildTimeLine() {
+      const now = new Date();
+      const pad = (value) => String(value).padStart(2, '0');
+      return (
+        `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())} ` +
+        `${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`
+      );
+    }
+
+    buildRoleLine() {
+      const owner = this.characterName || this.characterId || 'MST';
+      const suffix = this.ctx.CONFIG.isTestServer ? ` · ${this.ctx.i18n.t('subscribeNotificationServerTest')}` : '';
+      return `${owner}${suffix}`;
+    }
+
+    actionName(actionHrid) {
+      return this.ctx.DataHub?.getLocalizedGameName('actionNames', actionHrid) || String(actionHrid || '');
+    }
+
+    describeTask(task) {
+      const {i18n} = this.ctx;
+      if (!task) return '-';
+      // 难度后缀与官方行动标题口径一致：difficultyTier >= 1 时追加 " (T<tier>)"。
+      const tierSuffix = task.difficultyTier >= 1 ? ` (T${task.difficultyTier})` : '';
+      const name = this.actionName(task.actionHrid) + tierSuffix;
+      if (task.hasMaxCount) {
+        return i18n.t('subscribeNotificationTaskWithCount', name, task.currentCount ?? 0, task.maxCount ?? 0);
+      }
+      return i18n.t('subscribeNotificationTaskUnlimited', name);
+    }
+
+    buildCompletionText(event) {
+      const {i18n} = this.ctx;
+      const lines = [
+        this.buildHeader()
+      ];
+      if (event.completedTask) {
+        lines.push(`✅ ${i18n.t('subscribeNotificationTaskCompleted')}：${this.describeTask(event.completedTask)}`);
+      }
+      if (event.newTask) {
+        lines.push(`▶️ ${i18n.t('subscribeNotificationTaskStarted')}：${this.describeTask(event.newTask)}`);
+      }
+      // 队列概览列"等待执行的"任务，不含队首正在执行的行动。
+      const preview = this.tracker.getWaitingQueuePreview(QUEUE_PREVIEW_COUNT);
+      if (preview.length) {
+        lines.push(i18n.t('subscribeNotificationQueueLabel'));
+        preview.forEach((task, index) => lines.push(`${index + 1}. ${this.describeTask(task)}`));
+        const total = this.tracker.getWaitingQueueLength();
+        if (total > preview.length) lines.push(i18n.t('subscribeNotificationQueueMore', total));
+      }
+      if (event.isEmpty) lines.push(`⚠️ ${i18n.t('subscribeNotificationQueueEmpty')}`);
+      lines.push(this.buildTimeLine(), this.buildRoleLine());
+      return lines.join('\n');
+    }
+
+    // 进度通知与完成通知同构：标题行 + 进度行 + 等待队列 + 时间行 + 角色名行。
+    // 已完成次数走 tracker.getProgressCount：组队战斗重新准备后按会话增量统计。
+    buildProgressText(task) {
+      const {i18n} = this.ctx;
+      const name = this.actionName(task.actionHrid);
+      const tierSuffix = task.difficultyTier >= 1 ? ` (T${task.difficultyTier})` : '';
+      let progress = `⏳ ${i18n.t('subscribeNotificationProgressDone', name + tierSuffix, this.tracker.getProgressCount(task))}`;
+      if (task.hasMaxCount) {
+        const remaining = (task.maxCount ?? 0) - (task.currentCount ?? 0);
+        if (remaining > 0) progress += i18n.t('subscribeNotificationProgressRemaining', remaining);
+      }
+      const lines = [
+        this.buildHeader(), progress
+      ];
+      const preview = this.tracker.getWaitingQueuePreview(QUEUE_PREVIEW_COUNT);
+      if (preview.length) {
+        lines.push(i18n.t('subscribeNotificationQueueLabel'));
+        preview.forEach((item, index) => lines.push(`${index + 1}. ${this.describeTask(item)}`));
+        const total = this.tracker.getWaitingQueueLength();
+        if (total > preview.length) lines.push(i18n.t('subscribeNotificationQueueMore', total));
+      }
+      lines.push(this.buildTimeLine(), this.buildRoleLine());
+      return lines.join('\n');
+    }
+
+    // 队列为空提醒：与完成通知同构，腾空后固定每分钟推送一条。
+    buildEmptyText() {
+      const {i18n} = this.ctx;
+      return [
+        this.buildHeader(), `⚠️ ${i18n.t('subscribeNotificationQueueEmpty')}`, this.buildTimeLine(), this.buildRoleLine()
+      ].join('\n');
+    }
+
+    buildTestText() {
+      const {i18n} = this.ctx;
+      return [
+        this.buildHeader(), i18n.t('subscribeNotificationTestBody'), this.buildTimeLine(), this.buildRoleLine()
+      ].join('\n');
+    }
+
+    // ---- 设置界面（工具箱菜单入口） ----
+
+    // 启用开关切换：保存配置后直接切换 DOM 显隐（与渲染后的 applyEnabledVisibility 同源）。
+    toggleEnabled(enabled) {
+      this.updateConfig({enabled});
+      this.applyEnabledVisibility();
+    }
+
+    // 状态行只在点击测试发送（或真实推送有结果）后显示，未操作时留空。
+    refreshStatusLine() {
+      const element = document.getElementById('mst-subscribe-status');
+      if (!element) return;
+      element.textContent = this.lastResult
+        ? `${this.lastResult.time} ${this.lastResult.ok ? '✅' : '❌'} ${this.lastResult.code ?? ''} ${this.lastResult.msg || ''}`.trim()
+        : '';
+    }
+
+    openSettings() {
+      const {Notifier, TemplateRenderer, i18n} = this.ctx;
+      this.config = this.readConfig();
+      return Notifier.html({
+        title: i18n.t('subscribeNotificationTitle'),
+        width: 'min(34rem, calc(100vw - 1rem))',
+        popupClass: 'mst-subscribe-dialog',
+        icon: 'action_queue',
+        html: () => TemplateRenderer.html`<div id="mst-subscribe-settings-root"></div>`,
+        didOpen: (popup) => {
+          this.settingsRoot =
+            popup?.querySelector('#mst-subscribe-settings-root') ||
+            document.getElementById('mst-subscribe-settings-root');
+          this.renderSettings();
+          // 标题后的提示图标与技能升级等弹窗一致：挂在 swal 标题上，说明内容为原提示行文案。
+          this.helpController?.cleanup();
+          this.helpController = this.ctx.CalculatorHelpPopover?.mount({
+            popup,
+            moduleName: 'subscribe',
+            title: i18n.t('subscribeNotificationTitle'),
+            heading: i18n.t('subscribeNotificationTitle'),
+            content: i18n.t('subscribeNotificationHint')
+          });
+        },
+        willClose: () => {
+          this.helpController?.cleanup();
+          this.helpController = null;
+          this.settingsRoot = null;
+        }
+      });
+    }
+
+    // 整体重渲染设置区：渠道切换后字段只展示当前渠道的配置项与文档链接。
+    renderSettings() {
+      const {TemplateRenderer} = this.ctx;
+      if (!this.settingsRoot) return;
+      TemplateRenderer.render(() => this.settingsTemplate(), this.settingsRoot);
+      this.applyEnabledVisibility();
+      this.refreshStatusLine();
+    }
+
+    // 语言切换时同步弹窗文案：标题、帮助提示与设置表单整体重绘。
+    refreshLanguage() {
+      const {i18n, CalculatorHelpPopover} = this.ctx;
+      if (!this.settingsRoot?.isConnected) return;
+      const popup = this.settingsRoot.closest('.mst-subscribe-dialog');
+      const title = popup?.querySelector('.swal2-title');
+      if (title) title.textContent = i18n.t('subscribeNotificationTitle');
+      this.helpController?.cleanup();
+      this.helpController =
+        CalculatorHelpPopover?.mount({
+          popup,
+          moduleName: 'subscribe',
+          title: i18n.t('subscribeNotificationTitle'),
+          heading: i18n.t('subscribeNotificationTitle'),
+          content: i18n.t('subscribeNotificationHint')
+        }) || null;
+      this.renderSettings();
+    }
+
+    // 启用状态决定后续选项的显隐。uhtml 对 hidden 布尔属性的初始/增量绑定都不可靠，
+    // 统一在渲染后直接写 DOM，与 toggleEnabled 的切换行为保持同一来源。
+    applyEnabledVisibility() {
+      const root = this.settingsRoot || document.getElementById('mst-subscribe-settings-root');
+      if (!root) return;
+      const enabled = Boolean(this.config?.enabled);
+      const detail = root.querySelector('.mst-subscribe-detail');
+      if (detail) detail.hidden = !enabled;
+    }
+
+    settingsTemplate() {
+      const {TemplateRenderer, i18n, utils} = this.ctx;
+      const config = this.config;
+      const gameButtonClass = utils.getGameButtonClass();
+      const channel = config.channel;
+      const field = (labelKey, inputTemplate) => TemplateRenderer.html`
+    <label class="mst-subscribe-field">
+      <span>${i18n.t(labelKey)}</span>
+      ${inputTemplate}
+    </label>`;
+      const channelFields =
+        channel === 'dingtalk'
+          ? [
+              field(
+                'subscribeNotificationDingtalkUrl',
+                TemplateRenderer.html`<input
+            type="text"
+            id="mst-subscribe-dingtalk-url"
+            .value=${config.dingtalk.url}
+            placeholder="https://oapi.dingtalk.com/robot/send?access_token=..."
+            @input=${(event) => this.updateChannelConfig('dingtalk', {url: event.target.value.trim()})}
+          />`
+              ), field(
+                'subscribeNotificationDingtalkSecret',
+                TemplateRenderer.html`<input
+            type="password"
+            id="mst-subscribe-dingtalk-secret"
+            .value=${config.dingtalk.secret}
+            autocomplete="off"
+            @input=${(event) => this.updateChannelConfig('dingtalk', {secret: event.target.value.trim()})}
+          />`
+              )
+            ]
+          : channel === 'wecom'
+            ? [
+                field(
+                  'subscribeNotificationWeComKey',
+                  TemplateRenderer.html`<input
+              type="password"
+              id="mst-subscribe-wecom-key"
+              .value=${config.wecom.key}
+              autocomplete="off"
+              @input=${(event) => this.updateChannelConfig('wecom', {key: event.target.value.trim()})}
+            />`
+                )
+              ]
+            : [
+                field(
+                  'subscribeNotificationFeishuUrl',
+                  TemplateRenderer.html`<input
+              type="text"
+              id="mst-subscribe-feishu-url"
+              .value=${config.feishu.url}
+              placeholder="完整 Hook 地址或仅填 hook-id"
+              @input=${(event) => this.updateChannelConfig('feishu', {url: event.target.value.trim()})}
+            />`
+                ), field(
+                  'subscribeNotificationFeishuSecret',
+                  TemplateRenderer.html`<input
+              type="password"
+              id="mst-subscribe-feishu-secret"
+              .value=${config.feishu.secret}
+              autocomplete="off"
+              @input=${(event) => this.updateChannelConfig('feishu', {secret: event.target.value.trim()})}
+            />`
+                )
+              ];
+      return TemplateRenderer.html`
+  <div class="mst-subscribe-form">
+    <div class="mst-subscribe-section-title">${i18n.t('subscribeNotificationSectionGeneral')}</div>
+    <label class="mst-subscribe-checkbox">
+      <input
+        type="checkbox"
+        id="mst-subscribe-enabled"
+        .checked=${config.enabled}
+        @change=${(event) => this.toggleEnabled(event.target.checked)}
+      />
+      <span>${i18n.t('subscribeNotificationEnabled')}</span>
+    </label>
+    <div class="mst-subscribe-detail">
+      <div class="mst-subscribe-row">
+        <label class="mst-subscribe-field">
+          <span>${i18n.t('subscribeNotificationMinInterval')}</span>
+          <input
+            type="number"
+            id="mst-subscribe-min-interval"
+            min="5"
+            max="600"
+            step="1"
+            .value=${config.minIntervalSec}
+            @change=${(event) => this.updateConfig({minIntervalSec: event.target.value})}
+          />
+        </label>
+        <label class="mst-subscribe-field">
+          <span>${i18n.t('subscribeNotificationProgressInterval')}</span>
+          <input
+            type="number"
+            id="mst-subscribe-progress-interval"
+            min="0"
+            max="240"
+            step="1"
+            .value=${config.progressIntervalMin}
+            @change=${(event) => this.updateConfig({progressIntervalMin: event.target.value})}
+          />
+        </label>
+      </div>
+      <div class="mst-subscribe-section-title">${i18n.t('subscribeNotificationMsgType')}</div>
+      <div class="mst-subscribe-type-row">
+        <span class="mst-subscribe-type-label">${i18n.t('subscribeNotificationTypeQueue')}</span>
+        <label
+          class="mst-subscribe-type-checkbox"
+          title=${i18n.t('subscribeNotificationTypeCompleteTitle')}
+        >
+          <input
+            type="checkbox"
+            id="mst-subscribe-type-complete"
+            .checked=${config.notifyComplete}
+            @change=${(event) => this.updateConfig({notifyComplete: event.target.checked})}
+          />
+          <span>${i18n.t('subscribeNotificationTypeComplete')}</span>
+        </label>
+        <label
+          class="mst-subscribe-type-checkbox"
+          title=${i18n.t('subscribeNotificationTypeProgressTitle')}
+        >
+          <input
+            type="checkbox"
+            id="mst-subscribe-type-progress"
+            .checked=${config.notifyProgress}
+            @change=${(event) => this.updateConfig({notifyProgress: event.target.checked})}
+          />
+          <span>${i18n.t('subscribeNotificationTypeProgress')}</span>
+        </label>
+        <label
+          class="mst-subscribe-type-checkbox"
+          title=${i18n.t('subscribeNotificationTypeEmptyTitle')}
+        >
+          <input
+            type="checkbox"
+            id="mst-subscribe-type-empty"
+            .checked=${config.notifyEmpty}
+            @change=${(event) => this.updateConfig({notifyEmpty: event.target.checked})}
+          />
+          <span>${i18n.t('subscribeNotificationTypeEmpty')}</span>
+        </label>
+        </div>
+      <div class="mst-subscribe-section-title">${i18n.t('subscribeNotificationSectionChannel')}</div>
+      <div class="mst-subscribe-row">
+        <label class="mst-subscribe-field">
+          <span>
+            ${i18n.t('subscribeNotificationChannel')}
+            <a
+              class="mst-subscribe-doc-link"
+              href=${SubscribeNotificationFeature.CHANNEL_DOCS[channel]}
+              target="_blank"
+              rel="noreferrer"
+            >${i18n.t('subscribeNotificationDocLink')}</a>
+          </span>
+          <select
+            id="mst-subscribe-channel"
+            .value=${channel}
+            @change=${(event) => {
+              // 切换渠道时按官方限流带出该渠道默认的分钟推送上限，用户可再修改。
+              const nextChannel = event.target.value;
+              this.updateConfig({
+                channel: nextChannel,
+                pushPerMinute: SubscribeNotificationFeature.CHANNEL_PER_MINUTE_DEFAULTS[nextChannel]
+              });
+              this.renderSettings();
+            }}
+          >
+            <option value="dingtalk">${i18n.t('subscribeNotificationChannelDingtalk')}</option>
+            <option value="wecom">${i18n.t('subscribeNotificationChannelWeCom')}</option>
+            <option value="feishu">${i18n.t('subscribeNotificationChannelFeishu')}</option>
+          </select>
+        </label>
+        <label class="mst-subscribe-field">
+          <span>${i18n.t('subscribeNotificationPushLimit')}</span>
+          <input
+            type="number"
+            id="mst-subscribe-push-limit"
+            min="1"
+            max="100"
+            step="1"
+            .value=${config.pushPerMinute}
+            @change=${(event) => this.updateConfig({pushPerMinute: event.target.value})}
+          />
+        </label>
+      </div>
+      <div class="mst-subscribe-row">${channelFields}</div>
+      <div class="mst-subscribe-actions">
+        <button type="button" id="mst-subscribe-test" class=${gameButtonClass} @click=${() => this.sendTestMessage()}>
+          ${i18n.t('subscribeNotificationTestSend')}
+        </button>
+        <span class="mst-subscribe-status" id="mst-subscribe-status"></span>
+      </div>
+    </div>
+  </div>`;
+    }
+
+    async sendTestMessage() {
+      const {Notifier, i18n} = this.ctx;
+      if (!this.isChannelConfigured()) {
+        Notifier.toast(i18n.t('subscribeNotificationInvalid'), 'warning');
+        return;
+      }
+      try {
+        await this.sendToChannel(this.buildTestText());
+        Notifier.toast(i18n.t('subscribeNotificationTestOk'), 'success');
+      } catch (error) {
+        Notifier.toast(`${i18n.t('subscribeNotificationTestFail')}：${error.message}`, 'error');
+      }
+    }
+
+    dispose() {
+      if (this.progressTimer) clearTimeout(this.progressTimer);
+      this.progressTimer = null;
+      this.sender?.dispose();
+      this.sender = null;
+    }
+  }
+
   // toolkit-menu-feature
   class ToolkitMenuFeature {
     constructor(
       ctx,
-      {characterCardFeature, appController, combatCalculator, abilityCalculator, equipmentComparison, dungeonCalculator}
+      {
+        characterCardFeature,
+        appController,
+        combatCalculator,
+        abilityCalculator,
+        equipmentComparison,
+        dungeonCalculator,
+        subscribeNotification
+      }
     ) {
       this.ctx = ctx;
       this.characterCardFeature = characterCardFeature;
@@ -23713,6 +25866,7 @@
       this.abilityCalculator = abilityCalculator;
       this.equipmentComparison = equipmentComparison;
       this.dungeonCalculator = dungeonCalculator;
+      this.subscribeNotification = subscribeNotification;
       this.dropdownCleanup = null;
       this.outsideClickHandler = (event) => {
         const dropdown = document.getElementById('mst-toolkit-character-dropdown');
@@ -23727,6 +25881,10 @@
       // 菜单顺序按常用工作流排列：资料与升级工具在前，站点导航放最后。
       return [
         {key: 'userCharacterCard', icon: 'social', handler: () => this.characterCardFeature.showMyCharacterCard()}, {
+          key: 'subscribeNotification',
+          icon: 'action_queue',
+          handler: () => this.subscribeNotification.openSettings()
+        }, {
           key: 'abilityUpgradeCalculator',
           icon: 'skills',
           handler: () => this.abilityCalculator.open()
@@ -23734,12 +25892,12 @@
           key: 'combatUpgradeCalculator',
           icon: 'experience',
           handler: () => this.combatCalculator.open()
-        }, {
+        },
+        {
           key: 'equipmentComparison',
           icon: 'loadout',
           handler: () => this.equipmentComparison.open()
-        },
-        {key: 'dungeonProfitCalculator', icon: 'loot_tracker', handler: () => this.dungeonCalculator.open()}, {
+        }, {key: 'dungeonProfitCalculator', icon: 'loot_tracker', handler: () => this.dungeonCalculator.open()}, {
           key: 'combatSimAiwwb',
           icon: 'combat',
           handler: () => this.openCombatSimulator()
@@ -23965,6 +26123,7 @@
     ctx.HouseCalculatorUI = HouseCalculatorUI;
     ctx.LabyrinthSupplyFeature = LabyrinthSupplyFeature;
     ctx.MarketplaceCartFeature = MarketplaceCartFeature;
+    ctx.SubscribeNotificationFeature = SubscribeNotificationFeature;
     ctx.ToolkitMenuFeature = ToolkitMenuFeature;
   }
 
@@ -24075,7 +26234,7 @@
 .mst-ability-calculator-trigger{display:inline-flex;margin:0}
 .mst-ability-action-market,.mst-ability-action-calculator,.mst-ability-tooltip-calculator{background:var(--color-space-600, #4357af);color:var(--color-text-dark-mode, #e7e7e7);cursor:pointer}
 .mst-ability-action-market:hover,.mst-ability-action-calculator:hover,.mst-ability-tooltip-calculator:hover{background:var(--color-space-500, #5468c4)}
-.mst-ability-action-market:not([class*=Button_]),.mst-ability-action-calculator:not([class*=Button_]),.mst-ability-tooltip-calculator:not([class*=Button_]){display:block;width:100%;box-sizing:border-box;margin-top:.375rem;padding:.25rem .5rem;border:0;border-radius:var(--radius-sm, .25rem);font:inherit;font-size:var(--font-size-sm, .8125rem)}
+.mst-ability-action-market:not([class*=Button_]),.mst-ability-action-calculator:not([class*=Button_]),.mst-ability-tooltip-calculator:not([class*=Button_]){display:block;width:100%;box-sizing:border-box;margin-top:.375rem;padding:.25rem .5rem;border:1px solid var(--color-midnight-100, #454771);border-radius:var(--radius-sm, .25rem);font:inherit;font-size:var(--font-size-sm, .8125rem)}
 .mst-ability-picker{position:absolute;inset:0;z-index:5;display:flex;align-items:flex-start;justify-content:center;padding:0;background:#0e0f18eb}
 .mst-ability-picker[hidden]{display:none}
 .mst-ability-picker-panel{display:flex;width:100%;height:100%;min-height:0;box-sizing:border-box;flex-direction:column;gap:.4rem;padding:.5rem;border:1px solid var(--color-midnight-100, #454771);border-radius:var(--radius-sm, .25rem);background:var(--color-midnight-600, #27283b);box-shadow:var(--shadow-md, 0 .35rem 1rem rgba(0, 0, 0, .4))}
@@ -24095,17 +26254,19 @@
 .mst-combat-profession svg{grid-row:1/3;width:1.75rem;height:1.75rem}
 .mst-combat-profession strong{max-width:100%;align-self:end;justify-self:start;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:var(--font-size-small, .75rem);line-height:1.1;text-align:left}
 .mst-combat-profession small{align-self:start;justify-self:start;color:var(--color-neutral-300, #b9bbca);font-size:var(--font-size-tiny, .6875rem);line-height:1.1;text-align:left}
-.mst-upgrade-calculator-dialog .swal2-title,.mst-equipment-compare-dialog .swal2-title,.mst-house-calculator-dialog .swal2-title{display:flex!important;align-items:center;gap:.6rem}
-.mst-combat-help-anchor,.mst-ability-help-anchor,.mst-equipment-help-anchor,.mst-dungeon-help-anchor,.mst-house-help-anchor{position:relative;display:inline-flex;width:var(--spacing-lg-plus, 1.25rem);height:var(--spacing-lg-plus, 1.25rem);flex:0 0 auto;align-self:center;align-items:center;pointer-events:auto;vertical-align:middle}
-.mst-combat-help-trigger,.mst-ability-help-trigger,.mst-equipment-help-trigger,.mst-dungeon-help-trigger,.mst-house-help-trigger{display:block;width:var(--spacing-lg-plus, 1.25rem);height:var(--spacing-lg-plus, 1.25rem);min-height:var(--spacing-lg-plus, 1.25rem)!important;box-sizing:border-box;padding:0!important;border:0!important;border-radius:0!important;background:transparent!important;font-size:0!important;line-height:0!important;box-shadow:none!important;cursor:pointer;touch-action:manipulation}
-.mst-combat-help-trigger svg,.mst-ability-help-trigger svg,.mst-equipment-help-trigger svg,.mst-dungeon-help-trigger svg,.mst-house-help-trigger svg{display:block;width:100%;height:100%;pointer-events:none}
-.mst-combat-help-trigger:hover,.mst-ability-help-trigger:hover,.mst-equipment-help-trigger:hover,.mst-dungeon-help-trigger:hover,.mst-house-help-trigger:hover{filter:brightness(1.12)}
+.mst-upgrade-calculator-dialog .swal2-title,.mst-equipment-compare-dialog .swal2-title,.mst-house-calculator-dialog .swal2-title,.mst-subscribe-dialog .swal2-title,.mst-character-card-modal .swal2-title{display:flex!important;align-items:center;gap:.6rem}
+.mst-dialog-title-icon{display:inline-flex;width:1.25rem;height:1.25rem;flex:0 0 auto;align-self:center}
+.mst-dialog-title-icon svg{width:100%;height:100%}
+.mst-combat-help-anchor,.mst-ability-help-anchor,.mst-equipment-help-anchor,.mst-dungeon-help-anchor,.mst-house-help-anchor,.mst-subscribe-help-anchor{position:relative;display:inline-flex;width:var(--spacing-lg-plus, 1.25rem);height:var(--spacing-lg-plus, 1.25rem);flex:0 0 auto;align-self:center;align-items:center;pointer-events:auto;vertical-align:middle}
+.mst-combat-help-trigger,.mst-ability-help-trigger,.mst-equipment-help-trigger,.mst-dungeon-help-trigger,.mst-house-help-trigger,.mst-subscribe-help-trigger{display:block;width:var(--spacing-lg-plus, 1.25rem);height:var(--spacing-lg-plus, 1.25rem);min-height:var(--spacing-lg-plus, 1.25rem)!important;box-sizing:border-box;padding:0!important;border:0!important;border-radius:0!important;background:transparent!important;font-size:0!important;line-height:0!important;box-shadow:none!important;cursor:pointer;touch-action:manipulation}
+.mst-combat-help-trigger svg,.mst-ability-help-trigger svg,.mst-equipment-help-trigger svg,.mst-dungeon-help-trigger svg,.mst-house-help-trigger svg,.mst-subscribe-help-trigger svg{display:block;width:100%;height:100%;pointer-events:none}
+.mst-combat-help-trigger:hover,.mst-ability-help-trigger:hover,.mst-equipment-help-trigger:hover,.mst-dungeon-help-trigger:hover,.mst-house-help-trigger:hover,.mst-subscribe-help-trigger:hover{filter:brightness(1.12)}
 .mst-combat-help-trigger-error,.mst-ability-help-trigger-error,.mst-equipment-help-trigger-error,.mst-dungeon-help-trigger-error,.mst-house-help-trigger-error{border-color:#c86b75!important;color:#f4c4ca!important}
-.mst-combat-help-popover,.mst-ability-help-popover,.mst-equipment-help-popover,.mst-dungeon-help-popover,.mst-house-help-popover{position:fixed;z-index:2;width:max-content;max-width:min(var(--tooltip-max-width, 40ch),calc(100vw - 1rem));max-height:calc(100svh - 1rem);overflow-y:auto;box-sizing:border-box;padding:var(--tooltip-padding-y, .375rem) var(--tooltip-padding-x, .5rem);border:0;border-radius:var(--tooltip-border-radius, .25rem);background:#bbc5f1f2;box-shadow:var(--shadow-md, 2px 2px 10px 6px rgba(0, 0, 0, .3));color:#000;font-size:var(--tooltip-font-size, var(--font-size-base, .875rem));font-weight:var(--font-weight-medium, 500);line-height:var(--line-height-normal, 1.375);text-align:left;user-select:none}
-.mst-combat-help-popover[hidden],.mst-ability-help-popover[hidden],.mst-equipment-help-popover[hidden],.mst-dungeon-help-popover[hidden],.mst-house-help-popover[hidden]{display:none}
-.mst-combat-help-popover-title,.mst-ability-help-popover-title,.mst-equipment-help-popover-title,.mst-dungeon-help-popover-title,.mst-house-help-popover-title{margin:0;padding:0;font-size:var(--font-size-md, 1rem);font-weight:var(--font-weight-medium, 500);line-height:var(--line-height-normal, 1.375)}
-.mst-combat-help-popover-content,.mst-ability-help-popover-content,.mst-equipment-help-popover-content,.mst-dungeon-help-popover-content,.mst-house-help-popover-content{margin-top:var(--spacing-xs, .25rem);padding-top:var(--spacing-xs, .25rem);border-top:1px solid #000}
-.mst-combat-help-popover-paragraph,.mst-ability-help-popover-paragraph,.mst-equipment-help-popover-paragraph,.mst-dungeon-help-popover-paragraph,.mst-house-help-popover-paragraph{margin-top:var(--spacing-xs, .25rem);padding-bottom:var(--spacing-xs, .25rem)}
+.mst-combat-help-popover,.mst-ability-help-popover,.mst-equipment-help-popover,.mst-dungeon-help-popover,.mst-house-help-popover,.mst-subscribe-help-popover{position:fixed;z-index:2;width:max-content;max-width:min(var(--tooltip-max-width, 40ch),calc(100vw - 1rem));max-height:calc(100svh - 1rem);overflow-y:auto;box-sizing:border-box;padding:var(--tooltip-padding-y, .375rem) var(--tooltip-padding-x, .5rem);border:0;border-radius:var(--tooltip-border-radius, .25rem);background:#bbc5f1f2;box-shadow:var(--shadow-md, 2px 2px 10px 6px rgba(0, 0, 0, .3));color:#000;font-size:var(--tooltip-font-size, var(--font-size-base, .875rem));font-weight:var(--font-weight-medium, 500);line-height:var(--line-height-normal, 1.375);text-align:left;user-select:none}
+.mst-combat-help-popover[hidden],.mst-ability-help-popover[hidden],.mst-equipment-help-popover[hidden],.mst-dungeon-help-popover[hidden],.mst-house-help-popover[hidden],.mst-subscribe-help-popover[hidden]{display:none}
+.mst-combat-help-popover-title,.mst-ability-help-popover-title,.mst-equipment-help-popover-title,.mst-dungeon-help-popover-title,.mst-house-help-popover-title,.mst-subscribe-help-popover-title{margin:0;padding:0;font-size:var(--font-size-md, 1rem);font-weight:var(--font-weight-medium, 500);line-height:var(--line-height-normal, 1.375)}
+.mst-combat-help-popover-content,.mst-ability-help-popover-content,.mst-equipment-help-popover-content,.mst-dungeon-help-popover-content,.mst-house-help-popover-content,.mst-subscribe-help-popover-content{margin-top:var(--spacing-xs, .25rem);padding-top:var(--spacing-xs, .25rem);border-top:1px solid #000}
+.mst-combat-help-popover-paragraph,.mst-ability-help-popover-paragraph,.mst-equipment-help-popover-paragraph,.mst-dungeon-help-popover-paragraph,.mst-house-help-popover-paragraph,.mst-subscribe-help-popover-paragraph{margin-top:var(--spacing-xs, .25rem);padding-bottom:var(--spacing-xs, .25rem)}
 .mst-combat-help-popover-error,.mst-ability-help-popover-error,.mst-equipment-help-popover-error,.mst-dungeon-help-popover-error,.mst-house-help-popover-error{border-color:#c86b75}
 .mst-combat-upgrade-calculator .mst-calculator-table-wrap{max-height:min(28rem,calc(100svh - 19rem))}
 .mst-combat-upgrade-calculator .mst-calculator-table{min-width:54rem;table-layout:fixed}
@@ -24524,6 +26685,7 @@ to{transform:translateY(0);opacity:1}
         ClipboardCartImportFeature,
         LabyrinthSupplyFeature,
         MarketplaceCartFeature,
+        SubscribeNotificationFeature,
         Notifier
       } = this.ctx;
       installAppStyles();
@@ -24536,13 +26698,15 @@ to{transform:translateY(0);opacity:1}
       const combatSimulationService = new CombatSimulationService(this.ctx);
       const equipmentComparisonService = new EquipmentComparisonService(marketDataService, combatSimulationService);
       const equipmentComparison = new EquipmentComparisonFeature(this.ctx, marketDataService, equipmentComparisonService);
+      const subscribeNotification = new SubscribeNotificationFeature(this.ctx);
       const toolkitMenu = new ToolkitMenuFeature(this.ctx, {
         characterCardFeature,
         appController: this,
         combatCalculator,
         abilityCalculator,
         equipmentComparison,
-        dungeonCalculator
+        dungeonCalculator,
+        subscribeNotification
       });
       // 暴露少量实例给控制台排查，正式功能仍通过菜单入口触发。
       window.MWISunrisheToolkit = {
@@ -24565,11 +26729,12 @@ to{transform:translateY(0);opacity:1}
       new ClipboardCartImportFeature(this.ctx, Notifier).init();
       new LabyrinthSupplyFeature().init();
       new MarketplaceCartFeature().init();
+      subscribeNotification.init();
       this.languageController.init();
       this.observeDOM();
       // 就绪状态字段推进为版本号（dev 构建带时间戳，与头部 @version 同源）：字段值 === 当前构建
       // 版本即表示初始化完成，自动化验证以此校验页面加载的构建是否为最新（不一致则刷新重试）。
-      this.ctx.pageWindow.MWISunrisheToolkitState = "2.15.0";
+      this.ctx.pageWindow.MWISunrisheToolkitState = PACKAGE_VERSION;
     }
   }
 
@@ -24605,7 +26770,7 @@ to{transform:translateY(0);opacity:1}
 
   function runMst() {
     // 加载成功日志：便于用户/自动化验证时确认脚本注入与构建版本（版本号由构建注入）。
-    console.info(`[MST] 脚本加载 v${"2.15.0"}`);
+    console.info(`[MST] 脚本加载 v${PACKAGE_VERSION}`);
     const pageWindow = typeof unsafeWindow !== 'undefined' ? unsafeWindow : window;
     // 就绪状态字段：初始化阶段逐步推进（loading → app-styles → app-features → 构建版本号），
     // 自动化验证轮询该字段精确判断脚本状态；脚本未加载时字段不存在。

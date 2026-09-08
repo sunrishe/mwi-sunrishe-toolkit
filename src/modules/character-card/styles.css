@@ -157,6 +157,145 @@
   cursor: help;
   gap: 0.1rem;
 }
+/* 评分块可点击：计算完成后打开评分明细浮层，指针与悬浮提示引导点击。 */
+.mst-card-build-score-clickable {
+  cursor: pointer;
+}
+.mst-card-build-score-clickable:hover {
+  filter: brightness(1.25);
+}
+/* 评分明细浮层：挂 body 的临时浮层，层级与普通弹窗一致（追加在 Swal 容器之后，
+   同层级 DOM 顺序靠后即盖在名片弹窗之上；仍低于 MWITools 购物车按钮层）。 */
+.mst-score-detail-panel {
+  position: fixed;
+  z-index: var(--mst-z-popup);
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  min-width: 18rem;
+  max-width: min(22rem, calc(100vw - 1rem));
+  max-height: min(26rem, calc(100svh - 2rem));
+  padding: var(--spacing-sm, 0.5rem);
+  border: var(--border-width-thin, 1px) solid var(--color-midnight-100, #454771);
+  border-radius: var(--radius-sm, 0.25rem);
+  background: var(--color-midnight-900, #131419);
+  color: var(--color-text-dark-mode, #e7e7e7);
+  box-shadow: 0 0.375rem 0.875rem rgba(0, 0, 0, 0.45);
+  font:
+    var(--font-weight-medium, 500) var(--font-size-sm, 0.8125rem)/1.4 Roboto,
+    Helvetica,
+    Arial,
+    sans-serif;
+}
+/* 标题行固定，仅内容区滚动。 */
+.mst-score-detail-header {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--spacing-sm, 0.5rem);
+  font-weight: 600;
+}
+.mst-score-detail-body {
+  min-height: 0;
+  overflow-y: auto;
+}
+.mst-score-detail-close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.25rem;
+  height: 1.25rem;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-xs, 0.125rem);
+  background: transparent;
+  color: var(--color-text-dark-mode, #e7e7e7);
+  font-size: 12px;
+  line-height: 1;
+  cursor: pointer;
+}
+.mst-score-detail-close:hover {
+  background: var(--color-midnight-500, #2c2e45);
+}
+.mst-score-detail-header-actions {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: var(--spacing-xxs, 0.125rem);
+}
+.mst-score-detail-copy {
+  display: inline-flex;
+  align-items: center;
+  height: 1.25rem;
+  padding: 0 var(--spacing-xs, 0.25rem);
+  border: 0;
+  border-radius: var(--radius-xs, 0.125rem);
+  background: transparent;
+  color: var(--color-space-300, #98a7e9);
+  font-size: 12px;
+  line-height: 1;
+  cursor: pointer;
+}
+.mst-score-detail-copy:hover {
+  background: var(--color-midnight-500, #2c2e45);
+}
+.mst-score-detail-copy:disabled {
+  color: var(--color-neutral-400, #a7a7a7);
+  cursor: default;
+}
+.mst-score-detail-section {
+  margin-top: var(--spacing-sm, 0.5rem);
+  padding-top: var(--spacing-xs, 0.25rem);
+  border-top: var(--border-width-thin, 1px) solid var(--color-midnight-100, #454771);
+}
+.mst-score-detail-section-title {
+  font-weight: 600;
+  color: var(--color-space-300, #98a7e9);
+}
+.mst-score-detail-group-title {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--spacing-sm, 0.5rem);
+  margin-top: var(--spacing-xs, 0.25rem);
+  /* 分组名加大加粗、合计分数右对齐，用暖色与普通物品行区分；具体物品行常规字重并缩进。 */
+  color: var(--color-mango-500, #ffa53d);
+  font-size: 0.875rem;
+  font-weight: 700;
+}
+.mst-score-detail-group-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.mst-score-detail-group-value {
+  flex: 0 0 auto;
+  font-variant-numeric: tabular-nums;
+}
+.mst-score-detail-divider {
+  height: 0;
+  margin-top: var(--spacing-xs, 0.25rem);
+  border-bottom: var(--border-width-thin, 1px) solid var(--color-midnight-100, #454771);
+}
+.mst-score-detail-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--spacing-sm, 0.5rem);
+  padding-left: 0.75rem;
+  font-weight: 400;
+}
+.mst-score-detail-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.mst-score-detail-value {
+  flex: 0 0 auto;
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+}
 .mst-card-build-score-row {
   display: inline-flex;
   align-items: center;

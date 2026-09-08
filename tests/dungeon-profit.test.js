@@ -1783,8 +1783,8 @@ test('工具箱及中英文文档按计算流程排列装备提升和地下城�
     ...menuSource.slice(actionsArrayStart, actionsArrayEnd).matchAll(/\{\s*key:\s*'([^']+)'/g)
   ].map((match) => match[1]);
   assert.deepEqual(actionKeys, [
-    'userCharacterCard', 'abilityUpgradeCalculator', 'houseUpgradeCalculator', 'combatUpgradeCalculator', 'equipmentComparison',
-    'dungeonProfitCalculator', 'combatSimAiwwb', 'switchCharacter'
+    'userCharacterCard', 'subscribeNotification', 'abilityUpgradeCalculator', 'houseUpgradeCalculator', 'combatUpgradeCalculator',
+    'equipmentComparison', 'dungeonProfitCalculator', 'combatSimAiwwb', 'switchCharacter'
   ]);
 
   [

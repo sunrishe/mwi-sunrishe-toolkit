@@ -2,7 +2,15 @@
 export class ToolkitMenuFeature {
   constructor(
     ctx,
-    {characterCardFeature, appController, combatCalculator, abilityCalculator, equipmentComparison, dungeonCalculator}
+    {
+      characterCardFeature,
+      appController,
+      combatCalculator,
+      abilityCalculator,
+      equipmentComparison,
+      dungeonCalculator,
+      subscribeNotification
+    }
   ) {
     this.ctx = ctx;
     this.characterCardFeature = characterCardFeature;
@@ -11,6 +19,7 @@ export class ToolkitMenuFeature {
     this.abilityCalculator = abilityCalculator;
     this.equipmentComparison = equipmentComparison;
     this.dungeonCalculator = dungeonCalculator;
+    this.subscribeNotification = subscribeNotification;
     this.dropdownCleanup = null;
     this.outsideClickHandler = (event) => {
       const dropdown = document.getElementById('mst-toolkit-character-dropdown');
@@ -25,6 +34,10 @@ export class ToolkitMenuFeature {
     // 菜单顺序按常用工作流排列：资料与升级工具在前，站点导航放最后。
     return [
       {key: 'userCharacterCard', icon: 'social', handler: () => this.characterCardFeature.showMyCharacterCard()}, {
+        key: 'subscribeNotification',
+        icon: 'action_queue',
+        handler: () => this.subscribeNotification.openSettings()
+      }, {
         key: 'abilityUpgradeCalculator',
         icon: 'skills',
         handler: () => this.abilityCalculator.open()
@@ -32,12 +45,12 @@ export class ToolkitMenuFeature {
         key: 'combatUpgradeCalculator',
         icon: 'experience',
         handler: () => this.combatCalculator.open()
-      }, {
+      },
+      {
         key: 'equipmentComparison',
         icon: 'loadout',
         handler: () => this.equipmentComparison.open()
-      },
-      {key: 'dungeonProfitCalculator', icon: 'loot_tracker', handler: () => this.dungeonCalculator.open()}, {
+      }, {key: 'dungeonProfitCalculator', icon: 'loot_tracker', handler: () => this.dungeonCalculator.open()}, {
         key: 'combatSimAiwwb',
         icon: 'combat',
         handler: () => this.openCombatSimulator()

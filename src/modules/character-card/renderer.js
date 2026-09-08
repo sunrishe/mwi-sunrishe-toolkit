@@ -1,3 +1,25 @@
+// 评分明细装备行固定顺序：主手、副手、头部、身体、腿部、手部、脚部、袋子、背部、
+// 项链、戒指、耳环、护符；双手武器随主手槽位，官方未列出的饰品槽排护符之后，未知位置排最后。
+const SCORE_DETAIL_SLOT_ORDER = [
+  '/item_locations/main_hand', '/item_locations/two_hand', '/item_locations/off_hand', '/item_locations/head', '/item_locations/body',
+  '/item_locations/legs', '/item_locations/hands', '/item_locations/feet', '/item_locations/pouch', '/item_locations/back',
+  '/item_locations/neck', '/item_locations/ring', '/item_locations/earrings', '/item_locations/charm', '/item_locations/trinket'
+];
+
+// 生活工具槽位顺序：按官方技能顺序（skillDetailMap 的 sortIndex）排列，即
+// 挤奶、采集、伐木、奶酪锻造、制作、缝纫、烹饪、冲泡、炼金、强化。
+function getToolSlotOrder(clientData) {
+  return Object.values(clientData?.houseRoomDetailMap || {})
+    .filter((detail) => detail?.hrid && detail?.skillHrid && !detail.usableInActionTypeMap?.['/action_types/combat'])
+    .sort(
+      (left, right) =>
+        (Number(clientData.skillDetailMap?.[left.skillHrid]?.sortIndex) || 0) -
+          (Number(clientData.skillDetailMap?.[right.skillHrid]?.sortIndex) || 0) ||
+        String(left.hrid).localeCompare(String(right.hrid))
+    )
+    .map((detail) => `/item_locations/${String(detail.skillHrid).split('/').pop()}_tool`);
+}
+
 export class CharacterCardIconRenderer {
   constructor(deps) {
     this.ctx = deps.ctx;
@@ -136,6 +158,7 @@ export class CharacterCardBuildScoreRenderer {
     this.ctx = deps.ctx;
     this.state = deps.state;
     this.i18n = deps.ctx.i18n;
+    this.getAbilityDisplayNames = deps.getAbilityDisplayNames;
   }
 
   registerBuildScoreSource(data) {
@@ -220,10 +243,27 @@ export class CharacterCardBuildScoreRenderer {
           this.renderBuildScore(scoreElement, this.i18n.t('calculating'));
         }
         try {
-          const score = await this.ctx.buildScoreService.calculate(data, this.getUseNewBuildScore());
+          const useNewBuildScore = this.getUseNewBuildScore();
+          const score = await this.ctx.buildScoreService.calculate(data, useNewBuildScore);
           if (scoreElement.dataset.buildScoreKey !== key) return;
           this.renderBuildScore(scoreElement, score);
           scoreElement.title = this.buildScoreTooltip(score);
+          // 名片内容区的装备/技能/房屋逐项悬浮提示（第一行名称+等级，第二行评分）。
+          const itemScores = this.ctx.buildScoreService.calculateItemScores(data, useNewBuildScore);
+          this.applyCardItemScoreTooltips(scoreElement.closest('.mst-character-card'), itemScores, useNewBuildScore);
+          // 评分块可点击：打开评分明细浮层；结果缓存供浮层展示（超量时淘汰最旧）。
+          scoreElement.classList.add('mst-card-build-score-clickable');
+          scoreElement.onclick = (event) => {
+            event.stopPropagation();
+            this.toggleScoreDetail(scoreElement);
+          };
+          const results = this.state.buildScore.results;
+          if (results) {
+            results.set(key, {cardData: data, score, itemScores, useNewBuildScore});
+            if (results.size > 40) {
+              results.delete(results.keys().next().value);
+            }
+          }
           scoreElement.dataset.scoreState = 'complete';
           scoreElement.dataset.renderedScoreKey = key;
         } catch (error) {
@@ -241,23 +281,371 @@ export class CharacterCardBuildScoreRenderer {
     );
   }
 
+  // 名片内容区逐项悬浮提示：第一行物品名称（装备带强化等级、技能/房屋带等级），
+  // 第二行评分数值，标签随“启用着装评分”开关切换（着装评分 / 战力打造分）。
+  applyCardItemScoreTooltips(card, itemScores, useNewBuildScore) {
+    if (!card || !itemScores) return;
+    const label = this.i18n.t(useNewBuildScore ? 'gearScoreLabel' : 'buildScore');
+    card.querySelectorAll('[data-card-item-hrid]').forEach((el) => {
+      const level = Number(el.dataset.cardItemLevel || 0);
+      const score = itemScores.items[`${el.dataset.cardItemHrid}::${level}::${el.dataset.cardItemLocation || ''}`];
+      if (score == null) return;
+      const name = el.dataset.cardItemName || el.title || '';
+      el.title = `${name}${level > 0 ? ` +${level}` : ''}\n${label}: ${score.toFixed(1)}`;
+    });
+    card.querySelectorAll('[data-card-ability-hrid]').forEach((el) => {
+      const score = itemScores.abilities[`${el.dataset.cardAbilityHrid}::${Number(el.dataset.cardAbilityLevel || 0)}`];
+      if (score == null) return;
+      const name = el.dataset.cardAbilityName || el.title || '';
+      el.title = `${name} Lv.${el.dataset.cardAbilityLevel}\n${label}: ${score.toFixed(1)}`;
+    });
+    card.querySelectorAll('[data-card-house-hrid]').forEach((el) => {
+      const score = itemScores.houses[el.dataset.cardHouseHrid];
+      if (score == null) return;
+      const name = el.dataset.cardHouseName || el.title || '';
+      el.title = `${name} Lv.${el.dataset.cardHouseLevel}\n${label}: ${score.toFixed(1)}`;
+    });
+  }
+
+  // 评分明细浮层：点击评分块展开分项明细（房屋/技能/装备/神龛逐项），再点同一评分块
+  // 或浮层外部关闭。Swal 同实例只能有一个 popup，明细挂 body 用固定浮层承载。
+  toggleScoreDetail(scoreElement) {
+    const key = scoreElement.dataset.buildScoreKey;
+    const existing = document.querySelector('.mst-score-detail-panel');
+    if (existing) {
+      const same = existing.dataset.buildScoreKey === key;
+      existing.remove();
+      if (same) return;
+    }
+    const result = this.state.buildScore.results?.get(key);
+    if (!result?.itemScores) return;
+    this.renderScoreDetailPanel(scoreElement, result);
+  }
+
+  renderScoreDetailPanel(scoreElement, result) {
+    const panel = document.createElement('div');
+    panel.className = 'mst-score-detail-panel';
+    panel.dataset.buildScoreKey = scoreElement.dataset.buildScoreKey || '';
+    panel.innerHTML = this.buildScoreDetailHtml(result);
+    document.body.appendChild(panel);
+    // 浮层挂在 body 上，不随名片整体刷新；订阅语言切换，切换中英文时重建明细内容。
+    const unsubscribeLanguage = this.ctx.LanguageEvents?.subscribe(() => {
+      if (!panel.isConnected) {
+        unsubscribeLanguage?.();
+        return;
+      }
+      panel.innerHTML = this.buildScoreDetailHtml(result);
+      bindPanelActions();
+    });
+    const removePanel = () => {
+      unsubscribeLanguage?.();
+      panel.remove();
+    };
+    // 复制明细：输出名称与分数同一行的固定格式文本，粘贴后直接可读。
+    const copyDetail = async (event) => {
+      const button = event.currentTarget;
+      button.disabled = true;
+      try {
+        await this.ctx.utils.writeClipboard(this.buildScoreDetailText(result));
+        this.ctx.Notifier?.toast(this.i18n.t('scoreDetailCopied'), 'success');
+      } catch (error) {
+        console.warn('[MST] 复制评分明细失败:', error);
+        this.ctx.Notifier?.toast(this.i18n.t('copyScoreDetailFailed'), 'error');
+      } finally {
+        button.disabled = false;
+      }
+    };
+    const bindPanelActions = () => {
+      panel.querySelector('.mst-score-detail-close')?.addEventListener('click', () => removePanel());
+      panel.querySelector('.mst-score-detail-copy')?.addEventListener('click', copyDetail);
+    };
+    bindPanelActions();
+    // 定位在评分块下方，放不下时改到上方；右缘与名片头部（mst-card-header）右侧
+    // 垂直对齐，并夹在视口内。
+    const rect = scoreElement.getBoundingClientRect();
+    const header = scoreElement.closest('.mst-card-header');
+    const headerRect = (header || scoreElement).getBoundingClientRect();
+    const left = Math.min(
+      Math.max(8, headerRect.right - panel.offsetWidth),
+      Math.max(8, window.innerWidth - panel.offsetWidth - 8)
+    );
+    let top = rect.bottom + 6;
+    if (top + panel.offsetHeight > window.innerHeight - 8) {
+      top = Math.max(8, rect.top - panel.offsetHeight - 6);
+    }
+    panel.style.left = `${left}px`;
+    panel.style.top = `${top}px`;
+    const closeOnOutside = (event) => {
+      if (panel.contains(event.target) || scoreElement.contains(event.target)) return;
+      removePanel();
+      document.removeEventListener('mousedown', closeOnOutside);
+    };
+    document.addEventListener('mousedown', closeOnOutside);
+  }
+
+  // 明细数据装配：把单物品评分按“房屋/技能/装备/神龛”分组（着装评分分战斗/生活两组，
+  // 战力打造分为单组，房屋只有战斗向房间计入）。顺序固定：装备按位置、技能按槽位号、
+  // 神龛按官方神龛顺序，房屋保持数据自身顺序；HTML 与复制文本共用本方法。
+  buildScoreDetailSections({cardData, score, itemScores, useNewBuildScore}) {
+    const {DataHub, buildScoreService} = this.ctx;
+    const language = this.i18n.languageKey;
+    const clientData = DataHub.clientData.raw || {};
+    const itemLabel = (hrid, level) => {
+      const name = DataHub.getLocalizedGameName('itemNames', hrid, language);
+      return `${name}${Number(level || 0) > 0 ? ` +${Number(level)}` : ''}`;
+    };
+    const abilityLabel = (hrid, level) => {
+      const names = this.getAbilityDisplayNames?.(hrid);
+      const name = names ? this.i18n.pick(names) : hrid;
+      return `${name} Lv.${level}`;
+    };
+    const houseName = (hrid) =>
+      String(DataHub.getGameI18nResources()?.[language]?.translation?.houseRoomNames?.[hrid] || hrid);
+    // 装备行：与聚合口径一致，按分类同时计入战斗/工具/生活装备；另存一份全量用于
+    // 战力打造分。装备槽按 SCORE_DETAIL_SLOT_ORDER 排列；工具槽按生活工具面板槽位
+    // （从左到右、第一排到第二排）排在装备之后，未知位置排最后。
+    const toolSlotOrder = getToolSlotOrder(clientData);
+    const slotRank = (hrid) => {
+      const equipmentIndex = SCORE_DETAIL_SLOT_ORDER.indexOf(hrid);
+      if (equipmentIndex >= 0) return equipmentIndex;
+      const toolIndex = toolSlotOrder.indexOf(hrid);
+      if (toolIndex >= 0) return SCORE_DETAIL_SLOT_ORDER.length + toolIndex;
+      return SCORE_DETAIL_SLOT_ORDER.length + toolSlotOrder.length;
+    };
+    const equipmentList = [
+      ...(cardData.player?.equipment || cardData.player?.characterItems || [])
+    ].sort(
+      (left, right) =>
+        slotRank(left.itemLocationHrid) - slotRank(right.itemLocationHrid) ||
+        String(left.itemLocationHrid).localeCompare(String(right.itemLocationHrid))
+    );
+    const battleItems = [];
+    const toolItems = [];
+    const skillingItems = [];
+    const allItems = [];
+    equipmentList.forEach((item) => {
+      if (item.itemLocationHrid === '/item_locations/inventory') return;
+      const key = `${item.itemHrid}::${Number(item.enhancementLevel || 0)}::${item.itemLocationHrid}`;
+      const value = itemScores.items[key];
+      if (value == null) return;
+      const row = {name: itemLabel(item.itemHrid, item.enhancementLevel), value};
+      allItems.push(row);
+      const classification = buildScoreService._classifyEquippedItem(item, clientData);
+      if (classification.isCombat) battleItems.push(row);
+      if (classification.isTool) toolItems.push(row);
+      else if (classification.isSkilling) skillingItems.push(row);
+    });
+    // 技能行：与聚合口径一致（有已装备技能时只列已装备），按槽位顺序排列。
+    const allAbilities = [
+      ...(cardData.abilities || [])
+    ].sort(
+      (left, right) =>
+        (Number(left.slotNumber) || 0) - (Number(right.slotNumber) || 0) ||
+        String(left.abilityHrid).localeCompare(String(right.abilityHrid))
+    );
+    const equippedAbilities = allAbilities.filter((ability) => Number(ability.slotNumber) > 0);
+    const abilityRows = (equippedAbilities.length ? equippedAbilities : allAbilities).flatMap((ability) => {
+      const value = itemScores.abilities[`${ability.abilityHrid}::${Number(ability.level || 0)}`];
+      return value == null ? [] : [
+            {name: abilityLabel(ability.abilityHrid, ability.level), value}
+          ];
+    });
+    // 房屋等级映射，供行名称与战力打造分房屋行使用。
+    const houseLevels = {};
+    Object.entries(cardData.characterHouseRoomMap || cardData.houseRooms || {}).forEach(
+      ([
+        key, room
+      ]) => {
+        const houseRoomHrid = room?.houseRoomHrid || (key.startsWith('/house_rooms/') ? key : '');
+        if (houseRoomHrid) houseLevels[houseRoomHrid] = Number(typeof room === 'object' ? room?.level : room) || 0;
+      }
+    );
+    // 房屋行：着装评分按房间可用动作类型分战斗/生活；战力打造分口径只有战斗向房间有分值。
+    const battleHouses = [];
+    const skillingHouses = [];
+    Object.entries(itemScores.houses).forEach(
+      ([
+        houseRoomHrid, value
+      ]) => {
+        if (!(value > 0)) return;
+        const row = {name: `${houseName(houseRoomHrid)} Lv.${houseLevels[houseRoomHrid] || 0}`, value};
+        const usableInActionTypeMap = clientData.houseRoomDetailMap?.[houseRoomHrid]?.usableInActionTypeMap || {};
+        if (usableInActionTypeMap['/action_types/combat']) battleHouses.push(row);
+        if (
+          Object.entries(usableInActionTypeMap).some(
+            ([
+              actionTypeHrid, isUsable
+            ]) => actionTypeHrid !== '/action_types/combat' && Boolean(isUsable)
+          )
+        ) {
+          skillingHouses.push(row);
+        }
+      }
+    );
+    // 神龛行：每个已激活公会增益一行（着装评分口径，战力打造分不计神龛）；
+    // 游戏无独立公会增益名称键，官方 UI 按 guildShrineNames.<神龛hrid> 显示名称；
+    // 按官方神龛顺序（guildShrineDetailMap 的 sortIndex）排列，缺序时按 hrid 稳定排序。
+    const shrineRows = (group) =>
+      (itemScores.shrines?.[group] || [])
+        .map((row) => ({
+          hrid: String(row.hrid || row.shrineHrid || ''),
+          name: `${DataHub.getLocalizedGameName('guildShrineNames', row.shrineHrid, language)} Lv.${row.level}`,
+          value: row.value,
+          sortIndex: Number(clientData.guildShrineDetailMap?.[row.shrineHrid]?.sortIndex) || Number.MAX_SAFE_INTEGER
+        }))
+        .sort((left, right) => left.sortIndex - right.sortIndex || left.hrid.localeCompare(right.hrid))
+        .map(({name, value}) => ({name, value}));
+    if (useNewBuildScore) {
+      return [
+        {
+          title: `${this.i18n.t('battleGearScore')}: ${score.battle.total.toFixed(1)}`,
+          groups: [
+            {
+              label: this.i18n.t('houseScore'),
+              rows: battleHouses
+            }, {label: this.i18n.t('abilityScore'), rows: abilityRows}, {
+              label: this.i18n.t('equipmentScore'),
+              rows: battleItems
+            }, {label: this.i18n.t('battleShrineScore'), rows: shrineRows('battle')}
+          ]
+        }, {
+          title: `${this.i18n.t('skillingGearScore')}: ${score.skilling.available ? score.skilling.total.toFixed(1) : '-'}`,
+          groups: [
+            {
+              label: this.i18n.t('houseScore'),
+              rows: skillingHouses
+            }, {label: this.i18n.t('toolScore'), rows: toolItems}, {
+              label: this.i18n.t('equipmentScore'),
+              rows: skillingItems
+            }, {label: this.i18n.t('skillingShrineScore'), rows: shrineRows('skilling')}
+          ]
+        }
+      ];
+    }
+    return [
+      {
+        title: `${this.i18n.t('buildScore')}: ${score.total.toFixed(1)}`,
+        groups: [
+          {
+            label: this.i18n.t('houseScore'),
+            rows: Object.entries(itemScores.houses).flatMap(
+              ([
+                hrid, value
+              ]) => {
+                if (!(value > 0)) return [];
+                return [
+                  {name: `${houseName(hrid)} Lv.${houseLevels[hrid] || 0}`, value}
+                ];
+              }
+            )
+          }, {label: this.i18n.t('abilityScore'), rows: abilityRows}, {
+            label: this.i18n.t('equipmentScore'),
+            rows: allItems
+          }
+        ]
+      }
+    ];
+  }
+
+  buildScoreDetailGroups(result) {
+    return this.buildScoreDetailSections(result).map((section) => ({
+      title: section.title,
+      html: this.renderScoreDetailGroupsHtml(section.groups)
+    }));
+  }
+
+  // 分组渲染：组合计分数右对齐，组间画分隔线；最后一组后不画线（分组边界由
+  // 下一分节的顶边线提供，避免出现双线）。
+  renderScoreDetailGroupsHtml(groups) {
+    const escape = (value) => this.ctx.utils.escapeHtml(String(value));
+    const rowHtml = (row) =>
+      `<div class="mst-score-detail-row"><span class="mst-score-detail-name">${escape(row.name)}</span><span class="mst-score-detail-value">${row.value.toFixed(1)}</span></div>`;
+    const rendered = groups
+      .filter((group) => group.rows.length)
+      .map((group) => ({
+        label: group.label,
+        total: group.rows.reduce((sum, row) => sum + row.value, 0),
+        html: group.rows.map(rowHtml).join('')
+      }));
+    return rendered
+      .map(
+        (group, index) =>
+          `<div class="mst-score-detail-group-title"><span class="mst-score-detail-group-label">${escape(group.label)}</span><span class="mst-score-detail-group-value">${group.total.toFixed(1)}</span></div>${group.html}${
+            index < rendered.length - 1 ? '<div class="mst-score-detail-divider"></div>' : ''
+          }`
+      )
+      .join('');
+  }
+
+  // 复制用纯文本：明细行名称与分数在同一行（明细行是 flex 布局的两个节点，手动
+  // 选取复制会被浏览器拆成两行，因此提供“复制明细”按钮输出固定格式文本）。
+  buildScoreDetailText(result) {
+    const sections = this.buildScoreDetailSections(result);
+    const lines = [
+      this.i18n.t('scoreDetailTitle')
+    ];
+    sections.forEach((section) => {
+      lines.push(section.title);
+      section.groups
+        .filter((group) => group.rows.length)
+        .forEach((group) => {
+          const total = group.rows.reduce((sum, row) => sum + row.value, 0);
+          lines.push(`${group.label}: ${total.toFixed(1)}`);
+          group.rows.forEach((row) => lines.push(`  ${row.name}  ${row.value.toFixed(1)}`));
+        });
+    });
+    return lines.join('\n');
+  }
+
+  buildScoreDetailHtml(result) {
+    const {utils} = this.ctx;
+    const groups = this.buildScoreDetailGroups(result);
+    return `
+  <div class="mst-score-detail-header">
+    <span>${utils.escapeHtml(this.i18n.t('scoreDetailTitle'))}</span>
+    <span class="mst-score-detail-header-actions">
+      <button type="button" class="mst-score-detail-copy" title="${utils.escapeHtml(this.i18n.t('copyScoreDetail'))}">${utils.escapeHtml(this.i18n.t('copyScoreDetail'))}</button>
+      <button type="button" class="mst-score-detail-close" title="${utils.escapeHtml(this.i18n.t('close'))}">✕</button>
+    </span>
+  </div>
+  <div class="mst-score-detail-body">
+    ${groups
+      .map(
+        (group) => `
+  <div class="mst-score-detail-section">
+    <div class="mst-score-detail-section-title">${utils.escapeHtml(group.title)}</div>
+    ${group.html}
+  </div>`
+      )
+      .join('')}
+  </div>`;
+  }
+
   // 悬浮提示参考 MWITools：战斗分（房屋/技能/装备/战斗神龛）与生活分（房屋/工具/装备/生活神龛）。
+  // 标题随“启用着装评分”开关切换：勾选显示着装评分口径，未勾选显示战力打造分总分；
+  // 首行提示评分块可点击查看明细。
   buildScoreTooltip(score) {
     if (!score.newVersion) {
+      const hiddenText = score.equipmentHidden ? ` (${this.i18n.t('equipmentHidden')})` : '';
       return [
-        `${this.i18n.t('houseScore')}: ${score.house.toFixed(1)}`, `${this.i18n.t('abilityScore')}: ${score.ability.toFixed(1)}`, `${this.i18n.t('equipmentScore')}: ${score.equipment.toFixed(1)}`, this.i18n.t('algorithmSourceMwiTools')
+        this.i18n.t(
+          'scoreDetailHint'
+        ), `${this.i18n.t('buildScore')}: ${score.total.toFixed(1)}${hiddenText}`, `${this.i18n.t('houseScore')}: ${score.house.toFixed(1)}`, `${this.i18n.t('abilityScore')}: ${score.ability.toFixed(1)}`, `${this.i18n.t('equipmentScore')}: ${score.equipment.toFixed(1)}`,
+        this.i18n.t('algorithmSourceMwiTools')
       ].join('\n');
     }
     const {battle, skilling} = score;
     const hiddenText = score.equipmentHidden ? ` (${this.i18n.t('equipmentHidden')})` : '';
     return [
-      `${this.i18n.t('battleGearScore')}: ${battle.total.toFixed(1)}${hiddenText}`, `  ${this.i18n.t('houseScore')}: ${battle.house.toFixed(1)}`, `  ${this.i18n.t('abilityScore')}: ${battle.abilities.toFixed(1)}`, `  ${this.i18n.t('equipmentScore')}: ${battle.equipment.toFixed(1)}`, ...(Number.isFinite(battle.shrine) ? [
+      this.i18n.t(
+        'scoreDetailHint'
+      ), `${this.i18n.t('battleGearScore')}: ${battle.total.toFixed(1)}${hiddenText}`, `  ${this.i18n.t('houseScore')}: ${battle.house.toFixed(1)}`, `  ${this.i18n.t('abilityScore')}: ${battle.abilities.toFixed(1)}`, `  ${this.i18n.t('equipmentScore')}: ${battle.equipment.toFixed(1)}`,
+      ...(Number.isFinite(battle.shrine) ? [
             `  ${this.i18n.t('battleShrineScore')}: ${battle.shrine.toFixed(1)}`
-          ] : []),
-      `${this.i18n.t('skillingGearScore')}: ${skilling.available ? skilling.total.toFixed(1) : '-'}${hiddenText}`, `  ${this.i18n.t('houseScore')}: ${skilling.house.toFixed(1)}`, `  ${this.i18n.t('toolScore')}: ${skilling.tools.toFixed(1)}`, `  ${this.i18n.t('equipmentScore')}: ${skilling.equipment.toFixed(1)}`, ...(Number.isFinite(skilling.shrine) ? [
+          ] : []), `${this.i18n.t('skillingGearScore')}: ${skilling.available ? skilling.total.toFixed(1) : '-'}${hiddenText}`, `  ${this.i18n.t('houseScore')}: ${skilling.house.toFixed(1)}`, `  ${this.i18n.t('toolScore')}: ${skilling.tools.toFixed(1)}`, `  ${this.i18n.t('equipmentScore')}: ${skilling.equipment.toFixed(1)}`,
+      ...(Number.isFinite(skilling.shrine) ? [
             `  ${this.i18n.t('skillingShrineScore')}: ${skilling.shrine.toFixed(1)}`
-          ] : []),
-      this.i18n.t('algorithmSourceMwiTools')
+          ] : []), this.i18n.t('algorithmSourceMwiTools')
     ].join('\n');
   }
 
@@ -349,7 +737,7 @@ export class CharacterCardEquipmentRenderer {
           const itemLevel = Number(this.DataHub.clientData.raw?.itemDetailMap?.[item.itemHrid]?.itemLevel || 0);
           const itemName = this.DataHub.getLocalizedGameName('itemNames', item.itemHrid, this.i18n.languageKey);
 
-          html += `<div class="Item_item__2De2O Item_clickable__3viV6" style="position:relative;" title="${this.utils.escapeHtml(itemName)}">`;
+          html += `<div class="Item_item__2De2O Item_clickable__3viV6" style="position:relative;" title="${this.utils.escapeHtml(itemName)}" data-card-item-name="${this.utils.escapeHtml(itemName)}" data-card-item-hrid="${this.utils.escapeHtml(item.itemHrid)}" data-card-item-level="${enhancementLevel}" data-card-item-location="${this.utils.escapeHtml(item.itemLocationHrid)}">`;
           html += '<div class="Item_iconContainer__5z7j4">';
           html += this.createSvgIcon(item.itemHrid, 'items');
           html += '</div>';
@@ -434,7 +822,11 @@ export class CharacterCardLifeRenderer {
         const enhancementLevel = Number(item?.enhancementLevel || 0);
         const itemLevel = Number(this.DataHub.clientData.raw?.itemDetailMap?.[item?.itemHrid]?.itemLevel || 0);
         return `
-  <div class="mst-life-tool-slot" title="${this.utils.escapeHtml(itemName)}">
+  <div class="mst-life-tool-slot" title="${this.utils.escapeHtml(itemName)}"${
+    item
+      ? ` data-card-item-name="${this.utils.escapeHtml(itemName)}" data-card-item-hrid="${this.utils.escapeHtml(item.itemHrid)}" data-card-item-level="${enhancementLevel}" data-card-item-location="${this.utils.escapeHtml(item.itemLocationHrid)}"`
+      : ''
+  }>
     <div class="ItemSelector_itemSelector__2eTV6">
       <div class="ItemSelector_itemContainer__3olqe">
         ${
@@ -501,7 +893,7 @@ export class CharacterCardLifeRenderer {
       <span class="mst-life-progress-icon">${this.createSvgIcon(definition.skillHrid, 'skills')}</span>
       ${renderLevel(skillLevel)}
     </div>
-    <div class="mst-life-house-row" title="${this.utils.escapeHtml(roomName)}">
+    <div class="mst-life-house-row" title="${this.utils.escapeHtml(roomName)}" data-card-house-name="${this.utils.escapeHtml(roomName)}" data-card-house-hrid="${this.utils.escapeHtml(definition.houseHrid)}" data-card-house-level="${roomLevel ?? 0}">
       <span class="mst-life-progress-icon">${this.createSvgIcon(definition.houseHrid)}</span>
       ${renderLevel(roomLevel, true)}
     </div>
@@ -536,7 +928,7 @@ export class CharacterCardSkillRenderer {
       }
       const skillName = this.i18n.pick(this.getAbilityDisplayNames(ability.abilityHrid));
       html += '<div>';
-      html += `<div class="Ability_ability__1njrh" title="${this.utils.escapeHtml(skillName)}">`;
+      html += `<div class="Ability_ability__1njrh" title="${this.utils.escapeHtml(skillName)}" data-card-ability-name="${this.utils.escapeHtml(skillName)}" data-card-ability-hrid="${this.utils.escapeHtml(ability.abilityHrid)}" data-card-ability-level="${ability.level}">`;
       html += '<div class="Ability_iconContainer__3syNQ">';
       html += this.createSvgIcon(ability.abilityHrid, 'abilities');
       html += '</div>';
@@ -592,7 +984,7 @@ export class CharacterCardSkillRenderer {
         if (selectedSkill) {
           const skillName = this.i18n.pick(this.getAbilityDisplayNames(selectedSkill.abilityHrid));
           html += '<div>';
-          html += `<div class="Ability_ability__1njrh Ability_clickable__w9HcM mst-skill-slot" data-skill-index="${i}" title="${this.utils.escapeHtml(skillName)}">`;
+          html += `<div class="Ability_ability__1njrh Ability_clickable__w9HcM mst-skill-slot" data-skill-index="${i}" title="${this.utils.escapeHtml(skillName)}" data-card-ability-name="${this.utils.escapeHtml(skillName)}" data-card-ability-hrid="${this.utils.escapeHtml(selectedSkill.abilityHrid)}" data-card-ability-level="${selectedSkill.level}">`;
           html += '<div class="Ability_iconContainer__3syNQ">';
           html += this.createSvgIcon(selectedSkill.abilityHrid, 'abilities');
           html += '</div>';
@@ -642,6 +1034,7 @@ export class CharacterCardProgressionRenderer {
     this.createSvgIcon = deps.createSvgIcon;
     this.DataHub = deps.ctx.DataHub;
     this.i18n = deps.ctx.i18n;
+    this.utils = deps.ctx.utils;
   }
 
   calculateCombatLevel(characterObj) {
@@ -771,7 +1164,7 @@ export class CharacterCardProgressionRenderer {
         const house = row.house;
         const houseCell = house.hrid
           ? `
-  <div class="mst-progression-row mst-house-row">
+  <div class="mst-progression-row mst-house-row" data-card-house-name="${this.utils.escapeHtml(house.name)}" data-card-house-hrid="${this.utils.escapeHtml(house.hrid)}" data-card-house-level="${getHouseLevel(house.hrid) ?? 0}">
     <div class="mst-progression-icon">${this.createSvgIcon(house.hrid)}</div>
     <span class="mst-progression-name">${house.name}</span>
     ${renderLevel(getHouseLevel(house.hrid), true)}
@@ -812,7 +1205,7 @@ export function createCharacterCardRenderer(deps) {
   const createSvgIcon = iconRenderer.createSvgIcon.bind(iconRenderer);
   const getAbilityDisplayNames = iconRenderer.getAbilityDisplayNames.bind(iconRenderer);
   const identityRenderer = new CharacterCardIdentityRenderer({ctx, state});
-  const buildScoreRenderer = new CharacterCardBuildScoreRenderer({ctx, state});
+  const buildScoreRenderer = new CharacterCardBuildScoreRenderer({ctx, state, getAbilityDisplayNames});
   const equipmentRenderer = new CharacterCardEquipmentRenderer({ctx, createSvgIcon});
   const lifeRenderer = new CharacterCardLifeRenderer({ctx, CardDataAdapter, createSvgIcon});
   const skillRenderer = new CharacterCardSkillRenderer({ctx, state, createSvgIcon, getAbilityDisplayNames});
