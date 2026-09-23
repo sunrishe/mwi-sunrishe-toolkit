@@ -3,7 +3,7 @@
 // @name:zh-CN         MWI Sunrishe 工具箱
 // @name:en            MWI Sunrishe Toolkit
 // @namespace          http://tampermonkey.net/
-// @version            2.16.0
+// @version            2.17.0
 // @description        MWI Sunrishe 综合工具箱：提供角色/队伍名片、技能/房屋/战斗升级规划、装备提升计算器、地下城收益、配装同步和市场伴侣增强。
 // @description:zh-CN  MWI Sunrishe 综合工具箱：提供角色/队伍名片、技能/房屋/战斗升级规划、装备提升计算器、地下城收益、配装同步和市场伴侣增强。
 // @description:en     MST toolkit for character/party cards, ability/house/combat upgrade planning, equipment comparison, dungeon profit, loadout sync, and Market Mate enhancements.
@@ -52,7 +52,7 @@
   'use strict';
 
   // 构建脚本会静态替换这个占位符，业务代码不直接读取 Node 环境变量。
-  const PACKAGE_VERSION = "2.16.0";
+  const PACKAGE_VERSION = "2.17.0";
 
   const BUILD_FLAGS = Object.freeze({
     // 目前只有语言切换按钮需要区分 dev/prod：正式包不展示该调试入口。
@@ -2130,11 +2130,16 @@
     subscribeNotificationMsgType: {zh: '消息类型', en: 'Message types'},
     subscribeNotificationTypeQueue: {zh: '行动队列', en: 'Action queue'},
     subscribeNotificationTypeComplete: {zh: '任务完成', en: 'Task completion'},
+    subscribeNotificationTypeStart: {zh: '任务开始', en: 'Task start'},
     subscribeNotificationTypeProgress: {zh: '定期进度', en: 'Periodic progress'},
     subscribeNotificationTypeEmpty: {zh: '队列为空', en: 'Empty queue'},
     subscribeNotificationTypeCompleteTitle: {
-      zh: '当前行动结束、下一个行动开始时推送，附等待执行的前 3 项队列；队列腾空时随通知附加提醒',
-      en: 'Pushes when the current action ends and the next starts, with up to 3 waiting queue entries; an alert is appended when the queue becomes empty.'
+      zh: '当前行动结束时推送；同一次切换里的新任务由“任务开始”在同一行里带出，附等待执行的前 3 项队列，队列腾空时附加提醒',
+      en: 'Pushes when the current action ends; a new task from the same transition is announced by “Task start” in the same message. Up to 3 waiting queue entries, plus an alert when the queue becomes empty.'
+    },
+    subscribeNotificationTypeStartTitle: {
+      zh: '队首换成另一个任务时推送：开始新任务、被其他任务顶掉后重新开始（迷宫等队首 id 不变也算）、队列腾空后入队都算；组队战斗每次开战（准备就绪并过了等待期）也推送一条。与“任务完成”同属一条消息，附接下来 3 项等待队列（带已完成/总次数）',
+      en: 'Pushes when the head task changes: a new task starts, a task resumes after being pushed aside (even if its id is unchanged, e.g. the labyrinth), or a task is queued into an empty queue. Party battles also push once per battle, when the battle actually starts. Delivered in the same message as "Task completion", listing up to 3 waiting queue entries with their progress.'
     },
     subscribeNotificationTypeProgressTitle: {
       zh: '当前任务长时间未完成时，按设定间隔推送进度（已完成与剩余次数）并附等待队列，间隔在通用配置中调整',
@@ -2166,6 +2171,8 @@
     subscribeNotificationQueueEmpty: {zh: '行动队列已空，请及时补充', en: 'Action queue is empty, please refill it'},
     subscribeNotificationProgressDone: {zh: '{0}：已完成 {1} 次', en: '{0}: {1} done'},
     subscribeNotificationProgressRemaining: {zh: '，剩余 {0} 次', en: ', {0} remaining'},
+    subscribeNotificationRoleId: {zh: '角色 {0}', en: 'Character {0}'},
+    subscribeNotificationRoleUnknown: {zh: '未知角色', en: 'Unknown character'},
     subscribeNotificationServerTest: {zh: '测试服', en: 'Test server'}
   };
 
@@ -2173,8 +2180,8 @@
   const DUNGEON_CALCULATOR_MESSAGES = {
     dungeonCalculatorHelpTitle: {zh: '查看地下城收益说明', en: 'View dungeon profit instructions'},
     dungeonCalculatorHelp: {
-      zh: '使用：选择地下城、难度、队伍人数和单次耗时；每日固定按 24 小时计算。每日药品/饮料成本可留空，填写时单位为 M。工匠茶和暴饮之囊只影响制作钥匙成本，暴饮之囊需要勾选后才会按所选强化等级生效。\n\n期望：每日轮次 = 1440 ÷ 单次耗时，计算保留完整精度。普通宝箱按官方公式 5 ÷ 队伍人数 × (1 + 29.5% 战斗掉落数量)计算，5 人时每车 1.295 个；T0 不掉精炼宝箱，T1 精炼宝箱为每车普通宝箱 × 0.33，T2 为每车普通宝箱。门票数量等于普通宝箱期望数量，数量显示最多保留两位小数并去掉末尾 0。\n\n成本：默认同时展示制作钥匙和购买钥匙。制作钥匙读取官方配方并受工匠茶、暴饮之囊影响；购买钥匙读取门票和开箱钥匙的成品市场价。材料成本区只显示买入方向，预期产出区只显示卖出方向。自定义模式可选择钥匙来源、买入档位和卖出档位；左侧保留所选来源的区间，右侧显示自定义组合。\n\n收益：宝箱内容按官方掉落率和平均数量递归展开，重复物品会合并，嵌套宝箱会继续展开。“掉落物”页签按官方宝箱的掉落物列表直接展示（不递归展开嵌套宝箱），普通/精炼宝箱各一小节，每行列出掉率/掉落数量、期望数量（悬浮查看计算公式）与按市场报价税前折算的价值。每日普通/精炼宝箱产出完全按市场报价税前计算（不扣税）。“收益扣除市场税”默认勾选，卖出收入按市场税扣除（普通物品 {0}%、牛铃/牛铃袋 {1}%）；不勾选时所有物品都按市场报价直接计算，不扣任何税。勾选“披风不计算收益”后，所有背部装备产物按 0 估值。单个普通宝箱收益会扣除单箱分摊的门票和普通开箱钥匙成本；单个精炼宝箱收益只扣除精炼开箱钥匙成本。每日期望收益按单箱收益乘每日宝箱数量汇总后，再扣除每日药品/饮料成本；每车期望收益等于每日期望收益除以每日轮次。\n\n限制：通关耗时和队伍人数需要手动填写/选择，当前不会自动读取战斗耗时和队伍组成。结果是当前参数和市场价格下的确定性期望，不预测价格变化。完全缺价的物品按 0 估值并提示。\n\n批量模拟：勾选顶部的“批量模拟”复选框进入批量模拟，取消勾选回到单图模拟。批量第一行选项与单图模拟从“使用工匠茶”开始的选项一致，对列表内全部地图生效；第二行双击地下城卡片把地图加入列表，右侧展示市场数据时间；列表每行单独设置难度、队伍人数、单次耗时和每日药品/饮料成本，期望数量按“普通宝箱 / 精炼宝箱”分两行展示；“制作钥匙”与“购买钥匙”各分“左买/右卖”“右买/左卖”两列，单元格上行是每日总成本、下行是每日期望收益。序号列可拖动排序，列表默认展示四个地下城。勾选自定义模式后，“购买钥匙”区域直接改为按所选钥匙来源和买卖档位计算的自定义结果。单图和批量各自的参数都会随调整自动保存到本地（共用同一个存储键、两个模式分别保存），结果始终按当前市场数据重新计算，不会读取已保存的计算结果；恢复默认清空当前模式的已存配置并回到默认参数（批量恢复为四个默认地图）。',
-      en: 'Usage: Select a dungeon, tier, party size, and clear time. Every day uses a fixed 24-hour calculation. Daily food/drink cost is optional and entered in millions. Artisan Tea and Guzzling Pouch affect crafted-key costs only; Guzzling Pouch applies only when its checkbox is enabled and uses the selected enhancement level.\n\nExpectation: Daily runs = 1440 ÷ clear time, kept at full precision for calculation. Normal Chests use the official formula 5 ÷ Party Size × (1 + 29.5% Combat Drop Quantity); at Party Size 5 that is 1.295 per run. T0 has no Refinement Chest; T1 uses Normal Chests × 0.33 per run; T2 uses the Normal Chest expectation per run. Entry Ticket quantity equals expected Normal Chest quantity, and displayed quantities use at most two decimals and hide trailing zeros.\n\nCosts: Crafted Keys and Purchased Keys are shown by default. Crafted-key costs use official recipes and are affected by Artisan Tea and Guzzling Pouch; purchased-key costs use finished Entry Ticket and Chest Key market prices. The Material Costs section shows purchase sides only, and Expected Output shows sale sides only. Custom Mode selects the key source, buy side, and sell side; the left columns keep the selected source range, while the right column shows the custom combination.\n\nProfit: Chest contents recursively use official drop rates and average quantities; duplicate items are combined and nested chests are expanded. The Loot tab lists the official chest drop entries directly (nested chests are not expanded), split into Normal and Refined Chest sections; each row shows drop rate / drop quantity, expected quantity (hover for the formula), and pretax value at quoted market prices. Daily Normal/Refinement Chest Output is valued at quoted market prices before tax (no tax deducted). Deduct Market Tax is enabled by default and sale revenue deducts the market tax (regular items {0}%, Cowbells and Cowbell Bags {1}%); when disabled, all items use quoted prices directly with no tax deducted. When Exclude Back Equipment Profit is enabled, all back-equipment output is valued at 0. Each Normal Chest Profit deducts allocated Entry Ticket and Normal Chest Key costs; each Refinement Chest Profit deducts its Refinement Chest Key cost. Daily Expected Profit multiplies per-chest profit by daily chest quantities, then deducts daily food/drink cost; Expected Profit per Run divides it by Daily Runs.\n\nLimits: Clear time is entered manually and party size is selected manually; they are not read from combat automatically. Results are deterministic expectations at current parameters and market prices and do not predict price changes. Items with no valid price are valued at 0 and reported.\n\nBatch simulation: tick the Batch Simulation checkbox on top to switch modes; untick it to return to Single Map. Its first option row mirrors the Single Map options starting from Use Artisan Tea and applies to every map in the list. Double-click a dungeon card in the second row to add a map; the market data time sits on the right. Each list row has its own tier, party size, clear time, and daily food/drink cost, and expected quantity lists Normal and Refined chests on two lines. Craft Keys and Buy Keys each split into Ask Buy/Bid Sell and Bid Buy/Ask Sell columns; every cell shows the daily total cost on the first line and the daily expected profit on the second line. Drag the Sequence cell to reorder rows, and the list defaults to all four dungeons. With Custom Mode enabled, the Buy Keys area directly shows the custom result for the selected key source and trade sides. Parameters of both modes are saved locally automatically as you adjust them (one shared storage key with separate sections for Single Map and Batch), and results are always recalculated from the current market data; saved results are never reused. Restore Defaults removes the stored config of the currently active mode and returns to default parameters (Batch restores the four default dungeons).'
+      zh: '使用：选择地下城、难度、队伍人数和单次耗时；每日固定按 24 小时计算。每日药品/饮料成本可留空，填写时单位为 M。工匠茶和暴饮之囊只影响制作钥匙成本，暴饮之囊需要勾选后才会按所选强化等级生效。\n\n期望：每日轮次 = 1440 ÷ 单次耗时，计算保留完整精度。普通宝箱按官方公式 5 ÷ 队伍人数 × (1 + 29.5% 战斗掉落数量)计算，5 人时每车 1.295 个；T0 不掉精炼宝箱，T1 精炼宝箱为每车普通宝箱 × 0.33，T2 为每车普通宝箱。门票数量等于普通宝箱期望数量，数量显示最多保留两位小数并去掉末尾 0。\n\n成本：默认同时展示制作钥匙和购买钥匙。制作钥匙读取官方配方并受工匠茶、暴饮之囊影响；购买钥匙读取门票和开箱钥匙的成品市场价。材料成本区只显示买入方向，预期产出区只显示卖出方向。自定义模式可选择钥匙来源、买入档位和卖出档位；左侧保留所选来源的区间，右侧显示自定义组合。\n\n收益：宝箱内容按官方掉落率和平均数量递归展开，重复物品会合并，嵌套宝箱会继续展开。“掉落物”页签按官方宝箱的掉落物列表直接展示（不递归展开嵌套宝箱），普通/精炼宝箱各一小节，每行列出掉率/掉落数量、期望数量（悬浮查看计算公式）与按市场报价税前折算的价值。每日普通/精炼宝箱产出完全按市场报价税前计算（不扣税）。“收益扣除市场税”默认勾选，卖出收入按市场税扣除（普通物品 {0}%、牛铃/牛铃袋 {1}%）；不勾选时所有物品都按市场报价直接计算，不扣任何税。勾选“披风不计算收益”后，所有背部装备产物按 0 估值；勾选“牛铃不计算收益”后，牛铃与牛铃袋产物按 0 估值。单个普通宝箱收益会扣除单箱分摊的门票和普通开箱钥匙成本；单个精炼宝箱收益只扣除精炼开箱钥匙成本。每日期望收益按单箱收益乘每日宝箱数量汇总后，再扣除每日药品/饮料成本；每车期望收益等于每日期望收益除以每日轮次。\n\n限制：通关耗时和队伍人数需要手动填写/选择，当前不会自动读取战斗耗时和队伍组成。结果是当前参数和市场价格下的确定性期望，不预测价格变化。完全缺价的物品按 0 估值并提示。\n\n批量模拟：勾选顶部的“批量模拟”复选框进入批量模拟，取消勾选回到单图模拟。批量第一行选项与单图模拟从“使用工匠茶”开始的选项一致，对列表内全部地图生效；第二行双击地下城卡片把地图加入列表，右侧展示市场数据时间；列表每行单独设置难度、队伍人数、单次耗时和每日药品/饮料成本，期望数量按“普通宝箱 / 精炼宝箱”分两行展示；“制作钥匙”与“购买钥匙”各分“左买/右卖”“右买/左卖”两列，单元格上行是每日总成本、下行是每日期望收益。序号列可拖动排序，列表默认展示四个地下城。勾选自定义模式后，“购买钥匙”区域直接改为按所选钥匙来源和买卖档位计算的自定义结果。单图和批量各自的参数都会随调整自动保存到本地（共用同一个存储键、两个模式分别保存），结果始终按当前市场数据重新计算，不会读取已保存的计算结果；恢复默认清空当前模式的已存配置并回到默认参数（批量恢复为四个默认地图）。',
+      en: 'Usage: Select a dungeon, tier, party size, and clear time. Every day uses a fixed 24-hour calculation. Daily food/drink cost is optional and entered in millions. Artisan Tea and Guzzling Pouch affect crafted-key costs only; Guzzling Pouch applies only when its checkbox is enabled and uses the selected enhancement level.\n\nExpectation: Daily runs = 1440 ÷ clear time, kept at full precision for calculation. Normal Chests use the official formula 5 ÷ Party Size × (1 + 29.5% Combat Drop Quantity); at Party Size 5 that is 1.295 per run. T0 has no Refinement Chest; T1 uses Normal Chests × 0.33 per run; T2 uses the Normal Chest expectation per run. Entry Ticket quantity equals expected Normal Chest quantity, and displayed quantities use at most two decimals and hide trailing zeros.\n\nCosts: Crafted Keys and Purchased Keys are shown by default. Crafted-key costs use official recipes and are affected by Artisan Tea and Guzzling Pouch; purchased-key costs use finished Entry Ticket and Chest Key market prices. The Material Costs section shows purchase sides only, and Expected Output shows sale sides only. Custom Mode selects the key source, buy side, and sell side; the left columns keep the selected source range, while the right column shows the custom combination.\n\nProfit: Chest contents recursively use official drop rates and average quantities; duplicate items are combined and nested chests are expanded. The Loot tab lists the official chest drop entries directly (nested chests are not expanded), split into Normal and Refined Chest sections; each row shows drop rate / drop quantity, expected quantity (hover for the formula), and pretax value at quoted market prices. Daily Normal/Refinement Chest Output is valued at quoted market prices before tax (no tax deducted). Deduct Market Tax is enabled by default and sale revenue deducts the market tax (regular items {0}%, Cowbells and Cowbell Bags {1}%); when disabled, all items use quoted prices directly with no tax deducted. When Exclude Back Equipment Profit is enabled, all back-equipment output is valued at 0; when Exclude Cowbell Profit is enabled, Cowbell and Cowbell Bag output is valued at 0. Each Normal Chest Profit deducts allocated Entry Ticket and Normal Chest Key costs; each Refinement Chest Profit deducts its Refinement Chest Key cost. Daily Expected Profit multiplies per-chest profit by daily chest quantities, then deducts daily food/drink cost; Expected Profit per Run divides it by Daily Runs.\n\nLimits: Clear time is entered manually and party size is selected manually; they are not read from combat automatically. Results are deterministic expectations at current parameters and market prices and do not predict price changes. Items with no valid price are valued at 0 and reported.\n\nBatch simulation: tick the Batch Simulation checkbox on top to switch modes; untick it to return to Single Map. Its first option row mirrors the Single Map options starting from Use Artisan Tea and applies to every map in the list. Double-click a dungeon card in the second row to add a map; the market data time sits on the right. Each list row has its own tier, party size, clear time, and daily food/drink cost, and expected quantity lists Normal and Refined chests on two lines. Craft Keys and Buy Keys each split into Ask Buy/Bid Sell and Bid Buy/Ask Sell columns; every cell shows the daily total cost on the first line and the daily expected profit on the second line. Drag the Sequence cell to reorder rows, and the list defaults to all four dungeons. With Custom Mode enabled, the Buy Keys area directly shows the custom result for the selected key source and trade sides. Parameters of both modes are saved locally automatically as you adjust them (one shared storage key with separate sections for Single Map and Batch), and results are always recalculated from the current market data; saved results are never reused. Restore Defaults removes the stored config of the currently active mode and returns to default parameters (Batch restores the four default dungeons).'
     },
     dungeon: {zh: '地下城', en: 'Dungeon'},
     dungeonNameChimericalDen: {zh: '奇幻洞穴', en: 'Chimerical Den'},
@@ -2189,6 +2196,7 @@
     useGuzzlingPouch: {zh: '使用暴饮之囊', en: 'Use Guzzling Pouch'},
     guzzlingLevel: {zh: '暴饮之囊强化等级', en: 'Guzzling Pouch Enhancement Level'},
     excludeBackEquipmentValue: {zh: '披风不计算收益', en: 'Exclude Back Equipment Profit'},
+    excludeCowbellValue: {zh: '牛铃不计算收益', en: 'Exclude Cowbell Profit'},
     applyMarketTax: {zh: '收益扣除市场税', en: 'Deduct Market Tax'},
     applyMarketTaxHint: {
       zh: '勾选时卖出收益按市场税扣除（普通物品 {0}%，牛铃/牛铃袋 {1}%）；不勾选时所有物品都按市场报价直接计算，不扣任何税。',
@@ -13109,6 +13117,7 @@
       useGuzzlingPouch = true,
       guzzlingLevel = 0,
       excludeBackEquipmentValue = false,
+      excludeCowbellValue = false,
       applyMarketTax = true,
       customMode = false,
       customKeySource = 'materials',
@@ -13149,7 +13158,7 @@
       const materialSettings = this.getMaterialSettings(useArtisanTea, useGuzzlingPouch, guzzlingLevel);
       const missingPrices = new Set();
       const tokenValues = this.getTokenValues(applyMarketTax);
-      const outputOptions = {excludeBackEquipmentValue};
+      const outputOptions = {excludeBackEquipmentValue, excludeCowbellValue};
       const normalOutput = this.valueExpectedDrops(
         expectation.normalDrops,
         tokenValues,
@@ -13500,6 +13509,12 @@
       const {DataHub} = this.ctx;
       const item = DataHub.getClientDataMap('itemDetailMap')?.[itemHrid];
       return item?.equipmentDetail?.type === '/equipment_types/back';
+    },
+
+    // 牛铃不可交易，价格由牛铃袋市场价折算（÷10）；牛铃袋本身就是 10 个牛铃，两者同属牛铃收益，
+    // “牛铃不计算收益”勾选后一并按 0 估值，避免只排除牛铃而牛铃袋仍计收益的口径分裂。
+    isCowbellItem(itemHrid) {
+      return itemHrid === '/items/cowbell' || itemHrid === '/items/bag_of_10_cowbells';
     }
   };
 
@@ -13742,20 +13757,24 @@
     valueExpectedDrops(drops, tokenValues, applyMarketTax, missing, options = {}) {
       let askTotal = 0;
       let bidTotal = 0;
+      // 披风与牛铃按选项排除估值：出现在计算路径中的单价直接按 0 计，也不记为缺价。
+      const isExcludedValue = (itemHrid) =>
+        Boolean(options.excludeBackEquipmentValue && this.isBackEquipment(itemHrid)) ||
+        Boolean(options.excludeCowbellValue && this.isCowbellItem(itemHrid));
       const items = [
         ...drops.entries()
       ].map(
         ([
           itemHrid, quantity
         ]) => {
-          const isExcludedBackEquipment = options.excludeBackEquipmentValue && this.isBackEquipment(itemHrid);
-          const ask = isExcludedBackEquipment
+          const isExcluded = isExcludedValue(itemHrid);
+          const ask = isExcluded
             ? 0
             : Number(tokenValues.ask.get(itemHrid) || this.getDirectPrice(itemHrid, 'ask', applyMarketTax));
-          const bid = isExcludedBackEquipment
+          const bid = isExcluded
             ? 0
             : Number(tokenValues.bid.get(itemHrid) || this.getDirectPrice(itemHrid, 'bid', applyMarketTax));
-          if (!isExcludedBackEquipment && itemHrid !== '/items/coin' && ask <= 0 && bid <= 0) missing.add(itemHrid);
+          if (!isExcluded && itemHrid !== '/items/coin' && ask <= 0 && bid <= 0) missing.add(itemHrid);
           const askValue = quantity * ask;
           const bidValue = quantity * bid;
           askTotal += askValue;
@@ -13822,6 +13841,7 @@
         useGuzzlingPouch: feature.state.useGuzzlingPouch,
         guzzlingLevel: feature.state.guzzlingLevel,
         excludeBackEquipmentValue: feature.state.excludeBackEquipmentValue,
+        excludeCowbellValue: feature.state.excludeCowbellValue,
         applyMarketTax: feature.state.applyMarketTax,
         customMode: feature.state.customMode,
         customKeySource: feature.state.customKeySource,
@@ -14002,6 +14022,19 @@
         <label class="mst-dungeon-auto-buff">
           <input
             type="checkbox"
+            .checked=${feature.state.excludeCowbellValue}
+            @change=${(event) => {
+              feature.state.excludeCowbellValue = event.target.checked;
+              feature.render();
+            }}
+          >
+          <span>${i18n.t('excludeCowbellValue')}</span>
+        </label>
+      </div>
+      <div class="mst-dungeon-field mst-dungeon-toggle-field">
+        <label class="mst-dungeon-auto-buff">
+          <input
+            type="checkbox"
             .checked=${feature.state.customMode}
             @change=${(event) => {
               feature.state.customMode = event.target.checked;
@@ -14085,7 +14118,7 @@
     // 批量模拟选项与单图共享同一份 state（从“使用工匠茶”开始），两个模式的口径保持一致。
     OPTION_CONTROLS: Object.freeze([
       'useArtisanTea', 'useGuzzlingPouch', 'guzzlingLevel', 'applyMarketTax', 'excludeBackEquipmentValue',
-      'customMode', 'customKeySource', 'customBuySide', 'customSellSide'
+      'excludeCowbellValue', 'customMode', 'customKeySource', 'customBuySide', 'customSellSide'
     ]),
     ROW_FIELDS: Object.freeze([
       'difficultyTier', 'partySize', 'clearMinutes', 'dailyConsumablesCost'
@@ -14170,6 +14203,7 @@
       escapeHtmlText(i18n.t('applyMarketTaxHint', marketTaxPercent, cowbellTaxPercent))
     )}
     ${checkboxField('excludeBackEquipmentValue', 'excludeBackEquipmentValue')}
+    ${checkboxField('excludeCowbellValue', 'excludeCowbellValue')}
     ${checkboxField('customMode', 'customMode')}
     <label class="mst-dungeon-field"${state.customMode ? '' : ' hidden'}>
       <span>${escapeHtmlText(i18n.t('keySource'))}</span>
@@ -14377,6 +14411,7 @@
         useGuzzlingPouch: state.useGuzzlingPouch,
         guzzlingLevel: state.guzzlingLevel,
         excludeBackEquipmentValue: state.excludeBackEquipmentValue,
+        excludeCowbellValue: state.excludeCowbellValue,
         applyMarketTax: state.applyMarketTax,
         customMode: state.customMode,
         customKeySource: state.customKeySource,
@@ -14602,8 +14637,8 @@
     // 配置持久化：同一 localStorage key 下分 single/batch 两个小节，只存输入参数，结果每次重新计算。
     SINGLE_CONFIG_FIELDS: Object.freeze([
       'actionHrid', 'difficultyTier', 'partySize', 'clearMinutes', 'dailyConsumablesCost',
-      'useArtisanTea', 'useGuzzlingPouch', 'guzzlingLevel', 'excludeBackEquipmentValue', 'applyMarketTax',
-      'customMode', 'customKeySource', 'customBuySide', 'customSellSide'
+      'useArtisanTea', 'useGuzzlingPouch', 'guzzlingLevel', 'excludeBackEquipmentValue', 'excludeCowbellValue',
+      'applyMarketTax', 'customMode', 'customKeySource', 'customBuySide', 'customSellSide'
     ]),
 
     readConfigStore() {
@@ -15171,6 +15206,7 @@
         useGuzzlingPouch: Boolean(guzzlingPouch),
         guzzlingLevel: String(guzzlingPouch?.enhancementLevel || 0),
         excludeBackEquipmentValue: false,
+        excludeCowbellValue: false,
         applyMarketTax: true,
         customMode: false,
         customKeySource: 'materials',
@@ -24658,6 +24694,8 @@
       this.characterId = null;
       // 进度计数基线：组队战斗重新准备后从当前次数重新起算（{id, count}）。
       this.progressBaseline = null;
+      // 是否拿到过全量基线：未拿到基线时队列为空只表示"没有数据"，不代表"队列是空的"。
+      this.hasBaseline = false;
     }
 
     // 内存态整体重置：切角色时旧任务的跟踪状态立即释放，不保留跨任务残留。
@@ -24666,6 +24704,7 @@
       this.currentId = null;
       this.characterId = characterId;
       this.progressBaseline = null;
+      this.hasBaseline = false;
     }
 
     // 基线快照：页面加载 / 断线重连时以 init_character_data 全量重建，不产生事件。
@@ -24674,13 +24713,16 @@
       this.queue = sortActions(Array.isArray(actions) ? actions.filter(Boolean) : []);
       this.currentId = this.queue[0]?.id ?? null;
       this.progressBaseline = null;
+      this.hasBaseline = true;
     }
 
     // 官方 actions_updated 增量合并。
-    // 返回事件 {type:'completed', completedTask, newTask, queue, isEmpty} 或 null：
-    // 只有“上一当前任务以 isDone=true 结束”且队首变化才视为一次任务完成；
-    // 同 id 的进度更新、取消、插入、排序调整一律静默重建基线（多步任务期间
-    // 官方会持续推送 action_completed 但 id 不变，不能当成变动推送）。
+    // 返回事件 {type, completedTask, newTask, queue, isEmpty} 或 null：
+    // - 队首换成另一个任务即视为一次任务开始（type='started'）：被其他任务顶掉、被挤下去的
+    //   任务重新回到队首、有限任务未达上限被移除、空队列入队都算；
+    // - 上一任务确实以 isDone 结束且不算取消时升级为 type='completed'，可再播报完成通知；
+    // 同一 id 返回 null：多步任务期间官方持续推送 action_completed 但 id 不变，迷宫等无限
+    // 行动在队首连续重复执行也走这条，都属于“同一任务还在跑”，不是重新开始。
     applyActionsUpdate(endCharacterActions) {
       const updates = Array.isArray(endCharacterActions) ? endCharacterActions.filter(Boolean) : [];
       if (!updates.length) return null;
@@ -24699,21 +24741,21 @@
       this.queue = sortActions(this.queue);
       this.currentId = this.queue[0]?.id ?? null;
       if (this.currentId !== prevCurrentId) this.progressBaseline = null;
-      if (prevCurrentId == null || prevCurrentId === this.currentId) return null;
-      if (!doneIds.has(prevCurrentId)) return null;
-      const completedTask = updates.find((update) => update.id === prevCurrentId) || null;
-      // 取消启发：有限次数任务在未达到上限时被移除，按用户取消处理（静默重建，不推送）。
-      // 无上限任务（战斗/迷宫等）与已完成任务无法区分取消，一律按任务结束推送。
-      if (completedTask?.hasMaxCount && Number(completedTask.currentCount ?? 0) < Number(completedTask.maxCount ?? 0)) {
-        return null;
-      }
-      return {
-        type: 'completed',
-        completedTask,
+      if (prevCurrentId === this.currentId) return null;
+      const endedTask =
+        prevCurrentId != null && doneIds.has(prevCurrentId)
+          ? updates.find((update) => update.id === prevCurrentId) || null
+          : null;
+      const base = {
         newTask: this.queue[0] || null,
         queue: this.queue.slice(),
         isEmpty: this.queue.length === 0
       };
+      // 取消启发：有限次数任务在未达到上限时被移除，按用户取消处理——不报完成，只报任务开始。
+      // 无上限任务（战斗/迷宫等）与已完成任务无法区分取消，一律按任务结束上报。
+      const cancelled = !!endedTask?.hasMaxCount && Number(endedTask.currentCount ?? 0) < Number(endedTask.maxCount ?? 0);
+      if (!endedTask || cancelled) return {...base, type: 'started', completedTask: null};
+      return {...base, type: 'completed', completedTask: endedTask};
     }
 
     // 官方 action_completed：单次行动完成明细（含掉落、经验）。
@@ -24761,7 +24803,7 @@
       return this.queue.length;
     }
 
-    // 等待执行的任务：排除队首正在执行的行动（进度/完成通知的队列概览用这个口径）。
+    // 等待执行的任务：排除队首正在执行的行动（进度/完成/开始通知的队列概览都用这个口径）。
     getWaitingQueuePreview(count) {
       return this.queue.slice(1, 1 + count);
     }
@@ -25029,7 +25071,7 @@
 .mst-subscribe-checkbox{display:inline-flex;width:100%;min-width:0;height:var(--button-height-normal, 1.875rem);box-sizing:border-box;align-items:center;justify-content:center;gap:.3rem;padding:0 .5rem;border:1px solid var(--color-midnight-100, #454771);border-radius:var(--radius-sm, .25rem);background:var(--color-midnight-500, #2c2e45);color:var(--color-space-100, #dde2f8);font-size:.9rem;cursor:pointer}
 .mst-subscribe-checkbox:hover{border-color:var(--color-space-300, #98a7e9)}
 .mst-subscribe-checkbox input{width:1rem!important;height:1rem!important;margin:0;flex:0 0 1rem;cursor:inherit}
-.mst-subscribe-type-row{display:flex;align-items:center;gap:.6rem}
+.mst-subscribe-type-row{display:flex;align-items:center;gap:.6rem;flex-wrap:wrap}
 .mst-subscribe-type-label{font-size:.85rem;opacity:.85}
 .mst-subscribe-type-checkbox{display:inline-flex;align-items:center;gap:.3rem;font-size:.85rem;cursor:pointer}
 .mst-subscribe-type-checkbox input{width:1rem!important;height:1rem!important;margin:0;cursor:inherit}
@@ -25043,11 +25085,15 @@
   // - 只在游戏页面打开期间监听（离线变化不感知、不补推）；
   // - 以 CharacterAction.id 为准：同 id 的 action_completed 是任务内部变动不推送，
   //   只有当前任务以 isDone 结束且队首变化才推送“完成 + 队列前 3 项”；
+  //   队首换成新任务另有“任务开始”通知（默认开启），附接下来 3 项等待队列；
   // - 长时间未完成任务按周期推送进度（默认 30 分钟）；
   // - 组队战斗在同一条行动上持续累加 currentCount：监听 party_updated，本方角色
   //   重新准备视为新战斗会话，进度次数从重新准备起重新计数并重置进度计时；
   // - 会话监控：监听公共 mst:ws:state，游戏 WebSocket 断开（含同账号被其他
-  //   登录挤掉）时暂停定时推送，避免断连页面继续用陈旧队列数据推送；
+  //   登录挤掉）时暂停定时推送，避免断连页面继续用陈旧队列数据推送；在线状态
+  //   默认未确认，WS open 或 init_character_data 才算确认在线；
+  // - 队列跟踪常驻：订阅关闭期间同样维护基线（只跟踪不推送、也不补推），重新开启
+  //   后按当前状态继续；未拿到基线前不判定"队列为空"，避免把没有数据当成队列空；
   // - 只有配置持久化（MST_SUBSCRIBE_config），id 基线、计时器、发送队列全部只存内存。
 
   // 进度推送的检查节拍：轻量 setTimeout 链，不引入高频常驻轮询。
@@ -25062,16 +25108,23 @@
   const CHANNEL_PER_MINUTE_DEFAULTS = {dingtalk: 20, wecom: 20, feishu: 100};
   // 队列为空提醒的固定推送周期：每分钟一条。
   const EMPTY_REMIND_INTERVAL_MS = 60000;
+  // 会话静默判定：在线时游戏每 10 分钟发一次 ping、服务端回 pong（游戏源码
+  // `this.pingInterval = setInterval(this.sendPing, 6e5)`，pong 不在 MST 忽略的消息类型里），
+  // 因此「超过 11 分钟没收到任何游戏消息」只可能是会话已死而 close 事件没被观测到
+  // （半开连接、页面桥异常等）。此时按掉线处理，不再用陈旧队列定时推送。
+  const SESSION_SILENT_MS = 11 * 60 * 1000;
 
   function createDefaultConfig() {
     return {
       enabled: false,
       channel: 'dingtalk',
-      minIntervalSec: 10,
+      // 最小推送间隔取渠道限速允许的下限：钉钉/企微约 20 条每分钟，5 秒一条仍在限流之内。
+      minIntervalSec: 5,
       progressIntervalMin: 30,
       pushPerMinute: CHANNEL_PER_MINUTE_DEFAULTS.dingtalk,
       // 消息类型开关：默认全勾。
       notifyComplete: true,
+      notifyStart: true,
       notifyProgress: true,
       notifyEmpty: true,
       dingtalk: {url: '', secret: ''},
@@ -25110,9 +25163,16 @@
       this.lastProgressAt = 0;
       this.lastEmptyRemindAt = 0;
       this.partyReady = false;
-      // 游戏会话状态：默认视为在线（init_character_data 与 WS open 事件会确认），
-      // WS close 后置为 false 暂停定时推送，重连后恢复。
-      this.wsConnected = true;
+      // 队伍是否处于开战状态（partyInfo.party.status === 'battling'），进入时播报组队战斗开始。
+      this.partyBattling = false;
+      // 是否拿到过队伍状态字段：拿不到时组队行动退回"队首变化"播报，不至于一条开始通知都没有。
+      this.partyStatusKnown = false;
+      // 最近一次收到游戏消息的时间：长时间静默按掉线处理（见 SESSION_SILENT_MS）。
+      this.lastMessageAt = 0;
+      // 游戏会话状态：默认视为未确认在线，收到 WS open 或 init_character_data 才算确认。
+      // 未确认前不跑定时推送——没有数据不等于队列是空的（页面在未登录或断线状态打开时
+      // 从未收到基线，若按空队列处理会每分钟误推一条提醒）。
+      this.wsConnected = false;
       this.characterName = '';
       this.characterId = null;
       this.lastResult = null;
@@ -25192,6 +25252,7 @@
         ),
         // 未显式关闭（含旧配置缺字段）视为勾选。
         notifyComplete: source.notifyComplete !== false,
+        notifyStart: source.notifyStart !== false,
         notifyProgress: source.notifyProgress !== false,
         notifyEmpty: source.notifyEmpty !== false,
         dingtalk: {
@@ -25246,10 +25307,12 @@
       this.characterName = data?.character?.name || this.ctx.DataHub?.characterData?.raw?.character?.name || '';
       // 能收到 init_character_data 说明当前页面 WS 会话在线（重连成功同样走这里）。
       this.wsConnected = true;
+      this.lastMessageAt = Date.now();
       // 基线重建不触发推送；进度计时从基线建立时刻起算。
       this.tracker.setQueue(actions, this.characterId);
-      // 同步本方组队准备状态作为基线：基线建立时的已准备不算重新准备。
+      // 同步本方组队准备状态与队伍开战状态作为基线：基线建立时的已准备、正在开战都不算新事件。
       this.partyReady = this.readOwnPartyReady(data?.partyInfo);
+      this.partyBattling = this.readPartyStatus(data?.partyInfo) === 'battling';
       this.markTaskActivity();
       if (characterChanged) {
         // 配置按角色分桶：切角色后必须重读当前角色配置并重置发送队列，
@@ -25261,8 +25324,11 @@
       }
     }
 
+    // 队列跟踪常驻：订阅关闭期间照常合并官方增量，保证重新开启时基线就是当前队列。
+    // 是否推送由 handleEvent 内部按订阅开关判断，跟踪与推送分离。
     onWsMessage(message) {
-      if (!this.isFeatureActive()) return;
+      // 任何游戏消息都算一次会话存活证据（含每 10 分钟一次的 pong），供静默兜底判定。
+      this.lastMessageAt = Date.now();
       const type = message?.type;
       if (type === 'actions_updated') {
         this.handleEvent(this.tracker.applyActionsUpdate(message.endCharacterActions));
@@ -25291,28 +25357,70 @@
       return Boolean(ownSlot?.isReady);
     }
 
+    // 读取队伍状态（partyInfo.party.status），顺带记录"队伍状态可用"。
+    readPartyStatus(partyInfo) {
+      const status = partyInfo?.party?.status;
+      if (typeof status === 'string' && status) this.partyStatusKnown = true;
+      return status || null;
+    }
+
     // 组队战斗行动在同一条 CharacterAction 上持续累加 currentCount，取消准备再重新准备
     // 不会更换 id、也没有 actions_updated/action_completed，官方只在 party_updated 里
-    // 携带准备状态。本方角色从未准备变为已准备（取消准备后再准备、战后再次准备）视为
-    // 新的战斗会话：重置进度计数基线与进度计时，定期进度通知从重新准备起重新计数。
+    // 携带准备状态与队伍状态（partyInfo.party.status：creating/recruiting/battling/disbanded，
+    // 官方在状态进入 battling 时自己也会发“队伍开战”通知）。这里做两件事：
+    // 1) 本方角色从未准备变为已准备（取消准备后再准备、战后再次准备）视为新的战斗会话：
+    //    重置进度计数基线与进度计时，定期进度通知从重新准备起重新计数；
+    // 2) 队伍状态进入 battling（准备就绪并过了等待期、战斗真正开始）时播报任务开始——
+    //    组队行动的队首通常早在等待队伍时就已就位，id 没变，靠队首变化那条规则识别不到。
     handlePartyUpdated(message) {
-      const isReady = this.readOwnPartyReady(message?.partyInfo);
+      const partyInfo = message?.partyInfo;
+      const isReady = this.readOwnPartyReady(partyInfo);
       const wasReady = this.partyReady;
       this.partyReady = isReady;
-      if (!isReady || wasReady) return;
+      const isBattling = this.readPartyStatus(partyInfo) === 'battling';
+      const wasBattling = this.partyBattling;
+      this.partyBattling = isBattling;
+      if (isReady && !wasReady) {
+        const task = this.tracker.getCurrentTask();
+        if (task && task.partyID !== 0) {
+          this.tracker.resetProgressBaseline();
+          this.markTaskActivity();
+        }
+      }
+      // 组队战斗每次开战各播报一条（战斗结束会退出 battling，下一次准备就绪再进入）。
+      if (isBattling && !wasBattling) this.notifyPartyBattleStart();
+    }
+
+    // 组队战斗开始通知：只有开始行，与队首变化触发的通知共用同一套文案。
+    notifyPartyBattleStart() {
+      if (!this.isFeatureActive() || this.config?.notifyStart === false) return;
       const task = this.tracker.getCurrentTask();
+      // 队伍开战时队首应当是组队/战斗行动（partyID 非 0），否则不是本次开战对应的任务。
       if (!task || task.partyID === 0) return;
-      this.tracker.resetProgressBaseline();
-      this.markTaskActivity();
+      this.submitText(this.buildQueueChangeText({newTask: task, isEmpty: false}, {complete: false, start: true}));
     }
 
     handleEvent(event) {
       if (!event) return;
       // 任务切换后重置进度计时，避免旧任务的计时周期污染新任务。
       this.markTaskActivity();
-      // 消息类型开关：任务完成通知可单独关闭（计时仍重置）。
-      if (this.config?.notifyComplete === false) return;
-      this.submitText(this.buildCompletionText(event));
+      // 订阅关闭期间只跟踪不推送：重新开启后从当前状态继续，不补推关闭期间的变动。
+      if (!this.isFeatureActive()) return;
+      // 消息类型开关各自决定这一条消息里出现哪几行（计时仍重置）。
+      const complete = event.type === 'completed' && this.config?.notifyComplete !== false;
+      // 组队/战斗行动（partyID 非 0）的开始改由"真正开战"播报，见 notifyPartyBattleStart——
+      // 队伍要先准备就绪并过等待期，入队即播报会在开战前先发一条内容一样的通知。
+      const start =
+        Boolean(event.newTask) && this.config?.notifyStart !== false && !this.isPartyStartDeferred(event.newTask);
+      // 一次队首变化只发一条消息：完成行与开始行按各自开关决定是否出现在这一条里。
+      if (!complete && !start) return;
+      this.submitText(this.buildQueueChangeText(event, {complete, start}));
+    }
+
+    // 组队行动的开始是否交给开战播报：仅当队伍状态可用（拿到过 partyInfo.party.status）时才移交，
+    // 避免游戏侧不再提供队伍状态时组队战斗一条开始通知都收不到。
+    isPartyStartDeferred(task) {
+      return task.partyID !== 0 && this.partyStatusKnown;
     }
 
     // ---- 定期进度推送 ----
@@ -25330,13 +25438,35 @@
       this.progressTimer = setTimeout(tick, PROGRESS_TICK_MS);
     }
 
+    // 会话可信判定：定时推送（进度、空队列）三条都满足才跑，任一不满足就按掉线处理，
+    // 恢复（页头回来 / 重连基线重建）后自动继续。
+    // 1) 页头的角色信息块还在（右上角头像所在块）：游戏判定掉线时会把整块游戏 UI 换成连接
+    //    提示面板（游戏源码 render 分支），页头随之消失——取不到就说明当前不是正常游戏界面；
+    // 2) 没有观测到 WebSocket close：被挤掉/断网时游戏立刻断开重连，事件比 UI 更早；
+    // 3) 会话没有长时间静默：在线时游戏每 10 分钟发一次 ping、服务端回 pong（游戏源码
+    //    `setInterval(this.sendPing, 6e5)`），超过 11 分钟收不到任何游戏消息说明连接已死但
+    //    游戏自己还没察觉（半开连接），此时队列数据已陈旧。
+    isSessionTrustworthy(now = Date.now()) {
+      if (!this.isHeaderPresent()) return false;
+      if (this.wsConnected === false) return false;
+      if (this.lastMessageAt && now - this.lastMessageAt > SESSION_SILENT_MS) return false;
+      return true;
+    }
+
+    // 页头角色信息块是否还在：断线时游戏把整块 UI 换成连接提示面板，页头与头像都不再渲染。
+    isHeaderPresent() {
+      return Boolean(this.ctx.GameUiAdapter?.query('headerCharacterInfo'));
+    }
+
     checkProgress() {
       if (!this.isFeatureActive()) return;
-      // 会话已断开（被挤掉/断网）：暂停定时推送，恢复后由重连基线重建继续。
-      if (this.wsConnected === false) return;
       const now = Date.now();
+      // 掉线（被挤掉、断网、静默死连接、断线后打开的页面）：暂停定时推送。
+      if (!this.isSessionTrustworthy(now)) return;
       const task = this.tracker.getCurrentTask();
       if (!task) {
+        // 未拿到过全量基线（未登录 / 页面在断线状态打开）：没有数据不等于队列为空，不推送。
+        if (!this.tracker.hasBaseline) return;
         // 消息类型开关：队列为空提醒可单独关闭；队列空时固定每分钟推送一条提醒。
         if (this.config?.notifyEmpty === false) return;
         if (now - this.lastEmptyRemindAt < EMPTY_REMIND_INTERVAL_MS) return;
@@ -25363,7 +25493,7 @@
     // ---- 推送链路 ----
 
     ensureSender() {
-      const minIntervalMs = Math.max(5, Number(this.config.minIntervalSec) || 10) * 1000;
+      const minIntervalMs = Math.max(5, Number(this.config.minIntervalSec) || 5) * 1000;
       const perMinuteLimit = Math.max(1, Number(this.config.pushPerMinute) || 20);
       if (!this.sender) {
         this.sender = new NotificationSender({
@@ -25450,14 +25580,50 @@
       );
     }
 
+    // 角色名行：角色名优先；只有 id 时用「角色 <id>」区分同站多账号；两者都没有说明
+    // 还没拿到角色数据，显式标注而不是输出没有信息量的占位符（两端都取不到时没有基线、
+    // 定时推送已被拦截，正常推送中不会出现，只剩手动测试发送会遇到）。
     buildRoleLine() {
-      const owner = this.characterName || this.characterId || 'MST';
-      const suffix = this.ctx.CONFIG.isTestServer ? ` · ${this.ctx.i18n.t('subscribeNotificationServerTest')}` : '';
+      const {i18n} = this.ctx;
+      const owner =
+        this.characterName ||
+        (this.characterId
+          ? i18n.t('subscribeNotificationRoleId', this.characterId)
+          : i18n.t('subscribeNotificationRoleUnknown'));
+      const suffix = this.ctx.CONFIG.isTestServer ? ` · ${i18n.t('subscribeNotificationServerTest')}` : '';
       return `${owner}${suffix}`;
     }
 
-    actionName(actionHrid) {
-      return this.ctx.DataHub?.getLocalizedGameName('actionNames', actionHrid) || String(actionHrid || '');
+    // 行动名按官方 getActionDisplayName 口径组装（游戏源码 main.chunk.js）：
+    // - 炼金类（/action_functions/alchemy：点金、分解、转化、解精炼）显示「行动名: 物品名」；
+    // - 强化（/action_functions/enhancing）显示「物品名」；
+    // - 两者在物品强化等级 >= 1 时追加 " +<等级>"；其余行动直接用行动名（采集/制作类的
+    //   actionHrid 本身按物品命名，如 /actions/brewing/alchemy_tea，官方也是直接取行动名）。
+    // 物品来自 CharacterAction.primaryItemHash，格式与官方 computeItemFromHash 一致：
+    // characterId::itemLocationHrid::itemHrid::enhancementLevel。解析不到物品时退回行动名
+    // （官方此时显示 actionsUtil.itemNotAvailable，推送里显示行动名更有用）。
+    actionName(task) {
+      const hrid = task?.actionHrid;
+      const name = this.ctx.DataHub?.getLocalizedGameName('actionNames', hrid) || String(hrid || '');
+      const actionFunction = this.ctx.DataHub?.getClientDataMap?.('actionDetailMap')?.[hrid]?.function;
+      if (actionFunction !== '/action_functions/alchemy' && actionFunction !== '/action_functions/enhancing') {
+        return name;
+      }
+      const item = this.primaryItem(task);
+      if (!item) return name;
+      const itemName = this.ctx.DataHub?.getLocalizedGameName('itemNames', item.itemHrid) || item.itemHrid;
+      const enhanceSuffix = item.enhancementLevel >= 1 ? ` +${item.enhancementLevel}` : '';
+      return actionFunction === '/action_functions/alchemy'
+        ? `${name}: ${itemName}${enhanceSuffix}`
+        : `${itemName}${enhanceSuffix}`;
+    }
+
+    // 解析 primaryItemHash（与官方 computeItemFromHash 同口径，不做额外校验）。
+    primaryItem(task) {
+      const parts = String(task?.primaryItemHash || '').split('::');
+      const itemHrid = parts[2];
+      if (!itemHrid) return null;
+      return {itemHrid, enhancementLevel: Number.parseInt(parts[3], 10) || 0};
     }
 
     describeTask(task) {
@@ -25465,25 +25631,27 @@
       if (!task) return '-';
       // 难度后缀与官方行动标题口径一致：difficultyTier >= 1 时追加 " (T<tier>)"。
       const tierSuffix = task.difficultyTier >= 1 ? ` (T${task.difficultyTier})` : '';
-      const name = this.actionName(task.actionHrid) + tierSuffix;
+      const name = this.actionName(task) + tierSuffix;
       if (task.hasMaxCount) {
         return i18n.t('subscribeNotificationTaskWithCount', name, task.currentCount ?? 0, task.maxCount ?? 0);
       }
       return i18n.t('subscribeNotificationTaskUnlimited', name);
     }
 
-    buildCompletionText(event) {
+    // 队首变化通知：标题行 + 完成行（可关）+ 开始行（可关）+ 等待队列概览 + 腾空提醒 +
+    // 时间行 + 角色名行。上个任务结束与下个任务开始发生在同一次切换里，两者同属这一条消息。
+    // 队列概览不含队首、最多 3 项、超出以 …共 N 项 收尾；每项带已完成/总次数。
+    buildQueueChangeText(event, {complete = false, start = false} = {}) {
       const {i18n} = this.ctx;
       const lines = [
         this.buildHeader()
       ];
-      if (event.completedTask) {
+      if (complete && event.completedTask) {
         lines.push(`✅ ${i18n.t('subscribeNotificationTaskCompleted')}：${this.describeTask(event.completedTask)}`);
       }
-      if (event.newTask) {
+      if (start && event.newTask) {
         lines.push(`▶️ ${i18n.t('subscribeNotificationTaskStarted')}：${this.describeTask(event.newTask)}`);
       }
-      // 队列概览列"等待执行的"任务，不含队首正在执行的行动。
       const preview = this.tracker.getWaitingQueuePreview(QUEUE_PREVIEW_COUNT);
       if (preview.length) {
         lines.push(i18n.t('subscribeNotificationQueueLabel'));
@@ -25500,7 +25668,7 @@
     // 已完成次数走 tracker.getProgressCount：组队战斗重新准备后按会话增量统计。
     buildProgressText(task) {
       const {i18n} = this.ctx;
-      const name = this.actionName(task.actionHrid);
+      const name = this.actionName(task);
       const tierSuffix = task.difficultyTier >= 1 ? ` (T${task.difficultyTier})` : '';
       let progress = `⏳ ${i18n.t('subscribeNotificationProgressDone', name + tierSuffix, this.tracker.getProgressCount(task))}`;
       if (task.hasMaxCount) {
@@ -25539,8 +25707,11 @@
     // ---- 设置界面（工具箱菜单入口） ----
 
     // 启用开关切换：保存配置后直接切换 DOM 显隐（与渲染后的 applyEnabledVisibility 同源）。
+    // 重新开启时重置进度与空队列计时：队列跟踪常驻，基线不会陈旧，但关闭期间的计时
+    // 已冻结，不重置会让开启后的第一次检查按关闭前的旧计时立刻推送。
     toggleEnabled(enabled) {
       this.updateConfig({enabled});
+      if (enabled) this.markTaskActivity();
       this.applyEnabledVisibility();
     }
 
@@ -25734,6 +25905,18 @@
         <span class="mst-subscribe-type-label">${i18n.t('subscribeNotificationTypeQueue')}</span>
         <label
           class="mst-subscribe-type-checkbox"
+          title=${i18n.t('subscribeNotificationTypeStartTitle')}
+        >
+          <input
+            type="checkbox"
+            id="mst-subscribe-type-start"
+            .checked=${config.notifyStart}
+            @change=${(event) => this.updateConfig({notifyStart: event.target.checked})}
+          />
+          <span>${i18n.t('subscribeNotificationTypeStart')}</span>
+        </label>
+        <label
+          class="mst-subscribe-type-checkbox"
           title=${i18n.t('subscribeNotificationTypeCompleteTitle')}
         >
           <input
@@ -25746,18 +25929,6 @@
         </label>
         <label
           class="mst-subscribe-type-checkbox"
-          title=${i18n.t('subscribeNotificationTypeProgressTitle')}
-        >
-          <input
-            type="checkbox"
-            id="mst-subscribe-type-progress"
-            .checked=${config.notifyProgress}
-            @change=${(event) => this.updateConfig({notifyProgress: event.target.checked})}
-          />
-          <span>${i18n.t('subscribeNotificationTypeProgress')}</span>
-        </label>
-        <label
-          class="mst-subscribe-type-checkbox"
           title=${i18n.t('subscribeNotificationTypeEmptyTitle')}
         >
           <input
@@ -25767,6 +25938,18 @@
             @change=${(event) => this.updateConfig({notifyEmpty: event.target.checked})}
           />
           <span>${i18n.t('subscribeNotificationTypeEmpty')}</span>
+        </label>
+        <label
+          class="mst-subscribe-type-checkbox"
+          title=${i18n.t('subscribeNotificationTypeProgressTitle')}
+        >
+          <input
+            type="checkbox"
+            id="mst-subscribe-type-progress"
+            .checked=${config.notifyProgress}
+            @change=${(event) => this.updateConfig({notifyProgress: event.target.checked})}
+          />
+          <span>${i18n.t('subscribeNotificationTypeProgress')}</span>
         </label>
         </div>
       <div class="mst-subscribe-section-title">${i18n.t('subscribeNotificationSectionChannel')}</div>

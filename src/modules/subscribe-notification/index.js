@@ -4,11 +4,15 @@
 // - 只在游戏页面打开期间监听（离线变化不感知、不补推）；
 // - 以 CharacterAction.id 为准：同 id 的 action_completed 是任务内部变动不推送，
 //   只有当前任务以 isDone 结束且队首变化才推送“完成 + 队列前 3 项”；
+//   队首换成新任务另有“任务开始”通知（默认开启），附接下来 3 项等待队列；
 // - 长时间未完成任务按周期推送进度（默认 30 分钟）；
 // - 组队战斗在同一条行动上持续累加 currentCount：监听 party_updated，本方角色
 //   重新准备视为新战斗会话，进度次数从重新准备起重新计数并重置进度计时；
 // - 会话监控：监听公共 mst:ws:state，游戏 WebSocket 断开（含同账号被其他
-//   登录挤掉）时暂停定时推送，避免断连页面继续用陈旧队列数据推送；
+//   登录挤掉）时暂停定时推送，避免断连页面继续用陈旧队列数据推送；在线状态
+//   默认未确认，WS open 或 init_character_data 才算确认在线；
+// - 队列跟踪常驻：订阅关闭期间同样维护基线（只跟踪不推送、也不补推），重新开启
+//   后按当前状态继续；未拿到基线前不判定"队列为空"，避免把没有数据当成队列空；
 // - 只有配置持久化（MST_SUBSCRIBE_config），id 基线、计时器、发送队列全部只存内存。
 import {StyleService} from '../../common/runtime.js';
 import {QueueChangeTracker} from './queue-tracker.js';
@@ -36,16 +40,23 @@ const RETRY_DELAYS_MS = [
 const CHANNEL_PER_MINUTE_DEFAULTS = {dingtalk: 20, wecom: 20, feishu: 100};
 // 队列为空提醒的固定推送周期：每分钟一条。
 const EMPTY_REMIND_INTERVAL_MS = 60000;
+// 会话静默判定：在线时游戏每 10 分钟发一次 ping、服务端回 pong（游戏源码
+// `this.pingInterval = setInterval(this.sendPing, 6e5)`，pong 不在 MST 忽略的消息类型里），
+// 因此「超过 11 分钟没收到任何游戏消息」只可能是会话已死而 close 事件没被观测到
+// （半开连接、页面桥异常等）。此时按掉线处理，不再用陈旧队列定时推送。
+const SESSION_SILENT_MS = 11 * 60 * 1000;
 
 function createDefaultConfig() {
   return {
     enabled: false,
     channel: 'dingtalk',
-    minIntervalSec: 10,
+    // 最小推送间隔取渠道限速允许的下限：钉钉/企微约 20 条每分钟，5 秒一条仍在限流之内。
+    minIntervalSec: 5,
     progressIntervalMin: 30,
     pushPerMinute: CHANNEL_PER_MINUTE_DEFAULTS.dingtalk,
     // 消息类型开关：默认全勾。
     notifyComplete: true,
+    notifyStart: true,
     notifyProgress: true,
     notifyEmpty: true,
     dingtalk: {url: '', secret: ''},
@@ -84,9 +95,16 @@ export class SubscribeNotificationFeature {
     this.lastProgressAt = 0;
     this.lastEmptyRemindAt = 0;
     this.partyReady = false;
-    // 游戏会话状态：默认视为在线（init_character_data 与 WS open 事件会确认），
-    // WS close 后置为 false 暂停定时推送，重连后恢复。
-    this.wsConnected = true;
+    // 队伍是否处于开战状态（partyInfo.party.status === 'battling'），进入时播报组队战斗开始。
+    this.partyBattling = false;
+    // 是否拿到过队伍状态字段：拿不到时组队行动退回"队首变化"播报，不至于一条开始通知都没有。
+    this.partyStatusKnown = false;
+    // 最近一次收到游戏消息的时间：长时间静默按掉线处理（见 SESSION_SILENT_MS）。
+    this.lastMessageAt = 0;
+    // 游戏会话状态：默认视为未确认在线，收到 WS open 或 init_character_data 才算确认。
+    // 未确认前不跑定时推送——没有数据不等于队列是空的（页面在未登录或断线状态打开时
+    // 从未收到基线，若按空队列处理会每分钟误推一条提醒）。
+    this.wsConnected = false;
     this.characterName = '';
     this.characterId = null;
     this.lastResult = null;
@@ -166,6 +184,7 @@ export class SubscribeNotificationFeature {
       ),
       // 未显式关闭（含旧配置缺字段）视为勾选。
       notifyComplete: source.notifyComplete !== false,
+      notifyStart: source.notifyStart !== false,
       notifyProgress: source.notifyProgress !== false,
       notifyEmpty: source.notifyEmpty !== false,
       dingtalk: {
@@ -220,10 +239,12 @@ export class SubscribeNotificationFeature {
     this.characterName = data?.character?.name || this.ctx.DataHub?.characterData?.raw?.character?.name || '';
     // 能收到 init_character_data 说明当前页面 WS 会话在线（重连成功同样走这里）。
     this.wsConnected = true;
+    this.lastMessageAt = Date.now();
     // 基线重建不触发推送；进度计时从基线建立时刻起算。
     this.tracker.setQueue(actions, this.characterId);
-    // 同步本方组队准备状态作为基线：基线建立时的已准备不算重新准备。
+    // 同步本方组队准备状态与队伍开战状态作为基线：基线建立时的已准备、正在开战都不算新事件。
     this.partyReady = this.readOwnPartyReady(data?.partyInfo);
+    this.partyBattling = this.readPartyStatus(data?.partyInfo) === 'battling';
     this.markTaskActivity();
     if (characterChanged) {
       // 配置按角色分桶：切角色后必须重读当前角色配置并重置发送队列，
@@ -235,8 +256,11 @@ export class SubscribeNotificationFeature {
     }
   }
 
+  // 队列跟踪常驻：订阅关闭期间照常合并官方增量，保证重新开启时基线就是当前队列。
+  // 是否推送由 handleEvent 内部按订阅开关判断，跟踪与推送分离。
   onWsMessage(message) {
-    if (!this.isFeatureActive()) return;
+    // 任何游戏消息都算一次会话存活证据（含每 10 分钟一次的 pong），供静默兜底判定。
+    this.lastMessageAt = Date.now();
     const type = message?.type;
     if (type === 'actions_updated') {
       this.handleEvent(this.tracker.applyActionsUpdate(message.endCharacterActions));
@@ -265,28 +289,70 @@ export class SubscribeNotificationFeature {
     return Boolean(ownSlot?.isReady);
   }
 
+  // 读取队伍状态（partyInfo.party.status），顺带记录"队伍状态可用"。
+  readPartyStatus(partyInfo) {
+    const status = partyInfo?.party?.status;
+    if (typeof status === 'string' && status) this.partyStatusKnown = true;
+    return status || null;
+  }
+
   // 组队战斗行动在同一条 CharacterAction 上持续累加 currentCount，取消准备再重新准备
   // 不会更换 id、也没有 actions_updated/action_completed，官方只在 party_updated 里
-  // 携带准备状态。本方角色从未准备变为已准备（取消准备后再准备、战后再次准备）视为
-  // 新的战斗会话：重置进度计数基线与进度计时，定期进度通知从重新准备起重新计数。
+  // 携带准备状态与队伍状态（partyInfo.party.status：creating/recruiting/battling/disbanded，
+  // 官方在状态进入 battling 时自己也会发“队伍开战”通知）。这里做两件事：
+  // 1) 本方角色从未准备变为已准备（取消准备后再准备、战后再次准备）视为新的战斗会话：
+  //    重置进度计数基线与进度计时，定期进度通知从重新准备起重新计数；
+  // 2) 队伍状态进入 battling（准备就绪并过了等待期、战斗真正开始）时播报任务开始——
+  //    组队行动的队首通常早在等待队伍时就已就位，id 没变，靠队首变化那条规则识别不到。
   handlePartyUpdated(message) {
-    const isReady = this.readOwnPartyReady(message?.partyInfo);
+    const partyInfo = message?.partyInfo;
+    const isReady = this.readOwnPartyReady(partyInfo);
     const wasReady = this.partyReady;
     this.partyReady = isReady;
-    if (!isReady || wasReady) return;
+    const isBattling = this.readPartyStatus(partyInfo) === 'battling';
+    const wasBattling = this.partyBattling;
+    this.partyBattling = isBattling;
+    if (isReady && !wasReady) {
+      const task = this.tracker.getCurrentTask();
+      if (task && task.partyID !== 0) {
+        this.tracker.resetProgressBaseline();
+        this.markTaskActivity();
+      }
+    }
+    // 组队战斗每次开战各播报一条（战斗结束会退出 battling，下一次准备就绪再进入）。
+    if (isBattling && !wasBattling) this.notifyPartyBattleStart();
+  }
+
+  // 组队战斗开始通知：只有开始行，与队首变化触发的通知共用同一套文案。
+  notifyPartyBattleStart() {
+    if (!this.isFeatureActive() || this.config?.notifyStart === false) return;
     const task = this.tracker.getCurrentTask();
+    // 队伍开战时队首应当是组队/战斗行动（partyID 非 0），否则不是本次开战对应的任务。
     if (!task || task.partyID === 0) return;
-    this.tracker.resetProgressBaseline();
-    this.markTaskActivity();
+    this.submitText(this.buildQueueChangeText({newTask: task, isEmpty: false}, {complete: false, start: true}));
   }
 
   handleEvent(event) {
     if (!event) return;
     // 任务切换后重置进度计时，避免旧任务的计时周期污染新任务。
     this.markTaskActivity();
-    // 消息类型开关：任务完成通知可单独关闭（计时仍重置）。
-    if (this.config?.notifyComplete === false) return;
-    this.submitText(this.buildCompletionText(event));
+    // 订阅关闭期间只跟踪不推送：重新开启后从当前状态继续，不补推关闭期间的变动。
+    if (!this.isFeatureActive()) return;
+    // 消息类型开关各自决定这一条消息里出现哪几行（计时仍重置）。
+    const complete = event.type === 'completed' && this.config?.notifyComplete !== false;
+    // 组队/战斗行动（partyID 非 0）的开始改由"真正开战"播报，见 notifyPartyBattleStart——
+    // 队伍要先准备就绪并过等待期，入队即播报会在开战前先发一条内容一样的通知。
+    const start =
+      Boolean(event.newTask) && this.config?.notifyStart !== false && !this.isPartyStartDeferred(event.newTask);
+    // 一次队首变化只发一条消息：完成行与开始行按各自开关决定是否出现在这一条里。
+    if (!complete && !start) return;
+    this.submitText(this.buildQueueChangeText(event, {complete, start}));
+  }
+
+  // 组队行动的开始是否交给开战播报：仅当队伍状态可用（拿到过 partyInfo.party.status）时才移交，
+  // 避免游戏侧不再提供队伍状态时组队战斗一条开始通知都收不到。
+  isPartyStartDeferred(task) {
+    return task.partyID !== 0 && this.partyStatusKnown;
   }
 
   // ---- 定期进度推送 ----
@@ -304,13 +370,35 @@ export class SubscribeNotificationFeature {
     this.progressTimer = setTimeout(tick, PROGRESS_TICK_MS);
   }
 
+  // 会话可信判定：定时推送（进度、空队列）三条都满足才跑，任一不满足就按掉线处理，
+  // 恢复（页头回来 / 重连基线重建）后自动继续。
+  // 1) 页头的角色信息块还在（右上角头像所在块）：游戏判定掉线时会把整块游戏 UI 换成连接
+  //    提示面板（游戏源码 render 分支），页头随之消失——取不到就说明当前不是正常游戏界面；
+  // 2) 没有观测到 WebSocket close：被挤掉/断网时游戏立刻断开重连，事件比 UI 更早；
+  // 3) 会话没有长时间静默：在线时游戏每 10 分钟发一次 ping、服务端回 pong（游戏源码
+  //    `setInterval(this.sendPing, 6e5)`），超过 11 分钟收不到任何游戏消息说明连接已死但
+  //    游戏自己还没察觉（半开连接），此时队列数据已陈旧。
+  isSessionTrustworthy(now = Date.now()) {
+    if (!this.isHeaderPresent()) return false;
+    if (this.wsConnected === false) return false;
+    if (this.lastMessageAt && now - this.lastMessageAt > SESSION_SILENT_MS) return false;
+    return true;
+  }
+
+  // 页头角色信息块是否还在：断线时游戏把整块 UI 换成连接提示面板，页头与头像都不再渲染。
+  isHeaderPresent() {
+    return Boolean(this.ctx.GameUiAdapter?.query('headerCharacterInfo'));
+  }
+
   checkProgress() {
     if (!this.isFeatureActive()) return;
-    // 会话已断开（被挤掉/断网）：暂停定时推送，恢复后由重连基线重建继续。
-    if (this.wsConnected === false) return;
     const now = Date.now();
+    // 掉线（被挤掉、断网、静默死连接、断线后打开的页面）：暂停定时推送。
+    if (!this.isSessionTrustworthy(now)) return;
     const task = this.tracker.getCurrentTask();
     if (!task) {
+      // 未拿到过全量基线（未登录 / 页面在断线状态打开）：没有数据不等于队列为空，不推送。
+      if (!this.tracker.hasBaseline) return;
       // 消息类型开关：队列为空提醒可单独关闭；队列空时固定每分钟推送一条提醒。
       if (this.config?.notifyEmpty === false) return;
       if (now - this.lastEmptyRemindAt < EMPTY_REMIND_INTERVAL_MS) return;
@@ -337,7 +425,7 @@ export class SubscribeNotificationFeature {
   // ---- 推送链路 ----
 
   ensureSender() {
-    const minIntervalMs = Math.max(5, Number(this.config.minIntervalSec) || 10) * 1000;
+    const minIntervalMs = Math.max(5, Number(this.config.minIntervalSec) || 5) * 1000;
     const perMinuteLimit = Math.max(1, Number(this.config.pushPerMinute) || 20);
     if (!this.sender) {
       this.sender = new NotificationSender({
@@ -424,14 +512,50 @@ export class SubscribeNotificationFeature {
     );
   }
 
+  // 角色名行：角色名优先；只有 id 时用「角色 <id>」区分同站多账号；两者都没有说明
+  // 还没拿到角色数据，显式标注而不是输出没有信息量的占位符（两端都取不到时没有基线、
+  // 定时推送已被拦截，正常推送中不会出现，只剩手动测试发送会遇到）。
   buildRoleLine() {
-    const owner = this.characterName || this.characterId || 'MST';
-    const suffix = this.ctx.CONFIG.isTestServer ? ` · ${this.ctx.i18n.t('subscribeNotificationServerTest')}` : '';
+    const {i18n} = this.ctx;
+    const owner =
+      this.characterName ||
+      (this.characterId
+        ? i18n.t('subscribeNotificationRoleId', this.characterId)
+        : i18n.t('subscribeNotificationRoleUnknown'));
+    const suffix = this.ctx.CONFIG.isTestServer ? ` · ${i18n.t('subscribeNotificationServerTest')}` : '';
     return `${owner}${suffix}`;
   }
 
-  actionName(actionHrid) {
-    return this.ctx.DataHub?.getLocalizedGameName('actionNames', actionHrid) || String(actionHrid || '');
+  // 行动名按官方 getActionDisplayName 口径组装（游戏源码 main.chunk.js）：
+  // - 炼金类（/action_functions/alchemy：点金、分解、转化、解精炼）显示「行动名: 物品名」；
+  // - 强化（/action_functions/enhancing）显示「物品名」；
+  // - 两者在物品强化等级 >= 1 时追加 " +<等级>"；其余行动直接用行动名（采集/制作类的
+  //   actionHrid 本身按物品命名，如 /actions/brewing/alchemy_tea，官方也是直接取行动名）。
+  // 物品来自 CharacterAction.primaryItemHash，格式与官方 computeItemFromHash 一致：
+  // characterId::itemLocationHrid::itemHrid::enhancementLevel。解析不到物品时退回行动名
+  // （官方此时显示 actionsUtil.itemNotAvailable，推送里显示行动名更有用）。
+  actionName(task) {
+    const hrid = task?.actionHrid;
+    const name = this.ctx.DataHub?.getLocalizedGameName('actionNames', hrid) || String(hrid || '');
+    const actionFunction = this.ctx.DataHub?.getClientDataMap?.('actionDetailMap')?.[hrid]?.function;
+    if (actionFunction !== '/action_functions/alchemy' && actionFunction !== '/action_functions/enhancing') {
+      return name;
+    }
+    const item = this.primaryItem(task);
+    if (!item) return name;
+    const itemName = this.ctx.DataHub?.getLocalizedGameName('itemNames', item.itemHrid) || item.itemHrid;
+    const enhanceSuffix = item.enhancementLevel >= 1 ? ` +${item.enhancementLevel}` : '';
+    return actionFunction === '/action_functions/alchemy'
+      ? `${name}: ${itemName}${enhanceSuffix}`
+      : `${itemName}${enhanceSuffix}`;
+  }
+
+  // 解析 primaryItemHash（与官方 computeItemFromHash 同口径，不做额外校验）。
+  primaryItem(task) {
+    const parts = String(task?.primaryItemHash || '').split('::');
+    const itemHrid = parts[2];
+    if (!itemHrid) return null;
+    return {itemHrid, enhancementLevel: Number.parseInt(parts[3], 10) || 0};
   }
 
   describeTask(task) {
@@ -439,25 +563,27 @@ export class SubscribeNotificationFeature {
     if (!task) return '-';
     // 难度后缀与官方行动标题口径一致：difficultyTier >= 1 时追加 " (T<tier>)"。
     const tierSuffix = task.difficultyTier >= 1 ? ` (T${task.difficultyTier})` : '';
-    const name = this.actionName(task.actionHrid) + tierSuffix;
+    const name = this.actionName(task) + tierSuffix;
     if (task.hasMaxCount) {
       return i18n.t('subscribeNotificationTaskWithCount', name, task.currentCount ?? 0, task.maxCount ?? 0);
     }
     return i18n.t('subscribeNotificationTaskUnlimited', name);
   }
 
-  buildCompletionText(event) {
+  // 队首变化通知：标题行 + 完成行（可关）+ 开始行（可关）+ 等待队列概览 + 腾空提醒 +
+  // 时间行 + 角色名行。上个任务结束与下个任务开始发生在同一次切换里，两者同属这一条消息。
+  // 队列概览不含队首、最多 3 项、超出以 …共 N 项 收尾；每项带已完成/总次数。
+  buildQueueChangeText(event, {complete = false, start = false} = {}) {
     const {i18n} = this.ctx;
     const lines = [
       this.buildHeader()
     ];
-    if (event.completedTask) {
+    if (complete && event.completedTask) {
       lines.push(`✅ ${i18n.t('subscribeNotificationTaskCompleted')}：${this.describeTask(event.completedTask)}`);
     }
-    if (event.newTask) {
+    if (start && event.newTask) {
       lines.push(`▶️ ${i18n.t('subscribeNotificationTaskStarted')}：${this.describeTask(event.newTask)}`);
     }
-    // 队列概览列"等待执行的"任务，不含队首正在执行的行动。
     const preview = this.tracker.getWaitingQueuePreview(QUEUE_PREVIEW_COUNT);
     if (preview.length) {
       lines.push(i18n.t('subscribeNotificationQueueLabel'));
@@ -474,7 +600,7 @@ export class SubscribeNotificationFeature {
   // 已完成次数走 tracker.getProgressCount：组队战斗重新准备后按会话增量统计。
   buildProgressText(task) {
     const {i18n} = this.ctx;
-    const name = this.actionName(task.actionHrid);
+    const name = this.actionName(task);
     const tierSuffix = task.difficultyTier >= 1 ? ` (T${task.difficultyTier})` : '';
     let progress = `⏳ ${i18n.t('subscribeNotificationProgressDone', name + tierSuffix, this.tracker.getProgressCount(task))}`;
     if (task.hasMaxCount) {
@@ -513,8 +639,11 @@ export class SubscribeNotificationFeature {
   // ---- 设置界面（工具箱菜单入口） ----
 
   // 启用开关切换：保存配置后直接切换 DOM 显隐（与渲染后的 applyEnabledVisibility 同源）。
+  // 重新开启时重置进度与空队列计时：队列跟踪常驻，基线不会陈旧，但关闭期间的计时
+  // 已冻结，不重置会让开启后的第一次检查按关闭前的旧计时立刻推送。
   toggleEnabled(enabled) {
     this.updateConfig({enabled});
+    if (enabled) this.markTaskActivity();
     this.applyEnabledVisibility();
   }
 
@@ -708,6 +837,18 @@ export class SubscribeNotificationFeature {
         <span class="mst-subscribe-type-label">${i18n.t('subscribeNotificationTypeQueue')}</span>
         <label
           class="mst-subscribe-type-checkbox"
+          title=${i18n.t('subscribeNotificationTypeStartTitle')}
+        >
+          <input
+            type="checkbox"
+            id="mst-subscribe-type-start"
+            .checked=${config.notifyStart}
+            @change=${(event) => this.updateConfig({notifyStart: event.target.checked})}
+          />
+          <span>${i18n.t('subscribeNotificationTypeStart')}</span>
+        </label>
+        <label
+          class="mst-subscribe-type-checkbox"
           title=${i18n.t('subscribeNotificationTypeCompleteTitle')}
         >
           <input
@@ -720,18 +861,6 @@ export class SubscribeNotificationFeature {
         </label>
         <label
           class="mst-subscribe-type-checkbox"
-          title=${i18n.t('subscribeNotificationTypeProgressTitle')}
-        >
-          <input
-            type="checkbox"
-            id="mst-subscribe-type-progress"
-            .checked=${config.notifyProgress}
-            @change=${(event) => this.updateConfig({notifyProgress: event.target.checked})}
-          />
-          <span>${i18n.t('subscribeNotificationTypeProgress')}</span>
-        </label>
-        <label
-          class="mst-subscribe-type-checkbox"
           title=${i18n.t('subscribeNotificationTypeEmptyTitle')}
         >
           <input
@@ -741,6 +870,18 @@ export class SubscribeNotificationFeature {
             @change=${(event) => this.updateConfig({notifyEmpty: event.target.checked})}
           />
           <span>${i18n.t('subscribeNotificationTypeEmpty')}</span>
+        </label>
+        <label
+          class="mst-subscribe-type-checkbox"
+          title=${i18n.t('subscribeNotificationTypeProgressTitle')}
+        >
+          <input
+            type="checkbox"
+            id="mst-subscribe-type-progress"
+            .checked=${config.notifyProgress}
+            @change=${(event) => this.updateConfig({notifyProgress: event.target.checked})}
+          />
+          <span>${i18n.t('subscribeNotificationTypeProgress')}</span>
         </label>
         </div>
       <div class="mst-subscribe-section-title">${i18n.t('subscribeNotificationSectionChannel')}</div>

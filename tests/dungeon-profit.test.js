@@ -345,6 +345,69 @@ test('可选择让所有背部装备产物按 0 计算收益', () => {
   assert.equal(missing.has('/items/chimerical_quiver'), false);
 });
 
+test('可选择让牛铃与牛铃袋产物按 0 计算收益', () => {
+  const Service = loadService();
+  const service = new Service(createMarketService({'/items/bag_of_10_cowbells': {0: {a: 1000, b: 800}}}));
+  const drops = new Map([
+    [
+      '/items/cowbell', 2
+    ], [
+      '/items/bag_of_10_cowbells', 1
+    ]
+  ]);
+  const missing = new Set();
+  const normal = service.valueExpectedDrops(drops, service.getTokenValues(true), true, new Set());
+  const excluded = service.valueExpectedDrops(drops, service.getTokenValues(true), true, missing, {
+    excludeCowbellValue: true
+  });
+
+  // 牛铃按牛铃袋价格折算（÷10，牛铃袋 18% 特殊税率）；牛铃袋本身就是 10 个牛铃，同属牛铃收益。
+  assert.equal(service.isCowbellItem('/items/cowbell'), true);
+  assert.equal(service.isCowbellItem('/items/bag_of_10_cowbells'), true);
+  assert.equal(service.isCowbellItem('/items/mirror_of_protection'), false);
+  assert.equal(normal.askTotal, 2 * 82 + 820);
+  assert.equal(normal.bidTotal, 2 * 65.6 + 656);
+  assert.equal(excluded.askTotal, 0);
+  assert.equal(excluded.bidTotal, 0);
+  assert.equal(missing.has('/items/cowbell'), false);
+  assert.equal(missing.has('/items/bag_of_10_cowbells'), false);
+});
+
+test('勾选牛铃不计算收益后宝箱产出的牛铃按 0 估值，其余口径不变', () => {
+  const Service = loadService();
+  const service = new Service(createMarketService(createCompleteMarketData()));
+  const input = {actionHrid: '/actions/combat/pirate_cove', difficultyTier: 0, clearMinutes: 1440};
+  const baseline = service.calculate(input);
+  const excluded = service.calculate({...input, excludeCowbellValue: true});
+  const baselineCowbell = baseline.expectedDrops.find((item) => item.itemHrid === '/items/cowbell');
+  const excludedCowbell = excluded.expectedDrops.find((item) => item.itemHrid === '/items/cowbell');
+
+  // 官方普通宝箱的牛铃来自嵌套宝箱（large_treasure_chest）展开，默认按牛铃袋折算价估值。
+  assert.ok(baselineCowbell.quantity > 0);
+  assert.ok(baselineCowbell.askValue > 0);
+  assert.equal(excludedCowbell.quantity, baselineCowbell.quantity);
+  assert.equal(excludedCowbell.ask, 0);
+  assert.equal(excludedCowbell.bid, 0);
+  assert.equal(excludedCowbell.askValue, 0);
+  assert.equal(excludedCowbell.bidValue, 0);
+  // 收益差额正好等于被排除的牛铃收益，说明只把牛铃价格置 0，数量与其他物品不受影响。
+  assert.ok(
+    Math.abs(baseline.normalRevenueOptimistic - excluded.normalRevenueOptimistic - baselineCowbell.askValue) < 1e-9
+  );
+  assert.ok(
+    Math.abs(baseline.normalRevenueConservative - excluded.normalRevenueConservative - baselineCowbell.bidValue) < 1e-9
+  );
+  assert.ok(Math.abs(baseline.normalQuantity - excluded.normalQuantity) < 1e-12);
+  assert.ok(
+    Math.abs(
+      baseline.costScenarios.market.totalCostConservative - excluded.costScenarios.market.totalCostConservative
+    ) < 1e-9
+  );
+  assert.equal(excluded.missingPrices.length, baseline.missingPrices.length);
+  // 掉落表的宝箱行按展开内容税前估值，差额同样等于被排除的牛铃数量乘以税前折算价（牛铃袋 100 ÷ 10）。
+  assert.ok(Math.abs(baseline.dropTable.askTotal - excluded.dropTable.askTotal - baselineCowbell.quantity * 10) < 1e-6);
+});
+
 test('交易税倍率只通过公共常量使用', () => {
   const constantsSource = readSourceFile('src', 'common', 'constants.js');
   const calculatorSource = readSourceFile('src', 'modules', 'dungeon-profit', 'calculator.js');
@@ -1042,8 +1105,8 @@ test('主脚本包含正式元信息、工具箱入口和完整国际化入口',
 test('地下城操作区保留基础参数并按需展示自定义价格参数', () => {
   const keys = [
     'dungeon', 'difficultyTier', 'partySize', 'clearTimeMinutes', 'dailyConsumablesCost',
-    'artisanTea', 'guzzlingLevel', 'applyMarketTax', 'excludeBackEquipmentValue', 'customMode',
-    'keySource', 'keyMaterialPurchaseMethod', 'goodsSaleMethod'
+    'artisanTea', 'guzzlingLevel', 'applyMarketTax', 'excludeBackEquipmentValue', 'excludeCowbellValue',
+    'customMode', 'keySource', 'keyMaterialPurchaseMethod', 'goodsSaleMethod'
   ];
   const positions = keys.map((key) => dungeonFeatureSource.indexOf(`i18n.t('${key}')`));
 
@@ -1057,6 +1120,7 @@ test('地下城操作区保留基础参数并按需展示自定义价格参数',
   assert.equal(dungeonFeatureSource.match(/\.checked=\$\{feature\.state\.useArtisanTea\}/g)?.length, 1);
   assert.equal(dungeonFeatureSource.match(/\.checked=\$\{feature\.state\.useGuzzlingPouch\}/g)?.length, 1);
   assert.equal(dungeonFeatureSource.match(/\.checked=\$\{feature\.state\.excludeBackEquipmentValue\}/g)?.length, 1);
+  assert.equal(dungeonFeatureSource.match(/\.checked=\$\{feature\.state\.excludeCowbellValue\}/g)?.length, 1);
   assert.equal(dungeonFeatureSource.match(/\.checked=\$\{feature\.state\.customMode\}/g)?.length, 1);
   assert.equal(dungeonFeatureSource.match(/\.hidden=\$\{!feature\.state\.customMode\}/g)?.length, 3);
   assert.match(dungeonFeatureSource, /\.disabled=\$\{!feature\.state\.useGuzzlingPouch\}/);
@@ -1210,6 +1274,7 @@ test('市场税选项默认勾选，悬浮提示与帮助文案从公共常量�
       useGuzzlingPouch: true,
       guzzlingLevel: '0',
       excludeBackEquipmentValue: false,
+      excludeCowbellValue: false,
       applyMarketTax: true,
       customMode: false,
       customKeySource: 'materials',
@@ -1226,8 +1291,14 @@ test('市场税选项默认勾选，悬浮提示与帮助文案从公共常量�
 
   // 默认勾选并透传计算选项；悬浮提示按 {0}/{1} 占位符接收由常量生成的百分比。
   assert.equal(rendered.input.applyMarketTax, true);
+  assert.equal(rendered.input.excludeCowbellValue, false);
   assert.match(rendered.markup, /applyMarketTaxHint\(5\/18\)/);
   assert.match(rendered.markup, /\.checked=true/);
+  // “牛铃不计算收益”排在“披风不计算收益”之后，且默认不勾选。
+  const backEquipmentIndex = rendered.markup.indexOf('<span>excludeBackEquipmentValue</span>');
+  const cowbellIndex = rendered.markup.indexOf('<span>excludeCowbellValue</span>');
+  assert.ok(backEquipmentIndex >= 0 && backEquipmentIndex < cowbellIndex, '牛铃不计算收益应渲染在披风不计算收益之后');
+  assert.match(rendered.markup.slice(Math.max(0, cowbellIndex - 200), cowbellIndex), /\.checked=false/);
   assert.match(dungeonFeatureSource, /applyMarketTax: true/);
   // 百分比由公共税率常量动态生成，界面与帮助文案不硬编码税率数值。
   assert.match(dungeonFeatureSource, /Math\.round\(MARKET_TAX_RATE \* 100\)/);
@@ -1394,6 +1465,7 @@ test('地下城只计算 1 日期望并展示每日净利润', () => {
   assert.equal(calculatedInputs[0].useGuzzlingPouch, true);
   assert.equal(calculatedInputs[0].guzzlingLevel, '5');
   assert.equal(calculatedInputs[0].excludeBackEquipmentValue, false);
+  assert.equal(calculatedInputs[0].excludeCowbellValue, false);
   assert.equal(calculatedInputs[0].customMode, false);
   assert.equal(calculatedInputs[0].customKeySource, 'materials');
   assert.equal(calculatedInputs[0].customBuySide, 'ask');
@@ -1497,7 +1569,7 @@ test('地下城收益用复选框切换批量模拟并按三行布局展示', ()
   // 第一行选项与单图共享 state（从使用工匠茶开始），逐项列出全部共享选项；选项行保留恢复默认按钮。
   [
     'useArtisanTea', 'useGuzzlingPouch', 'guzzlingLevel', 'applyMarketTax', 'excludeBackEquipmentValue',
-    'customMode', 'customKeySource', 'customBuySide', 'customSellSide'
+    'excludeCowbellValue', 'customMode', 'customKeySource', 'customBuySide', 'customSellSide'
   ].forEach((option) => assert.ok(dungeonFeatureSource.includes(`'${option}'`), `缺少共享选项 ${option}`));
   assert.doesNotMatch(dungeonFeatureSource, /data-dungeon-config="save"/);
   assert.match(dungeonFeatureSource, /data-dungeon-config="restore"/);
@@ -1716,6 +1788,7 @@ test('批量模拟价格格映射到制作/购买钥匙的保守乐观组合并�
     useGuzzlingPouch: true,
     guzzlingLevel: '10',
     excludeBackEquipmentValue: false,
+    excludeCowbellValue: false,
     applyMarketTax: true,
     customMode: true,
     customKeySource: 'market',

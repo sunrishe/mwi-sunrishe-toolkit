@@ -6,6 +6,7 @@
 
 - 本项目认可的 Playwright MCP 是 MCP 服务列表中的**官方 Playwright MCP 服务器**（`@playwright/mcp`），其工具功能名全部是 `browser_*`。在 MCP 服务（或工具）列表中按关键字“Playwright”查找，确认存在 `browser_*` 工具即可；工具前缀由客户端决定，随客户端不同。
 - 工具集随官方版本增减，以当前会话实际暴露的工具与参数描述为准；工具列表不完整时先调用工具发现/列出能力。
+- 服务已连接但工具尚未注册时不等于“浏览器验证不可用”：客户端刚启动时 MCP 连接可能晚于启动完成，此时只注册了少量 MCP 工具，`browser_*` 调用返回 `Tool not found`。等连接完成或重载客户端后重试，确认 `browser_*` 可调用再开始验证；这种情况不得记为“Playwright MCP 不可用”，也不得改用其他浏览器通道替代。
 - 只有实际调用过 Playwright MCP 的 `browser_*` 工具，交付说明才能写“Playwright MCP 已验证”；Browser plugin / Browser skill、Node REPL 浏览器控制、`playwright-cli` 等不算 MCP 验证。
 
 ## 二、工具速查
@@ -25,6 +26,8 @@
 | 其他         | `browser_close`、`browser_file_upload`、`browser_drop`                            | 关闭页面、文件上传等，按需使用                                                                                                                           |
 
 验证只使用上表工具；`browser_run_code_unsafe` 在 Node 进程执行任意代码（等价 RCE），不属于验证工具。
+
+页面所在窗口不可见时（`document.visibilityState === 'hidden'`、`requestAnimationFrame` 不触发），`browser_click`/`browser_hover` 会停在“等待元素可见”直到超时。此时改用「`browser_evaluate` 聚焦目标元素 + `browser_press_key`」完成真实键盘输入，或把窗口切到前台后复验，并在交付记录里写明实际使用的交互方式。
 
 ## 三、进入游戏页
 

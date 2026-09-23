@@ -144,7 +144,7 @@ test('队列跟踪器：当前任务 isDone 结束且队首变化触发完成事
   assert.equal(tracker.getCurrentTask().id, 8);
 });
 
-test('队列跟踪器：有限任务未完成次数被移除按取消处理，静默重建不推送', () => {
+test('队列跟踪器：有限任务未完成次数被移除按取消处理，只报任务开始不报完成', () => {
   const module = loadSubscribeModule([
     'src/modules/subscribe-notification/queue-tracker.js'
   ]);
@@ -158,11 +158,83 @@ test('队列跟踪器：有限任务未完成次数被移除按取消处理，�
   const event = tracker.applyActionsUpdate([
     makeAction({id: 7, currentCount: 5, isDone: true})
   ]);
-  assert.equal(event, null);
+  assert.equal(event.type, 'started');
+  assert.equal(event.completedTask, null);
+  assert.equal(event.newTask.id, 8);
   assert.equal(tracker.getCurrentTask().id, 8);
 });
 
-test('队列跟踪器：队首前插入新任务属于队列编辑，不触发事件', () => {
+test('队列跟踪器：空队列入队只报任务开始，不报完成', () => {
+  const module = loadSubscribeModule([
+    'src/modules/subscribe-notification/queue-tracker.js'
+  ]);
+  const tracker = new module.QueueChangeTracker();
+  tracker.setQueue([], '42');
+  const event = tracker.applyActionsUpdate([
+    makeAction({id: 9})
+  ]);
+  assert.equal(event.type, 'started');
+  assert.equal(event.completedTask, null);
+  assert.equal(event.newTask.id, 9);
+  assert.equal(event.isEmpty, false);
+});
+
+test('队列跟踪器：等待队列概览不含队首、最多 3 项，长度按全部等待任务计', () => {
+  const module = loadSubscribeModule([
+    'src/modules/subscribe-notification/queue-tracker.js'
+  ]);
+  const tracker = new module.QueueChangeTracker();
+  tracker.setQueue(
+    [
+      // 队首正在跑的迷宫：不列入（正在执行的任务由开始行播报）。
+      makeAction({
+        id: 1,
+        actionHrid: '/actions/labyrinth/explore',
+        hasMaxCount: false,
+        maxCount: 0,
+        currentCount: 11885,
+        ordinal: 0
+      }), makeAction({
+        id: 2,
+        actionHrid: '/actions/woodcutting/collect_logging',
+        maxCount: 100,
+        currentCount: 12,
+        ordinal: 1
+      }), makeAction({
+        id: 3,
+        actionHrid: '/actions/mining/collect_ore',
+        maxCount: 50,
+        currentCount: 0,
+        ordinal: 2
+      }), makeAction({
+        id: 4,
+        actionHrid: '/actions/fishing/collect_fish',
+        maxCount: 30,
+        currentCount: 30,
+        ordinal: 3
+      }), makeAction({
+        id: 5,
+        actionHrid: '/actions/combat/golem_cave',
+        hasMaxCount: false,
+        maxCount: 0,
+        currentCount: 40,
+        ordinal: 4
+      })
+    ],
+    '42'
+  );
+  assert.deepEqual(
+    [
+      ...tracker.getWaitingQueuePreview(3)
+    ].map((task) => task.id),
+    [
+      2, 3, 4
+    ]
+  );
+  assert.equal(tracker.getWaitingQueueLength(), 4);
+});
+
+test('队列跟踪器：队首被顶掉后接上的新任务按任务开始上报（不报完成）', () => {
   const module = loadSubscribeModule([
     'src/modules/subscribe-notification/queue-tracker.js'
   ]);
@@ -176,8 +248,67 @@ test('队列跟踪器：队首前插入新任务属于队列编辑，不触发�
   const event = tracker.applyActionsUpdate([
     makeAction({id: 7, ordinal: 1}), makeAction({id: 9, ordinal: 0})
   ]);
-  assert.equal(event, null);
+  assert.equal(event.type, 'started');
+  assert.equal(event.completedTask, null);
+  assert.equal(event.newTask.id, 9);
   assert.equal(tracker.getCurrentTask().id, 9);
+});
+
+test('队列跟踪器：被顶掉的任务重新回到队首算一次新的任务开始（id 不变也重发）', () => {
+  const module = loadSubscribeModule([
+    'src/modules/subscribe-notification/queue-tracker.js'
+  ]);
+  const tracker = new module.QueueChangeTracker();
+  const maze = () =>
+    makeAction({
+      id: 1,
+      actionHrid: '/actions/labyrinth/explore',
+      hasMaxCount: false,
+      maxCount: 0,
+      currentCount: 11885
+    });
+  tracker.setQueue(
+    [
+      maze()
+    ],
+    '42'
+  );
+  // 组队战斗插入队首（partyID 非 0 排在前面），迷宫被挤到等待区。
+  const battle = tracker.applyActionsUpdate([
+    makeAction({
+      id: 5,
+      actionHrid: '/actions/combat/golem_cave',
+      partyID: 635372,
+      hasMaxCount: false,
+      currentCount: 0,
+      ordinal: 1
+    })
+  ]);
+  assert.equal(battle.type, 'started');
+  assert.equal(battle.newTask.id, 5);
+  // 战斗结束出队，迷宫回到队首：迷宫自身 id 没变，仍算一次新的任务开始。
+  // （无上限行动出队无法区分取消，按任务结束上报，所以这里同时带完成信息。）
+  const resumed = tracker.applyActionsUpdate([
+    makeAction({
+      id: 5,
+      actionHrid: '/actions/combat/golem_cave',
+      partyID: 635372,
+      hasMaxCount: false,
+      currentCount: 3,
+      isDone: true
+    })
+  ]);
+  assert.equal(resumed.completedTask.id, 5);
+  assert.equal(resumed.newTask.id, 1);
+  assert.equal(resumed.newTask.actionHrid, '/actions/labyrinth/explore');
+  // 迷宫继续跑：同 id 的进度更新不产生事件（在队首连续重复执行不算重新开始）。
+  assert.equal(tracker.applyActionCompleted(maze()), null);
+  assert.equal(
+    tracker.applyActionsUpdate([
+      maze()
+    ]),
+    null
+  );
 });
 
 test('队列跟踪器：最后一条任务完成后队列腾空事件', () => {
@@ -341,6 +472,272 @@ test('会话监控：WS 断开后暂停定时推送，重连后恢复，init_cha
   assert.equal(submitted.length, 2);
 });
 
+// ---- 基线可信度：没有数据不等于队列为空 ----
+
+test('队列跟踪器：hasBaseline 只在全量基线重建后为真，reset 清除', () => {
+  const module = loadSubscribeModule([
+    'src/modules/subscribe-notification/queue-tracker.js'
+  ]);
+  const tracker = new module.QueueChangeTracker();
+  assert.equal(tracker.hasBaseline, false);
+  // 增量消息不构成基线：只有 init_character_data 的全量快照才算。
+  tracker.applyActionsUpdate([
+    makeAction({id: 7})
+  ]);
+  assert.equal(tracker.hasBaseline, false);
+  tracker.setQueue(
+    [
+      makeAction({id: 8})
+    ],
+    '42'
+  );
+  assert.equal(tracker.hasBaseline, true);
+  tracker.reset('42');
+  assert.equal(tracker.hasBaseline, false);
+  assert.equal(tracker.getCurrentTask(), null);
+});
+
+test('未拿到基线不判定队列为空：基线重建为空队列后才恢复提醒', () => {
+  const feature = createTextFeature();
+  feature.config = {...feature.normalizeConfig({}), enabled: true};
+  feature.characterId = '42';
+  const submitted = [];
+  feature.submitText = (text) => submitted.push(text);
+  feature.onWsState({state: 'open'});
+  // 页面在未登录 / 断线状态打开：队列为空只是"没有数据"，不推送提醒，也不推进计时。
+  feature.tracker.reset('42');
+  feature.lastEmptyRemindAt = 0;
+  feature.checkProgress();
+  assert.deepEqual(submitted, []);
+  assert.equal(feature.lastEmptyRemindAt, 0);
+  // 基线重建（队列确实为空）后按每分钟节奏提醒。
+  feature.onInitCharacterData({character: {id: 42}, characterActions: []});
+  assert.equal(feature.tracker.hasBaseline, true);
+  feature.lastEmptyRemindAt = 0;
+  feature.checkProgress();
+  assert.equal(submitted.length, 1);
+  assert.match(submitted[0], /⚠️ 行动队列已空，请及时补充/);
+});
+
+test('在线状态需确认：WS open 或 init_character_data 前不推定时的进度与空队列通知', () => {
+  const feature = createTextFeature();
+  feature.config = {...feature.normalizeConfig({}), enabled: true};
+  const submitted = [];
+  feature.submitText = (text) => submitted.push(text);
+  // 默认未确认在线：即使进度已到期也不推送。
+  assert.equal(feature.wsConnected, false);
+  feature.lastProgressAt = 0;
+  feature.lastEmptyRemindAt = 0;
+  feature.checkProgress();
+  assert.deepEqual(submitted, []);
+  // WS open 确认在线后恢复推送。
+  feature.onWsState({state: 'open'});
+  feature.lastProgressAt = Date.now() - 31 * 60000;
+  feature.checkProgress();
+  assert.equal(submitted.length, 1);
+  assert.match(submitted[0], /⏳ 挤奶：已完成 0 次，剩余 50 次/);
+});
+
+test('订阅关闭期间仍跟踪队列：不补推关闭期变动，重新开启后按当前队列继续', () => {
+  const feature = createTextFeature();
+  feature.config = feature.normalizeConfig({});
+  assert.equal(feature.config.enabled, false);
+  const submitted = [];
+  feature.submitText = (text) => submitted.push(text);
+  feature.onWsState({state: 'open'});
+  // 关闭期间队首任务完成、新任务入队：只更新基线，不推送。
+  feature.onWsMessage({
+    type: 'actions_updated',
+    endCharacterActions: [
+      makeAction({
+        id: 1,
+        maxCount: 50,
+        currentCount: 50,
+        isDone: true
+      }), makeAction({id: 5, actionHrid: '/actions/smithing/smith_bar', maxCount: 20, currentCount: 0})
+    ]
+  });
+  assert.deepEqual(submitted, []);
+  assert.equal(feature.tracker.getCurrentTask().id, 5);
+  // 重新开启：计时重置，不按关闭前的旧计时立即推送。
+  feature.toggleEnabled(true);
+  feature.checkProgress();
+  assert.deepEqual(submitted, []);
+  // 到期后按当前队首推送，说明关闭期间跟踪是连续的、没有留下陈旧基线。
+  feature.lastProgressAt = Date.now() - 31 * 60000;
+  feature.checkProgress();
+  assert.equal(submitted.length, 1);
+  assert.match(submitted[0], /⏳ 锻造：已完成 0 次，剩余 20 次/);
+});
+
+test('角色名行：角色名缺失时退到角色 id，两者都没有时显式标注未知角色', () => {
+  const feature = createTextFeature({isTestServer: false});
+  // 只有角色 id（基线到达前 URL 参数的兜底）：用 id 区分同站多账号。
+  feature.characterName = '';
+  feature.characterId = '1234567';
+  assert.equal(feature.buildRoleLine(), '角色 1234567');
+  // 连角色编号都没有：显式标注未知角色。
+  feature.characterId = null;
+  assert.equal(feature.buildRoleLine(), '未知角色');
+  // 角色名可用时维持原口径，测试服追加标识。
+  feature.characterName = 'xiao711';
+  feature.ctx.CONFIG.isTestServer = true;
+  assert.equal(feature.buildRoleLine(), 'xiao711 · 测试服');
+});
+
+test('掉线判据看页面：页头角色信息块消失即按掉线暂停定时推送，恢复后继续', () => {
+  const feature = createTextFeature();
+  feature.config = {...feature.normalizeConfig({}), enabled: true};
+  feature.characterId = '42';
+  feature.onWsState({state: 'open'});
+  const submitted = [];
+  feature.submitText = (text) => submitted.push(text);
+  // 空队列基线：正常情况下每分钟一条提醒。
+  feature.onInitCharacterData({character: {id: 42}, characterActions: []});
+  assert.equal(feature.isSessionTrustworthy(), true);
+  // 游戏判定掉线后整块 UI 被连接提示面板替换，页头（含右上角头像）消失。
+  feature.ctx.GameUiAdapter.headerPresent = false;
+  assert.equal(feature.isHeaderPresent(), false);
+  assert.equal(feature.isSessionTrustworthy(), false);
+  feature.lastEmptyRemindAt = 0;
+  feature.checkProgress();
+  assert.deepEqual(submitted, []);
+  assert.equal(feature.lastEmptyRemindAt, 0);
+  // 页头回来（重连成功）后恢复推送。
+  feature.ctx.GameUiAdapter.headerPresent = true;
+  feature.lastEmptyRemindAt = 0;
+  feature.checkProgress();
+  assert.equal(submitted.length, 1);
+  assert.match(submitted[0], /⚠️ 行动队列已空，请及时补充/);
+});
+
+test('掉线兜底：长时间收不到任何游戏消息时暂停定时推送，消息恢复后继续', () => {
+  const feature = createTextFeature();
+  feature.config = {...feature.normalizeConfig({}), enabled: true};
+  feature.characterId = '42';
+  feature.onWsState({state: 'open'});
+  const submitted = [];
+  feature.submitText = (text) => submitted.push(text);
+  // 基线重建（空队列）：正常会按每分钟一条推空队列提醒。
+  feature.onInitCharacterData({character: {id: 42}, characterActions: []});
+  feature.lastEmptyRemindAt = 0;
+  // 模拟会话已死但 close 事件没被观测到：超过 11 分钟没有任何游戏消息（含 pong）。
+  feature.lastMessageAt = Date.now() - 12 * 60 * 1000;
+  feature.checkProgress();
+  assert.deepEqual(submitted, []);
+  assert.equal(feature.lastEmptyRemindAt, 0);
+  // 收到任意游戏消息（例如 10 分钟一次的 pong）即视为在线，定时推送恢复。
+  feature.onWsMessage({type: 'pong'});
+  feature.lastEmptyRemindAt = 0;
+  feature.checkProgress();
+  assert.equal(submitted.length, 1);
+  assert.match(submitted[0], /⚠️ 行动队列已空，请及时补充/);
+});
+
+// ---- 设置界面与默认配置 ----
+
+const SETTINGS_TEXTS = {
+  subscribeNotificationTypeQueue: '行动队列',
+  subscribeNotificationTypeStart: '任务开始',
+  subscribeNotificationTypeComplete: '任务完成',
+  subscribeNotificationTypeEmpty: '队列为空',
+  subscribeNotificationTypeProgress: '定期进度',
+  subscribeNotificationTypeStartTitle: '开始通知说明',
+  subscribeNotificationTypeCompleteTitle: '完成通知说明',
+  subscribeNotificationTypeEmptyTitle: '空队列说明',
+  subscribeNotificationTypeProgressTitle: '进度通知说明'
+};
+
+// 设置模板是 uhtml 标签模板；这里用同形状的拼接实现取回字符串，便于断言渲染顺序与默认值。
+function createSettingsFeature() {
+  const module = loadSubscribeModule(
+    [
+      'src/modules/subscribe-notification/notifier.js', 'src/modules/subscribe-notification/queue-tracker.js', 'src/modules/subscribe-notification/index.js'
+    ],
+    {
+      window: {addEventListener() {}},
+      localStorage: {getItem: () => null, setItem() {}, removeItem() {}},
+      document: {getElementById: () => null},
+      StyleService: {ensure() {}}
+    }
+  );
+  const feature = new module.SubscribeNotificationFeature({
+    CONFIG: {isGameSite: true, isTestServer: false, characterId: '42'},
+    i18n: {t: (key) => SETTINGS_TEXTS[key] ?? key},
+    DataHub: {getLocalizedGameName: (group, hrid) => hrid, getClientDataMap: () => ({})},
+    utils: {getGameButtonClass: () => 'game-button'},
+    TemplateRenderer: {
+      html(strings, ...values) {
+        return strings.reduce(
+          (text, part, index) => text + part + (index < values.length ? String(values[index] ?? '') : ''),
+          ''
+        );
+      }
+    }
+  });
+  feature.config = feature.normalizeConfig({});
+  return feature;
+}
+
+test('设置弹窗：消息类型按 任务开始 → 任务完成 → 队列为空 → 定期进度 排列，默认全勾并各带说明', () => {
+  const html = createSettingsFeature().settingsTemplate();
+  const positions = [
+    'start', 'complete', 'empty', 'progress'
+  ].map((name) => html.indexOf(`id="mst-subscribe-type-${name}"`));
+  positions.forEach((position, index) => assert.ok(position >= 0, `第 ${index + 1} 个消息类型复选框应渲染`));
+  assert.deepEqual(
+    [
+      ...positions
+    ].sort((a, b) => a - b),
+    positions,
+    '消息类型复选框顺序应与设置项顺序一致'
+  );
+  // 默认全勾；旧配置缺字段视为开启由 normalizeConfig 保证。
+  positions.forEach((position, index) => {
+    const block = html.slice(position, positions[index + 1] ?? html.length);
+    assert.match(block, /\.checked=true/, '消息类型复选框应默认勾选');
+  });
+  // 每个复选框的悬浮说明是各自口径：说明随标签一起排在对应复选框之前。
+  const titles = [
+    '开始通知说明', '完成通知说明', '空队列说明', '进度通知说明'
+  ].map((text) => html.indexOf(`title=${text}`));
+  titles.forEach((position, index) => {
+    assert.ok(position >= 0 && position < positions[index], `第 ${index + 1} 个复选框应带自己的悬浮说明`);
+    if (index > 0) assert.ok(titles[index - 1] < position, '悬浮说明顺序应与复选框顺序一致');
+  });
+});
+
+test('默认配置：消息类型全开、最小推送间隔 5 秒，已保存的设置不被覆盖', () => {
+  const feature = createSettingsFeature();
+  const defaults = feature.normalizeConfig({});
+  assert.deepEqual(
+    [
+      defaults.notifyStart, defaults.notifyComplete, defaults.notifyEmpty, defaults.notifyProgress
+    ],
+    [
+      true, true, true, true
+    ]
+  );
+  assert.equal(defaults.minIntervalSec, 5);
+  // 弹窗里的最小推送间隔输入框默认值同样为 5。
+  assert.match(feature.settingsTemplate(), /id="mst-subscribe-min-interval"[\s\S]*?\.value=5/);
+  // 旧配置缺消息类型字段视为开启，只有显式 false 才关闭。
+  const legacy = feature.normalizeConfig({notifyComplete: false, minIntervalSec: 30});
+  assert.deepEqual(
+    [
+      legacy.notifyStart, legacy.notifyComplete, legacy.notifyEmpty, legacy.notifyProgress
+    ],
+    [
+      true, false, true, true
+    ]
+  );
+  // 已保存的间隔按原值生效，推送限速器跟随配置（缺省时兜底同为 5 秒）。
+  feature.ensureSender();
+  assert.equal(feature.sender.minIntervalMs, 5000);
+  feature.updateConfig({minIntervalSec: legacy.minIntervalSec});
+  assert.equal(feature.sender.minIntervalMs, 30000);
+});
+
 // ---- 渠道请求构造与截断 ----
 
 test('钉钉请求：加签追加 timestamp/sign 且 sign 做 URL 编码', async () => {
@@ -479,6 +876,8 @@ const NOTIFICATION_TEXTS = {
   subscribeNotificationQueueEmpty: '行动队列已空，请及时补充',
   subscribeNotificationProgressDone: '{0}：已完成 {1} 次',
   subscribeNotificationProgressRemaining: '，剩余 {0} 次',
+  subscribeNotificationRoleId: '角色 {0}',
+  subscribeNotificationRoleUnknown: '未知角色',
   subscribeNotificationServerTest: '测试服'
 };
 
@@ -488,7 +887,25 @@ const ACTION_NAMES = {
   '/actions/woodcutting/collect_logging': '伐木',
   '/actions/mining/collect_ore': '采矿',
   '/actions/fishing/collect_fish': '捕鱼',
-  '/actions/combat/golem_cave': 'Golem Cave'
+  '/actions/combat/golem_cave': 'Golem Cave',
+  // 官方 actionNames 中 /actions/labyrinth/explore 的中文名为「探索迷宫」。
+  '/actions/labyrinth/explore': '探索迷宫',
+  // 炼金与强化是通用行动，物品名来自 primaryItemHash（官方 getActionDisplayName 同口径）。
+  '/actions/alchemy/coinify': '点金',
+  '/actions/enhancing/enhance': '强化'
+};
+
+const ITEM_NAMES = {
+  '/items/sages_mirror': '贤者之镜',
+  '/items/azure_pot': '蔚蓝壶'
+};
+
+// 官方 actionDetailMap 中与显示名相关的部分（function 决定是否拼物品名）。
+const ACTION_FUNCTIONS = {
+  '/actions/alchemy/coinify': {function: '/action_functions/alchemy'},
+  '/actions/enhancing/enhance': {function: '/action_functions/enhancing'},
+  '/actions/combat/golem_cave': {function: '/action_functions/combat'},
+  '/actions/smithing/smith_bar': {function: '/action_functions/production'}
 };
 
 function createTextFeature({isTestServer = true} = {}) {
@@ -514,7 +931,17 @@ function createTextFeature({isTestServer = true} = {}) {
         return text;
       }
     },
-    DataHub: {getLocalizedGameName: (group, hrid) => ACTION_NAMES[hrid] || hrid}
+    DataHub: {
+      getLocalizedGameName: (group, hrid) => (group === 'itemNames' ? ITEM_NAMES[hrid] : ACTION_NAMES[hrid]) || hrid,
+      getClientDataMap: (key) => (key === 'actionDetailMap' ? ACTION_FUNCTIONS : {})
+    },
+    // 页头角色信息块（右上角头像所在块）是否在：会话可信判定的第一条件，测试里可切换。
+    GameUiAdapter: {
+      headerPresent: true,
+      query(name) {
+        return this.headerPresent && name === 'headerCharacterInfo' ? {} : null;
+      }
+    }
   });
   feature.characterName = 'xiao711';
   feature.tracker.setQueue(
@@ -541,8 +968,73 @@ function createTextFeature({isTestServer = true} = {}) {
   return feature;
 }
 
+test('行动名按官方口径组装：炼金带物品名、强化只显示物品名，带强化等级与难度后缀', () => {
+  const feature = createTextFeature({isTestServer: false});
+  const hash = (itemHrid, enhance) => `427012::/item_locations/inventory::${itemHrid}::${enhance}`;
+  // 炼金（点金）：行动名: 物品名。
+  assert.equal(
+    feature.describeTask(
+      makeAction({
+        id: 1,
+        actionHrid: '/actions/alchemy/coinify',
+        hasMaxCount: false,
+        primaryItemHash: hash('/items/sages_mirror', 0)
+      })
+    ),
+    '点金: 贤者之镜（无上限）'
+  );
+  // 强化：官方只显示物品名，强化等级以 " +N" 后缀。
+  assert.equal(
+    feature.describeTask(
+      makeAction({
+        id: 2,
+        actionHrid: '/actions/enhancing/enhance',
+        hasMaxCount: false,
+        primaryItemHash: hash('/items/azure_pot', 5)
+      })
+    ),
+    '蔚蓝壶 +5（无上限）'
+  );
+  // 炼金物品带强化等级与难度后缀时依次追加。
+  assert.equal(
+    feature.describeTask(
+      makeAction({
+        id: 3,
+        actionHrid: '/actions/alchemy/coinify',
+        hasMaxCount: false,
+        difficultyTier: 2,
+        primaryItemHash: hash('/items/sages_mirror', 3)
+      })
+    ),
+    '点金: 贤者之镜 +3 (T2)（无上限）'
+  );
+  // 哈希缺失时退回行动名（不显示原始哈希，也不显示官方的“物品不可用”）。
+  assert.equal(
+    feature.describeTask(makeAction({id: 4, actionHrid: '/actions/alchemy/coinify', hasMaxCount: false})),
+    '点金（无上限）'
+  );
+  // 非炼金/强化的行动不受影响。
+  assert.equal(
+    feature.describeTask(makeAction({id: 5, actionHrid: '/actions/combat/golem_cave', hasMaxCount: false})),
+    'Golem Cave（无上限）'
+  );
+  // 进度通知的行动名同口径。
+  const lines = feature
+    .buildProgressText(
+      makeAction({
+        id: 6,
+        actionHrid: '/actions/alchemy/coinify',
+        hasMaxCount: false,
+        primaryItemHash: hash('/items/sages_mirror', 0)
+      })
+    )
+    .split('\n');
+  assert.equal(lines[1], '⏳ 点金: 贤者之镜：已完成 0 次');
+});
+
 test('通知文案：标题不含角色名、队列最多 3 项、时间行只显示时间、角色名行带测试服标识', () => {
   const feature = createTextFeature();
+  feature.config = {...feature.normalizeConfig({}), enabled: true};
   const event = {
     type: 'completed',
     completedTask: makeAction({id: 0, actionHrid: '/actions/smithing/smith_bar', maxCount: 20, currentCount: 20}),
@@ -550,8 +1042,9 @@ test('通知文案：标题不含角色名、队列最多 3 项、时间行只�
     queue: feature.tracker.getQueuePreview(3),
     isEmpty: false
   };
-  const lines = feature.buildCompletionText(event).split('\n');
+  const lines = feature.buildQueueChangeText(event, {complete: true, start: true}).split('\n');
   assert.equal(lines[0], '【MST】行动队列');
+  // 上个任务结束与下个任务开始在同一次切换里：合并为一条，两行都在。
   assert.equal(lines[1], '✅ 完成：锻造（20/20）');
   assert.equal(lines[2], '▶️ 开始：挤奶（0/50）');
   assert.equal(lines[3], '等待队列：');
@@ -562,6 +1055,243 @@ test('通知文案：标题不含角色名、队列最多 3 项、时间行只�
   assert.equal(lines[lines.length - 1], 'xiao711 · 测试服');
   // 等待队列不含正在执行的队首任务。
   assert.ok(!lines.some((line) => line.includes('1. 挤奶')));
+});
+
+test('通知文案：关闭任务开始通知时，同一事件只剩完成行', () => {
+  const feature = createTextFeature();
+  feature.config = {...feature.normalizeConfig({notifyStart: false}), enabled: true};
+  const lines = feature
+    .buildQueueChangeText(
+      {
+        type: 'completed',
+        completedTask: makeAction({id: 0, actionHrid: '/actions/smithing/smith_bar', maxCount: 20, currentCount: 20}),
+        newTask: feature.tracker.getCurrentTask(),
+        queue: feature.tracker.getQueuePreview(3),
+        isEmpty: false
+      },
+      {complete: true, start: false}
+    )
+    .split('\n');
+  assert.equal(lines[1], '✅ 完成：锻造（20/20）');
+  assert.equal(lines[2], '等待队列：');
+  assert.ok(!lines.some((line) => line.includes('▶️')));
+});
+
+test('通知文案：只有开始时一条消息含开始行与接下来 3 项等待队列', () => {
+  const feature = createTextFeature({isTestServer: false});
+  feature.tracker.setQueue(
+    [
+      // 队首：正在跑的迷宫。
+      makeAction({
+        id: 1,
+        actionHrid: '/actions/labyrinth/explore',
+        hasMaxCount: false,
+        maxCount: 0,
+        currentCount: 11885,
+        ordinal: 0
+      }), makeAction // 已做过一部分的有限任务。
+      ({
+        id: 2,
+        actionHrid: '/actions/woodcutting/collect_logging',
+        maxCount: 100,
+        currentCount: 12,
+        ordinal: 1
+      }), makeAction // 全新任务。
+      ({
+        id: 3,
+        actionHrid: '/actions/mining/collect_ore',
+        maxCount: 50,
+        currentCount: 0,
+        ordinal: 2
+      }), makeAction // 被挤到等待区的个人战斗：轮到时接着打。
+      ({
+        id: 4,
+        actionHrid: '/actions/combat/golem_cave',
+        difficultyTier: 2,
+        hasMaxCount: false,
+        currentCount: 500,
+        ordinal: 3
+      })
+    ],
+    '42'
+  );
+  const lines = feature
+    .buildQueueChangeText({newTask: feature.tracker.getCurrentTask(), isEmpty: false}, {complete: false, start: true})
+    .split('\n');
+  assert.equal(lines[0], '【MST】行动队列');
+  assert.equal(lines[1], '▶️ 开始：探索迷宫（无上限）');
+  assert.equal(lines[2], '等待队列：');
+  assert.equal(lines[3], '1. 伐木（12/100）');
+  assert.equal(lines[4], '2. 采矿（0/50）');
+  assert.equal(lines[5], '3. Golem Cave (T2)（无上限）');
+  assert.match(lines[6], /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/);
+  assert.equal(lines[7], 'xiao711');
+  assert.equal(lines.length, 8);
+  // 队列概览与完成通知同口径：不含队首（正在跑的迷宫），最多 3 项。
+  assert.ok(!lines.some((line) => line.includes('1. 探索迷宫')));
+});
+
+test('队首变化通知：完成与开始合并为一条，开关各自决定这一条里出现哪几行', () => {
+  const feature = createTextFeature();
+  feature.config = {...feature.normalizeConfig({}), enabled: true};
+  feature.onWsState({state: 'open'});
+  const submitted = [];
+  feature.submitText = (text) => submitted.push(text);
+  const completed = {
+    type: 'completed',
+    completedTask: makeAction({id: 1, maxCount: 50, currentCount: 50}),
+    newTask: feature.tracker.getCurrentTask(),
+    queue: feature.tracker.getQueuePreview(3),
+    isEmpty: false
+  };
+  // 默认全开：完成与开始合并成一条消息，两行都在。
+  feature.handleEvent(completed);
+  assert.equal(submitted.length, 1);
+  assert.match(submitted[0], /✅ 完成：/);
+  assert.match(submitted[0], /▶️ 开始：/);
+  // 取消切换（started）：没有完成可报，只发一条带开始行的消息。
+  submitted.length = 0;
+  feature.handleEvent({...completed, type: 'started', completedTask: null});
+  assert.equal(submitted.length, 1);
+  assert.match(submitted[0], /▶️ 开始：/);
+  assert.ok(!submitted[0].includes('✅'));
+  // 关闭任务开始：这一条只剩完成行。
+  submitted.length = 0;
+  feature.updateConfig({notifyStart: false});
+  feature.handleEvent(completed);
+  assert.equal(submitted.length, 1);
+  assert.match(submitted[0], /✅ 完成：/);
+  assert.ok(!submitted[0].includes('▶️'));
+  // 关闭任务完成：这一条只剩开始行。
+  submitted.length = 0;
+  feature.updateConfig({notifyStart: true, notifyComplete: false});
+  feature.handleEvent(completed);
+  assert.equal(submitted.length, 1);
+  assert.match(submitted[0], /▶️ 开始：/);
+  assert.ok(!submitted[0].includes('✅'));
+  // 两个开关都关：不推送（计时仍重置）。
+  submitted.length = 0;
+  feature.updateConfig({notifyComplete: false, notifyStart: false});
+  feature.handleEvent(completed);
+  assert.deepEqual(submitted, []);
+});
+
+test('组队战斗开始：队伍状态进入 battling 时推送任务开始，每次开战各一条', () => {
+  const feature = createTextFeature();
+  feature.config = {...feature.normalizeConfig({}), enabled: true};
+  feature.characterId = '42';
+  feature.characterName = 'xiao711';
+  feature.onWsState({state: 'open'});
+  const submitted = [];
+  feature.submitText = (text) => submitted.push(text);
+  const combat = () =>
+    makeAction({
+      id: 9,
+      actionHrid: '/actions/combat/golem_cave',
+      partyID: 635372,
+      difficultyTier: 2,
+      hasMaxCount: false,
+      maxCount: 0,
+      currentCount: 11885
+    });
+  feature.tracker.setQueue(
+    [
+      combat()
+    ],
+    '42'
+  );
+  const partyInfo = (status, isReady) => ({party: {status}, partySlotMap: {1: {characterID: 42, isReady}}});
+  // 准备就绪但还没开战：不推送（等待期未过）。
+  feature.handlePartyUpdated({partyInfo: partyInfo('recruiting', true)});
+  assert.deepEqual(submitted, []);
+  // 进入 battling：推一条任务开始通知（队首 id 未变，靠队伍状态识别）。
+  feature.handlePartyUpdated({partyInfo: partyInfo('battling', true)});
+  assert.equal(submitted.length, 1);
+  assert.match(submitted[0], /▶️ 开始：Golem Cave \(T2\)（无上限）/);
+  // 状态未变化：不重复推送。
+  feature.handlePartyUpdated({partyInfo: partyInfo('battling', true)});
+  assert.equal(submitted.length, 1);
+  // 战斗结束准备下一轮，再次开战：再推一条。
+  feature.handlePartyUpdated({partyInfo: partyInfo('recruiting', false)});
+  feature.handlePartyUpdated({partyInfo: partyInfo('battling', true)});
+  assert.equal(submitted.length, 2);
+  // 基线建立时正在开战：不推送（重连/刷新不补推）。
+  submitted.length = 0;
+  feature.onInitCharacterData({
+    character: {id: 42},
+    characterActions: [
+      combat()
+    ],
+    partyInfo: partyInfo('battling', true)
+  });
+  assert.deepEqual(submitted, []);
+  // 队首不是组队行动时，队伍开战不推送。
+  feature.tracker.setQueue(
+    [
+      makeAction({id: 5})
+    ],
+    '42'
+  );
+  feature.handlePartyUpdated({partyInfo: partyInfo('recruiting', false)});
+  feature.handlePartyUpdated({partyInfo: partyInfo('battling', false)});
+  assert.deepEqual(submitted, []);
+  // 关闭任务开始通知：组队开战同样不推送。
+  feature.tracker.setQueue(
+    [
+      combat()
+    ],
+    '42'
+  );
+  feature.updateConfig({notifyStart: false});
+  feature.handlePartyUpdated({partyInfo: partyInfo('recruiting', false)});
+  feature.handlePartyUpdated({partyInfo: partyInfo('battling', true)});
+  assert.deepEqual(submitted, []);
+});
+
+test('组队行动的开始交给开战播报：入队不重复推送，拿不到队伍状态时退回队首变化播报', () => {
+  const feature = createTextFeature();
+  feature.config = {...feature.normalizeConfig({}), enabled: true};
+  feature.characterId = '42';
+  feature.onWsState({state: 'open'});
+  const submitted = [];
+  feature.submitText = (text) => submitted.push(text);
+  const partyCombat = () =>
+    makeAction({
+      id: 5,
+      actionHrid: '/actions/combat/golem_cave',
+      partyID: 635372,
+      hasMaxCount: false,
+      currentCount: 0
+    });
+  const event = {type: 'started', completedTask: null, newTask: partyCombat(), queue: [], isEmpty: false};
+  // 从未拿到队伍状态（例如游戏侧不再提供 party.status）：退回队首变化播报，不至于一条都收不到。
+  assert.equal(feature.partyStatusKnown, false);
+  feature.handleEvent(event);
+  assert.equal(submitted.length, 1);
+  assert.match(submitted[0], /▶️ 开始：Golem Cave/);
+  // 拿到过队伍状态后：组队行动由开战播报，队首变化不再重复推送。
+  submitted.length = 0;
+  feature.handlePartyUpdated({partyInfo: {party: {status: 'recruiting'}, partySlotMap: {}}});
+  assert.equal(feature.partyStatusKnown, true);
+  feature.handleEvent(event);
+  assert.deepEqual(submitted, []);
+  // 队伍进入 battling：开战播报补上这一条。
+  feature.tracker.setQueue(
+    [
+      partyCombat()
+    ],
+    '42'
+  );
+  feature.handlePartyUpdated({
+    partyInfo: {party: {status: 'battling'}, partySlotMap: {1: {characterID: 42, isReady: true}}}
+  });
+  assert.equal(submitted.length, 1);
+  assert.match(submitted[0], /▶️ 开始：Golem Cave/);
+  // 个人行动不受影响：队首变化照常播报。
+  submitted.length = 0;
+  feature.handleEvent({type: 'started', completedTask: null, newTask: makeAction({id: 7}), queue: [], isEmpty: false});
+  assert.equal(submitted.length, 1);
+  assert.match(submitted[0], /▶️ 开始：锻造（0\/20）/);
 });
 
 test('通知文案：进度通知与完成通知同构（标题 + 进度 + 等待队列 + 时间 + 角色名行）', () => {
@@ -593,6 +1323,8 @@ test('通知文案：队列为空提醒与完成通知同构', () => {
 test('队列为空提醒：固定每分钟推送一条，有任务期间不推送', () => {
   const feature = createTextFeature();
   feature.config = {...feature.normalizeConfig({}), enabled: true};
+  // 定时推送要求已确认在线（WS open 或 init_character_data）。
+  feature.onWsState({state: 'open'});
   // 队列为空且距上次提醒超过 1 分钟：触发一次并推进计时。
   feature.lastEmptyRemindAt = 0;
   const clock = {now: 1000000};

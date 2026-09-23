@@ -27,6 +27,7 @@ const dungeonProfitFormView = {
       useGuzzlingPouch: feature.state.useGuzzlingPouch,
       guzzlingLevel: feature.state.guzzlingLevel,
       excludeBackEquipmentValue: feature.state.excludeBackEquipmentValue,
+      excludeCowbellValue: feature.state.excludeCowbellValue,
       applyMarketTax: feature.state.applyMarketTax,
       customMode: feature.state.customMode,
       customKeySource: feature.state.customKeySource,
@@ -207,6 +208,19 @@ const dungeonProfitFormView = {
         <label class="mst-dungeon-auto-buff">
           <input
             type="checkbox"
+            .checked=${feature.state.excludeCowbellValue}
+            @change=${(event) => {
+              feature.state.excludeCowbellValue = event.target.checked;
+              feature.render();
+            }}
+          >
+          <span>${i18n.t('excludeCowbellValue')}</span>
+        </label>
+      </div>
+      <div class="mst-dungeon-field mst-dungeon-toggle-field">
+        <label class="mst-dungeon-auto-buff">
+          <input
+            type="checkbox"
             .checked=${feature.state.customMode}
             @change=${(event) => {
               feature.state.customMode = event.target.checked;
@@ -290,7 +304,7 @@ const dungeonProfitBatchView = {
   // 批量模拟选项与单图共享同一份 state（从“使用工匠茶”开始），两个模式的口径保持一致。
   OPTION_CONTROLS: Object.freeze([
     'useArtisanTea', 'useGuzzlingPouch', 'guzzlingLevel', 'applyMarketTax', 'excludeBackEquipmentValue',
-    'customMode', 'customKeySource', 'customBuySide', 'customSellSide'
+    'excludeCowbellValue', 'customMode', 'customKeySource', 'customBuySide', 'customSellSide'
   ]),
   ROW_FIELDS: Object.freeze([
     'difficultyTier', 'partySize', 'clearMinutes', 'dailyConsumablesCost'
@@ -375,6 +389,7 @@ const dungeonProfitBatchView = {
       escapeHtmlText(i18n.t('applyMarketTaxHint', marketTaxPercent, cowbellTaxPercent))
     )}
     ${checkboxField('excludeBackEquipmentValue', 'excludeBackEquipmentValue')}
+    ${checkboxField('excludeCowbellValue', 'excludeCowbellValue')}
     ${checkboxField('customMode', 'customMode')}
     <label class="mst-dungeon-field"${state.customMode ? '' : ' hidden'}>
       <span>${escapeHtmlText(i18n.t('keySource'))}</span>
@@ -582,6 +597,7 @@ const dungeonProfitBatchView = {
       useGuzzlingPouch: state.useGuzzlingPouch,
       guzzlingLevel: state.guzzlingLevel,
       excludeBackEquipmentValue: state.excludeBackEquipmentValue,
+      excludeCowbellValue: state.excludeCowbellValue,
       applyMarketTax: state.applyMarketTax,
       customMode: state.customMode,
       customKeySource: state.customKeySource,
@@ -807,8 +823,8 @@ const dungeonProfitBatchView = {
   // 配置持久化：同一 localStorage key 下分 single/batch 两个小节，只存输入参数，结果每次重新计算。
   SINGLE_CONFIG_FIELDS: Object.freeze([
     'actionHrid', 'difficultyTier', 'partySize', 'clearMinutes', 'dailyConsumablesCost',
-    'useArtisanTea', 'useGuzzlingPouch', 'guzzlingLevel', 'excludeBackEquipmentValue', 'applyMarketTax',
-    'customMode', 'customKeySource', 'customBuySide', 'customSellSide'
+    'useArtisanTea', 'useGuzzlingPouch', 'guzzlingLevel', 'excludeBackEquipmentValue', 'excludeCowbellValue',
+    'applyMarketTax', 'customMode', 'customKeySource', 'customBuySide', 'customSellSide'
   ]),
 
   readConfigStore() {
@@ -1376,6 +1392,7 @@ const dungeonProfitState = {
       useGuzzlingPouch: Boolean(guzzlingPouch),
       guzzlingLevel: String(guzzlingPouch?.enhancementLevel || 0),
       excludeBackEquipmentValue: false,
+      excludeCowbellValue: false,
       applyMarketTax: true,
       customMode: false,
       customKeySource: 'materials',
