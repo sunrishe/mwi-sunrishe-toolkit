@@ -20,6 +20,7 @@ const dungeonProfitCalculationMethods = {
     useGuzzlingPouch = true,
     guzzlingLevel = 0,
     excludeBackEquipmentValue = false,
+    excludeCowbellValue = false,
     applyMarketTax = true,
     customMode = false,
     customKeySource = 'materials',
@@ -60,7 +61,7 @@ const dungeonProfitCalculationMethods = {
     const materialSettings = this.getMaterialSettings(useArtisanTea, useGuzzlingPouch, guzzlingLevel);
     const missingPrices = new Set();
     const tokenValues = this.getTokenValues(applyMarketTax);
-    const outputOptions = {excludeBackEquipmentValue};
+    const outputOptions = {excludeBackEquipmentValue, excludeCowbellValue};
     const normalOutput = this.valueExpectedDrops(
       expectation.normalDrops,
       tokenValues,
@@ -411,6 +412,12 @@ const dungeonProfitPricingMethods = {
     const {DataHub} = this.ctx;
     const item = DataHub.getClientDataMap('itemDetailMap')?.[itemHrid];
     return item?.equipmentDetail?.type === '/equipment_types/back';
+  },
+
+  // 牛铃不可交易，价格由牛铃袋市场价折算（÷10）；牛铃袋本身就是 10 个牛铃，两者同属牛铃收益，
+  // “牛铃不计算收益”勾选后一并按 0 估值，避免只排除牛铃而牛铃袋仍计收益的口径分裂。
+  isCowbellItem(itemHrid) {
+    return itemHrid === '/items/cowbell' || itemHrid === '/items/bag_of_10_cowbells';
   }
 };
 
@@ -653,20 +660,24 @@ const dungeonProfitExpectationMethods = {
   valueExpectedDrops(drops, tokenValues, applyMarketTax, missing, options = {}) {
     let askTotal = 0;
     let bidTotal = 0;
+    // 披风与牛铃按选项排除估值：出现在计算路径中的单价直接按 0 计，也不记为缺价。
+    const isExcludedValue = (itemHrid) =>
+      Boolean(options.excludeBackEquipmentValue && this.isBackEquipment(itemHrid)) ||
+      Boolean(options.excludeCowbellValue && this.isCowbellItem(itemHrid));
     const items = [
       ...drops.entries()
     ].map(
       ([
         itemHrid, quantity
       ]) => {
-        const isExcludedBackEquipment = options.excludeBackEquipmentValue && this.isBackEquipment(itemHrid);
-        const ask = isExcludedBackEquipment
+        const isExcluded = isExcludedValue(itemHrid);
+        const ask = isExcluded
           ? 0
           : Number(tokenValues.ask.get(itemHrid) || this.getDirectPrice(itemHrid, 'ask', applyMarketTax));
-        const bid = isExcludedBackEquipment
+        const bid = isExcluded
           ? 0
           : Number(tokenValues.bid.get(itemHrid) || this.getDirectPrice(itemHrid, 'bid', applyMarketTax));
-        if (!isExcludedBackEquipment && itemHrid !== '/items/coin' && ask <= 0 && bid <= 0) missing.add(itemHrid);
+        if (!isExcluded && itemHrid !== '/items/coin' && ask <= 0 && bid <= 0) missing.add(itemHrid);
         const askValue = quantity * ask;
         const bidValue = quantity * bid;
         askTotal += askValue;
