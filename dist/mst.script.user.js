@@ -3,7 +3,7 @@
 // @name:zh-CN         MWI Sunrishe 工具箱
 // @name:en            MWI Sunrishe Toolkit
 // @namespace          http://tampermonkey.net/
-// @version            2.17.0
+// @version            2.17.1
 // @description        MWI Sunrishe 综合工具箱：提供角色/队伍名片、技能/房屋/战斗升级规划、装备提升计算器、地下城收益、配装同步和市场伴侣增强。
 // @description:zh-CN  MWI Sunrishe 综合工具箱：提供角色/队伍名片、技能/房屋/战斗升级规划、装备提升计算器、地下城收益、配装同步和市场伴侣增强。
 // @description:en     MST toolkit for character/party cards, ability/house/combat upgrade planning, equipment comparison, dungeon profit, loadout sync, and Market Mate enhancements.
@@ -52,7 +52,7 @@
   'use strict';
 
   // 构建脚本会静态替换这个占位符，业务代码不直接读取 Node 环境变量。
-  const PACKAGE_VERSION = "2.17.0";
+  const PACKAGE_VERSION = "2.17.1";
 
   const BUILD_FLAGS = Object.freeze({
     // 目前只有语言切换按钮需要区分 dev/prod：正式包不展示该调试入口。
@@ -1376,9 +1376,7 @@
           const OriginalWebSocket = window.WebSocket;
           if (!OriginalWebSocket) return;
           const emit = (name, detail) => window.dispatchEvent(new CustomEvent(name, {detail}));
-          function IntegratedWebSocket(...args) {
-            const ws = new OriginalWebSocket(...args);
-            const url = String(args[0] || '');
+          const instrument = (ws, url) => {
             const isGameWs = url.includes('milkywayidle.com/ws') || url.includes('milkywayidlecn.com/ws') || url.includes('/ws');
             if (!isGameWs) return ws;
             const originalSend = ws.send;
@@ -1393,13 +1391,15 @@
             ws.addEventListener('open', () => emit('mst:ws:state-raw', {state: 'open', url}));
             ws.addEventListener('close', () => emit('mst:ws:state-raw', {state: 'closed', url}));
             return ws;
-          }
-          IntegratedWebSocket.prototype = OriginalWebSocket.prototype;
-          IntegratedWebSocket.CONNECTING = OriginalWebSocket.CONNECTING;
-          IntegratedWebSocket.OPEN = OriginalWebSocket.OPEN;
-          IntegratedWebSocket.CLOSING = OriginalWebSocket.CLOSING;
-          IntegratedWebSocket.CLOSED = OriginalWebSocket.CLOSED;
-          window.WebSocket = IntegratedWebSocket;
+          };
+          // 只用 Proxy 转发构造，不改实例原型：new.target 原样交给下层构造器，实例原型与"工具箱不存在时"一致，
+          // 后装的 class 包装和打在 window.WebSocket.prototype 上的补丁因此都不受影响。
+          // 其它脚本之间互相造成的原型链断裂不属于本桥的职责，不要在这里叠加任何原型对齐或改写实例原型。
+          window.WebSocket = new Proxy(OriginalWebSocket, {
+            construct(target, args, newTarget) {
+              return instrument(Reflect.construct(target, args, newTarget), String(args[0] || ''));
+            }
+          });
           window.__mwiIntegratedWsInstalled = true;
         })();
       `
