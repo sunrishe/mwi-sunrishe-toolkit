@@ -1230,6 +1230,11 @@ test('公开事件统一使用 mst 模块前缀并保留 WebSocket 收发事件'
   assert.match(webSocketSource, /PageBridgeService\.install/);
   assert.doesNotMatch(webSocketSource, /pageWindow\.Function/);
   assert.doesNotMatch(webSocketSource, /pageWindow\.WebSocket\s*=\s*IntegratedWebSocket/);
+  // 页面桥只转发构造：new.target 原样下传，实例原型与"工具箱不存在时"一致，也不得改动实例或构造器原型。
+  assert.match(webSocketSource, /new Proxy\(OriginalWebSocket/);
+  assert.match(webSocketSource, /Reflect\.construct\(target, args, newTarget\)/);
+  assert.doesNotMatch(webSocketSource, /IntegratedWebSocket\.prototype/);
+  assert.doesNotMatch(webSocketSource, /setPrototypeOf/);
   assert.match(webSocketSource, /mst:ws:message-raw/);
   assert.match(webSocketSource, /mst:ws:send-raw/);
   assert.match(webSocketSource, /mst:ws:state-raw/);
