@@ -14,6 +14,11 @@ export class CombatSimulationService {
   static TARGET_HITPOINTS = 1e12;
   static TARGET_HRID = '/monsters/mst_standard_target';
   static ZONE_HRID = '/actions/combat/mst_standard_target';
+  // 标靶的基础等级与护甲：模拟器按游戏公式重算派生属性，只有这些基础字段真正决定标靶属性。
+  static TARGET_STAMINA_LEVEL = 7990;
+  static TARGET_INTELLIGENCE_LEVEL = 7990;
+  static TARGET_DEFENSE_LEVEL = 310;
+  static TARGET_ARMOR = 62;
 
   constructor(ctx = null) {
     this.ctx = ctx || {};
@@ -180,15 +185,6 @@ const equipmentComparisonCurrentState = {
     return result;
   },
 
-  getCurrentAchievements(service) {
-    const {CharacterDataService} = service.constructor.ctx;
-    const result = {};
-    (CharacterDataService.raw?.characterAchievements || []).forEach((item) => {
-      result[item.achievementHrid] = Boolean(item.isCompleted);
-    });
-    return result;
-  },
-
   getDefaultTriggers(_service, detail) {
     return (detail?.defaultCombatTriggers || []).map((trigger) => ({...trigger}));
   }
@@ -206,7 +202,10 @@ const equipmentComparisonStandardSimulation = {
       enrageTime: 9000000000000000,
       experience: 0,
       combatDetails: {
-        // 装备对比使用不死亡木桩，避免尾刀与重生打乱成对模拟的随机序列。
+        // 装备对比使用不死亡木桩，避免尾刀与重生流程打乱成对模拟的随机序列。
+        // 生命值、护甲和抗性只能通过基础字段生效：模拟器按 10 * (10 + 耐力等级) + combatStats.maxHitpoints
+        // 和 0.2 * 防御等级 + combatStats.armor 等公式重算派生属性，只改 currentHitpoints 这类字段不会生效。
+        // 派生字段与基础字段的计算结果保持一致，便于与 docs/analysis/装备提升模拟基准说明.md 对照。
         currentHitpoints: CombatSimulationService.TARGET_HITPOINTS,
         maxHitpoints: CombatSimulationService.TARGET_HITPOINTS,
         currentManapoints: 80000,
@@ -229,23 +228,34 @@ const equipmentComparisonStandardSimulation = {
         smashEvasionRating: 320,
         rangedEvasionRating: 320,
         magicEvasionRating: 320,
-        totalArmor: 62,
-        totalWaterResistance: 62,
-        totalNatureResistance: 62,
-        totalFireResistance: 62,
+        totalArmor: CombatSimulationService.TARGET_ARMOR,
+        totalWaterResistance: CombatSimulationService.TARGET_ARMOR,
+        totalNatureResistance: CombatSimulationService.TARGET_ARMOR,
+        totalFireResistance: CombatSimulationService.TARGET_ARMOR,
         totalThreat: 100,
         combatLevel: 0,
-        staminaLevel: 7990,
-        intelligenceLevel: 7990,
+        staminaLevel: CombatSimulationService.TARGET_STAMINA_LEVEL,
+        intelligenceLevel: CombatSimulationService.TARGET_INTELLIGENCE_LEVEL,
         attackLevel: 0,
         meleeLevel: 0,
-        defenseLevel: 310,
+        defenseLevel: CombatSimulationService.TARGET_DEFENSE_LEVEL,
         rangedLevel: 0,
         magicLevel: 0,
-        combatStats: {combatStyleHrids: [
+        combatStats: {
+          combatStyleHrids: [
             '/combat_styles/slash'
-          ], damageType:
-            '/damage_types/physical', attackInterval: 9000000000000000, armor: 62, waterResistance: 62, natureResistance: 62, fireResistance: 62}
+          ],
+          damageType: '/damage_types/physical',
+          attackInterval: 9000000000000000,
+          // 防御等级 310 已经通过 0.2 * 310 提供 62 点护甲与抗性，基础值保持 0。
+          armor: 0,
+          waterResistance: 0,
+          natureResistance: 0,
+          fireResistance: 0,
+          // 耐力等级 7990 提供 80000 点生命值，其余用额外生命值补足到目标生命值。
+          maxHitpoints:
+            CombatSimulationService.TARGET_HITPOINTS - 10 * (10 + CombatSimulationService.TARGET_STAMINA_LEVEL)
+        }
       },
       abilities: [],
       dropTable: null,
@@ -306,7 +316,9 @@ const equipmentComparisonSimulationContext = {
         triggers: service.getDefaultTriggers(abilityMap[hrid])
       })),
       houseRooms: service.getCurrentHouseRooms(),
-      achievements: service.getCurrentAchievements(),
+      // 装备对比不传入角色成就：成就只提供固定永久增益，对两套装扮的相对比较没有意义，
+      // 保持空成就也能让模拟输入与结果缓存键完全一致。
+      achievements: {},
       debuffOnLevelGap: 1
     };
   },
@@ -317,18 +329,15 @@ const equipmentComparisonSimulationContext = {
     const itemMap = service.getItemMap();
     const abilityMap = DataHub.getClientDataMap('abilityDetailMap');
     const houseMap = DataHub.getClientDataMap('houseRoomDetailMap');
-    const achievementMap = DataHub.getClientDataMap('achievementDetailMap');
     const itemHrids = new Set();
     const abilityHrids = new Set();
     const houseHrids = new Set();
-    const achievementHrids = new Set();
     players.forEach((player) => {
       Object.values(player.equipment).forEach((item) => itemHrids.add(item.hrid));
       player.food.forEach((item) => itemHrids.add(item.hrid));
       player.drinks.forEach((item) => itemHrids.add(item.hrid));
       player.abilities.forEach((ability) => abilityHrids.add(ability.hrid));
       Object.keys(player.houseRooms).forEach((hrid) => houseHrids.add(hrid));
-      Object.keys(player.achievements).forEach((hrid) => achievementHrids.add(hrid));
     });
     const pickMap = (source, keys) =>
       Object.fromEntries(
@@ -344,14 +353,23 @@ const equipmentComparisonSimulationContext = {
       itemDetailMap: pickMap(itemMap, itemHrids),
       abilityDetailMap: pickMap(abilityMap, abilityHrids),
       houseRoomDetailMap: pickMap(houseMap, houseHrids),
-      achievementDetailMap: pickMap(achievementMap, achievementHrids),
-      achievementTierDetailMap: DataHub.getClientDataMap('achievementTierDetailMap'),
+      // 装备对比不计入角色成就增益，成就表整体传空；只清空完成度表而保留 tier 表，会让模拟器把每个 tier 都判为已达成。
+      achievementDetailMap: {},
+      achievementTierDetailMap: {},
       combatTriggerDependencyDetailMap: DataHub.getClientDataMap('combatTriggerDependencyDetailMap'),
       combatStyleDetailMap: DataHub.getClientDataMap('combatStyleDetailMap'),
       enhancementLevelTotalBonusMultiplierTable:
         DataHub.getClientData()?.enhancementLevelTotalBonusMultiplierTable || [],
       combatMonsterDetailMap: {[CombatSimulationService.TARGET_HRID]: service.getStandardTarget()},
       actionDetailMap: {[CombatSimulationService.ZONE_HRID]: service.getStandardZone()}
+    };
+  },
+
+  // 渲染只需要选择记录来算价格差，构造完整模拟上下文比较昂贵，因此单独暴露轻量版本。
+  buildSelectionContext(_service, baselineItem, comparisonItem, comparisonEnhancementLevel) {
+    return {
+      baselineSelection: {hrid: baselineItem.itemHrid, enhancementLevel: baselineItem.enhancementLevel},
+      comparisonSelection: {hrid: comparisonItem.hrid, enhancementLevel: comparisonEnhancementLevel}
     };
   },
 
@@ -370,10 +388,9 @@ const equipmentComparisonSimulationContext = {
     const baselinePlayer = service.buildSimulationPlayer(baselineEquipment, preset);
     const comparisonPlayer = service.buildSimulationPlayer(comparisonEquipment, preset);
     return {
+      ...service.buildSelectionContext(baselineItem, comparisonItem, comparisonEnhancementLevel),
       baselineEquipment,
       comparisonEquipment,
-      baselineSelection: {hrid: baselineItem.itemHrid, enhancementLevel: baselineItem.enhancementLevel},
-      comparisonSelection: {hrid: comparisonItem.hrid, enhancementLevel: comparisonEnhancementLevel},
       baselinePlayer,
       comparisonPlayer,
       mstData: service.buildSimulationData([

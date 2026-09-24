@@ -141,6 +141,7 @@ const equipmentComparisonSelectionController = {
     feature.presetKey = value;
     feature.resetSelectionForPreset();
     feature.render();
+    feature.requestSimulation();
   },
 
   handleOwnedChange(feature, value) {
@@ -231,7 +232,7 @@ const equipmentComparisonDerivedView = {
         dpsText = feature.formatSignedPercent(result.dps.value * 100, 3);
         break;
       default:
-        dpsText = i18n.t('dpsDataUnavailable');
+        dpsText = i18n.t('dpsPending');
     }
 
     let dpsTone = 'neutral';
@@ -497,9 +498,9 @@ const equipmentComparisonView = {
     const hasComparison = Boolean(baselineItem && comparisonItem);
     const rows = hasComparison ? feature.getComparisonRows(baselineItem, comparisonItem) : [];
     // DPS 结果来自 Worker 模拟；属性差异可同步计算，二者在同一视图合并展示。
+    // 渲染只需要选择记录来算价格差，完整模拟上下文在请求模拟时再构造。
     const context = hasComparison
-      ? feature.comparisonService.buildComparisonContext(
-          feature.getPreset(),
+      ? feature.comparisonService.buildSelectionContext(
           baselineItem,
           comparisonItem,
           feature.comparisonEnhancementLevel
@@ -820,6 +821,8 @@ const equipmentComparisonFeatureLifecycle = {
       didOpen: (popup) => {
         this.root = popup.querySelector('#mst-equipment-compare-root');
         this.render();
+        // root 就绪后再请求模拟：结果回调会校验 root，过早请求会被丢弃。
+        this.requestSimulation();
         this.mountHelpPopover(popup);
         this.marketService
           ?.load()

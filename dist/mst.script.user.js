@@ -3,7 +3,7 @@
 // @name:zh-CN         MWI Sunrishe 工具箱
 // @name:en            MWI Sunrishe Toolkit
 // @namespace          http://tampermonkey.net/
-// @version            2.17.1
+// @version            2.17.2
 // @description        MWI Sunrishe 综合工具箱：提供角色/队伍名片、技能/房屋/战斗升级规划、装备提升计算器、地下城收益、配装同步和市场伴侣增强。
 // @description:zh-CN  MWI Sunrishe 综合工具箱：提供角色/队伍名片、技能/房屋/战斗升级规划、装备提升计算器、地下城收益、配装同步和市场伴侣增强。
 // @description:en     MST toolkit for character/party cards, ability/house/combat upgrade planning, equipment comparison, dungeon profit, loadout sync, and Market Mate enhancements.
@@ -52,7 +52,7 @@
   'use strict';
 
   // 构建脚本会静态替换这个占位符，业务代码不直接读取 Node 环境变量。
-  const PACKAGE_VERSION = "2.17.1";
+  const PACKAGE_VERSION = "2.17.2";
 
   const BUILD_FLAGS = Object.freeze({
     // 目前只有语言切换按钮需要区分 dev/prod：正式包不展示该调试入口。
@@ -2319,7 +2319,7 @@
       en: 'Calculated only when DPS increases and the price difference is positive'
     },
     simulationLoading: {zh: '正在模拟…', en: 'Simulating…'},
-    dpsDataUnavailable: {zh: '当前战斗数据不可用', en: 'Current combat data is unavailable'},
+    dpsPending: {zh: '等待计算', en: 'Pending calculation'},
     dpsCalculationError: {zh: '计算失败', en: 'Calculation failed'},
     combatSimulationTimeout: {zh: '战斗模拟超时', en: 'Combat simulation timed out'},
     combatSimulationFailed: {zh: '战斗模拟失败', en: 'Combat simulation failed'},
@@ -2327,8 +2327,8 @@
     noComparableAttributes: {zh: '所选装备没有可对比属性', en: 'The selected equipment has no comparable stats'},
     equipmentComparisonHelpTitle: {zh: '查看装备提升说明', en: 'View equipment comparison instructions'},
     equipmentComparisonHelp: {
-      zh: '使用：先选择职业方案，再选择基准装备和同一穿戴位置的对比装备；可比较同名装备的不同强化等级。基准装备优先使用当前已穿戴的适用装备，其他默认按方案配置。属性差异、DPS、装备价格差和每 10M 金币 DPS 提升会自动计算。\n\n方案：除所选装备外，使用对应职业的 +10 单刷战斗套装、+5 贤者三件套、暴饮之囊、固定食物和职业咖啡；技能等级固定为 4/6/6/6/6。战斗等级、房屋等级和成就使用当前角色数据。背部、护符和 Trinket 不参与 DPS，对比列表不展示护符、Trinket 和生活工具。\n\n原理：先构建两套除所选装备外完全一致的完整配装，再使用相同固定随机种子分别模拟。DPS 为总伤害除以模拟时间；DPS 提升为对比 DPS 相对基准 DPS 的变化比例，用来尽量隔离所选装备的影响。\n\n计算：每套配装使用 5 个固定随机种子，对不会死亡、不会攻击的标准目标模拟 3 小时。装备价格差只计算被比较的两件装备；只有 DPS 提升、价格差为正且市场价格完整时，才计算每 10M 金币 DPS 提升。\n\n限制：只能比较同一穿戴位置且符合当前职业战斗风格的装备。结果是标准环境下的相对比较，不包含具体战区怪物、敌方攻击、战斗时长和队伍配置造成的影响。',
-      en: "Usage: Choose a combat preset, then select baseline and comparison equipment for the same slot. The same item can be compared at different enhancement levels. Baseline equipment prefers currently equipped compatible items; other slots use the preset. Stat differences, DPS, price difference, and DPS gain per 10M coins are calculated automatically.\n\nBuild: Except for the selected item, the simulation uses the preset's +10 solo combat set, +5 Philosopher accessories, Guzzling Pouch, fixed food, and preset combat coffees; abilities are fixed at 4/6/6/6/6. Current combat levels, house rooms, and achievements come from the character. Back, charms, and trinkets do not affect DPS here, and charms, trinkets, and skilling tools are not shown in the comparison list.\n\nPrinciple: Two complete builds are created with every setting identical except the selected item, then simulated with the same fixed random seeds. DPS is total damage divided by simulated time, and DPS gain is the comparison DPS relative to baseline DPS, isolating the selected item as much as possible.\n\nCalculation: Each build is simulated locally for 3 hours against an immortal standard target that does not attack, using 5 fixed random seeds. Price difference compares only the two selected items. DPS gain per 10M coins is calculated only when DPS increases, the price difference is positive, and both market prices are available.\n\nLimits: Equipment must use the same slot and be compatible with the selected combat style. Results are relative comparisons in a standard environment and do not include specific enemies, incoming attacks, encounter duration, or party composition."
+      zh: '使用：先选择职业方案，再选择基准装备和同一穿戴位置的对比装备；可比较同名装备的不同强化等级。基准装备优先使用当前已穿戴的适用装备，其他默认按方案配置。属性差异、DPS、装备价格差和每 10M 金币 DPS 提升会自动计算。\n\n方案：除所选装备外，使用对应职业的 +10 单刷战斗套装、+5 贤者三件套、暴饮之囊、固定食物和职业咖啡；技能等级固定为 4/6/6/6/6。战斗等级和房屋等级使用当前角色数据，不计入角色成就增益。背部、护符和 Trinket 不参与 DPS，对比列表不展示护符、Trinket 和生活工具。\n\n原理：先构建两套除所选装备外完全一致的完整配装，再使用相同固定随机种子分别模拟。DPS 为总伤害除以模拟时间；DPS 提升为对比 DPS 相对基准 DPS 的变化比例，用来尽量隔离所选装备的影响。\n\n计算：每套配装使用 5 个固定随机种子，对不会死亡、不会攻击的标准目标模拟 3 小时。装备价格差只计算被比较的两件装备；只有 DPS 提升、价格差为正且市场价格完整时，才计算每 10M 金币 DPS 提升。\n\n限制：只能比较同一穿戴位置且符合当前职业战斗风格的装备。结果是标准环境下的相对比较，不包含具体战区怪物、敌方攻击、战斗时长和队伍配置造成的影响。',
+      en: "Usage: Choose a combat preset, then select baseline and comparison equipment for the same slot. The same item can be compared at different enhancement levels. Baseline equipment prefers currently equipped compatible items; other slots use the preset. Stat differences, DPS, price difference, and DPS gain per 10M coins are calculated automatically.\n\nBuild: Except for the selected item, the simulation uses the preset's +10 solo combat set, +5 Philosopher accessories, Guzzling Pouch, fixed food, and preset combat coffees; abilities are fixed at 4/6/6/6/6. Current combat levels and house rooms come from the character; character achievement buffs are not counted. Back, charms, and trinkets do not affect DPS here, and charms, trinkets, and skilling tools are not shown in the comparison list.\n\nPrinciple: Two complete builds are created with every setting identical except the selected item, then simulated with the same fixed random seeds. DPS is total damage divided by simulated time, and DPS gain is the comparison DPS relative to baseline DPS, isolating the selected item as much as possible.\n\nCalculation: Each build is simulated locally for 3 hours against an immortal standard target that does not attack, using 5 fixed random seeds. Price difference compares only the two selected items. DPS gain per 10M coins is calculated only when DPS increases, the price difference is positive, and both market prices are available.\n\nLimits: Equipment must use the same slot and be compatible with the selected combat style. Results are relative comparisons in a standard environment and do not include specific enemies, incoming attacks, encounter duration, or party composition."
     }
   };
 
@@ -20866,6 +20866,11 @@
     static TARGET_HITPOINTS = 1e12;
     static TARGET_HRID = '/monsters/mst_standard_target';
     static ZONE_HRID = '/actions/combat/mst_standard_target';
+    // 标靶的基础等级与护甲：模拟器按游戏公式重算派生属性，只有这些基础字段真正决定标靶属性。
+    static TARGET_STAMINA_LEVEL = 7990;
+    static TARGET_INTELLIGENCE_LEVEL = 7990;
+    static TARGET_DEFENSE_LEVEL = 310;
+    static TARGET_ARMOR = 62;
 
     constructor(ctx = null) {
       this.ctx = ctx || {};
@@ -21032,15 +21037,6 @@
       return result;
     },
 
-    getCurrentAchievements(service) {
-      const {CharacterDataService} = service.constructor.ctx;
-      const result = {};
-      (CharacterDataService.raw?.characterAchievements || []).forEach((item) => {
-        result[item.achievementHrid] = Boolean(item.isCompleted);
-      });
-      return result;
-    },
-
     getDefaultTriggers(_service, detail) {
       return (detail?.defaultCombatTriggers || []).map((trigger) => ({...trigger}));
     }
@@ -21058,7 +21054,10 @@
         enrageTime: 9000000000000000,
         experience: 0,
         combatDetails: {
-          // 装备对比使用不死亡木桩，避免尾刀与重生打乱成对模拟的随机序列。
+          // 装备对比使用不死亡木桩，避免尾刀与重生流程打乱成对模拟的随机序列。
+          // 生命值、护甲和抗性只能通过基础字段生效：模拟器按 10 * (10 + 耐力等级) + combatStats.maxHitpoints
+          // 和 0.2 * 防御等级 + combatStats.armor 等公式重算派生属性，只改 currentHitpoints 这类字段不会生效。
+          // 派生字段与基础字段的计算结果保持一致，便于与 docs/analysis/装备提升模拟基准说明.md 对照。
           currentHitpoints: CombatSimulationService.TARGET_HITPOINTS,
           maxHitpoints: CombatSimulationService.TARGET_HITPOINTS,
           currentManapoints: 80000,
@@ -21081,23 +21080,34 @@
           smashEvasionRating: 320,
           rangedEvasionRating: 320,
           magicEvasionRating: 320,
-          totalArmor: 62,
-          totalWaterResistance: 62,
-          totalNatureResistance: 62,
-          totalFireResistance: 62,
+          totalArmor: CombatSimulationService.TARGET_ARMOR,
+          totalWaterResistance: CombatSimulationService.TARGET_ARMOR,
+          totalNatureResistance: CombatSimulationService.TARGET_ARMOR,
+          totalFireResistance: CombatSimulationService.TARGET_ARMOR,
           totalThreat: 100,
           combatLevel: 0,
-          staminaLevel: 7990,
-          intelligenceLevel: 7990,
+          staminaLevel: CombatSimulationService.TARGET_STAMINA_LEVEL,
+          intelligenceLevel: CombatSimulationService.TARGET_INTELLIGENCE_LEVEL,
           attackLevel: 0,
           meleeLevel: 0,
-          defenseLevel: 310,
+          defenseLevel: CombatSimulationService.TARGET_DEFENSE_LEVEL,
           rangedLevel: 0,
           magicLevel: 0,
-          combatStats: {combatStyleHrids: [
+          combatStats: {
+            combatStyleHrids: [
               '/combat_styles/slash'
-            ], damageType:
-              '/damage_types/physical', attackInterval: 9000000000000000, armor: 62, waterResistance: 62, natureResistance: 62, fireResistance: 62}
+            ],
+            damageType: '/damage_types/physical',
+            attackInterval: 9000000000000000,
+            // 防御等级 310 已经通过 0.2 * 310 提供 62 点护甲与抗性，基础值保持 0。
+            armor: 0,
+            waterResistance: 0,
+            natureResistance: 0,
+            fireResistance: 0,
+            // 耐力等级 7990 提供 80000 点生命值，其余用额外生命值补足到目标生命值。
+            maxHitpoints:
+              CombatSimulationService.TARGET_HITPOINTS - 10 * (10 + CombatSimulationService.TARGET_STAMINA_LEVEL)
+          }
         },
         abilities: [],
         dropTable: null,
@@ -21158,7 +21168,9 @@
           triggers: service.getDefaultTriggers(abilityMap[hrid])
         })),
         houseRooms: service.getCurrentHouseRooms(),
-        achievements: service.getCurrentAchievements(),
+        // 装备对比不传入角色成就：成就只提供固定永久增益，对两套装扮的相对比较没有意义，
+        // 保持空成就也能让模拟输入与结果缓存键完全一致。
+        achievements: {},
         debuffOnLevelGap: 1
       };
     },
@@ -21169,18 +21181,15 @@
       const itemMap = service.getItemMap();
       const abilityMap = DataHub.getClientDataMap('abilityDetailMap');
       const houseMap = DataHub.getClientDataMap('houseRoomDetailMap');
-      const achievementMap = DataHub.getClientDataMap('achievementDetailMap');
       const itemHrids = new Set();
       const abilityHrids = new Set();
       const houseHrids = new Set();
-      const achievementHrids = new Set();
       players.forEach((player) => {
         Object.values(player.equipment).forEach((item) => itemHrids.add(item.hrid));
         player.food.forEach((item) => itemHrids.add(item.hrid));
         player.drinks.forEach((item) => itemHrids.add(item.hrid));
         player.abilities.forEach((ability) => abilityHrids.add(ability.hrid));
         Object.keys(player.houseRooms).forEach((hrid) => houseHrids.add(hrid));
-        Object.keys(player.achievements).forEach((hrid) => achievementHrids.add(hrid));
       });
       const pickMap = (source, keys) =>
         Object.fromEntries(
@@ -21196,14 +21205,23 @@
         itemDetailMap: pickMap(itemMap, itemHrids),
         abilityDetailMap: pickMap(abilityMap, abilityHrids),
         houseRoomDetailMap: pickMap(houseMap, houseHrids),
-        achievementDetailMap: pickMap(achievementMap, achievementHrids),
-        achievementTierDetailMap: DataHub.getClientDataMap('achievementTierDetailMap'),
+        // 装备对比不计入角色成就增益，成就表整体传空；只清空完成度表而保留 tier 表，会让模拟器把每个 tier 都判为已达成。
+        achievementDetailMap: {},
+        achievementTierDetailMap: {},
         combatTriggerDependencyDetailMap: DataHub.getClientDataMap('combatTriggerDependencyDetailMap'),
         combatStyleDetailMap: DataHub.getClientDataMap('combatStyleDetailMap'),
         enhancementLevelTotalBonusMultiplierTable:
           DataHub.getClientData()?.enhancementLevelTotalBonusMultiplierTable || [],
         combatMonsterDetailMap: {[CombatSimulationService.TARGET_HRID]: service.getStandardTarget()},
         actionDetailMap: {[CombatSimulationService.ZONE_HRID]: service.getStandardZone()}
+      };
+    },
+
+    // 渲染只需要选择记录来算价格差，构造完整模拟上下文比较昂贵，因此单独暴露轻量版本。
+    buildSelectionContext(_service, baselineItem, comparisonItem, comparisonEnhancementLevel) {
+      return {
+        baselineSelection: {hrid: baselineItem.itemHrid, enhancementLevel: baselineItem.enhancementLevel},
+        comparisonSelection: {hrid: comparisonItem.hrid, enhancementLevel: comparisonEnhancementLevel}
       };
     },
 
@@ -21222,10 +21240,9 @@
       const baselinePlayer = service.buildSimulationPlayer(baselineEquipment, preset);
       const comparisonPlayer = service.buildSimulationPlayer(comparisonEquipment, preset);
       return {
+        ...service.buildSelectionContext(baselineItem, comparisonItem, comparisonEnhancementLevel),
         baselineEquipment,
         comparisonEquipment,
-        baselineSelection: {hrid: baselineItem.itemHrid, enhancementLevel: baselineItem.enhancementLevel},
-        comparisonSelection: {hrid: comparisonItem.hrid, enhancementLevel: comparisonEnhancementLevel},
         baselinePlayer,
         comparisonPlayer,
         mstData: service.buildSimulationData([
@@ -21365,8 +21382,30 @@
 
   // equipment-comparison-inventory-catalog
   const equipmentComparisonInventoryCatalog = {
-    getCharacterItemSummary(service, itemHrid) {
+    getCharacterItemIndex(service) {
       const {CharacterDataService} = service.constructor.ctx;
+      const items = CharacterDataService.getCharacterItems();
+      // 渲染会反复查询角色物品，按 HRID 建索引并按内容签名复用，避免每个候选装备都重扫一遍背包。
+      let signature = '';
+      const byHrid = new Map();
+      items.forEach((item) => {
+        if (!item?.itemHrid) return;
+        signature += `${item.itemHrid}:${Number(item.enhancementLevel || 0)}:${item.itemLocationHrid}:${Number(item.count || 0)}|`;
+        const list = byHrid.get(item.itemHrid);
+        if (list) list.push(item);
+        else
+          byHrid.set(item.itemHrid, [
+            item
+          ]);
+      });
+      if (service.characterItemIndex?.signature === signature) return service.characterItemIndex;
+      service.characterItemIndex = {signature, byHrid};
+      return service.characterItemIndex;
+    },
+
+    getCharacterItemSummary(service, itemHrid, itemIndex = null) {
+      // index 由调用方传入时跳过签名校验，避免在批量遍历候选装备时重复计算。
+      const index = itemIndex || service.getCharacterItemIndex();
       const itemDetail = service.getItemMap()?.[itemHrid];
       const logicalSlot = service.getLogicalSlot(itemDetail);
       // 已穿戴装备优先，其次使用背包中最高强化等级作为默认基准。
@@ -21378,9 +21417,8 @@
           : new Set([
               service.getWearableLocationHrid(itemDetail)
             ]);
-      const items = CharacterDataService.getCharacterItems().filter(
+      const items = (index.byHrid.get(itemHrid) || []).filter(
         (item) =>
-          item?.itemHrid === itemHrid &&
           Number(item?.count || 0) > 0 &&
           (item.itemLocationHrid === '/item_locations/inventory' || equippedLocations.has(item.itemLocationHrid))
       );
@@ -21396,21 +21434,26 @@
       };
     },
 
-    getRecommendedEnhancementLevel(service, itemDetail, preset) {
-      const summary = service.getCharacterItemSummary(itemDetail.hrid);
+    getRecommendedEnhancementLevel(service, itemDetail, preset, itemIndex = null) {
+      const summary = service.getCharacterItemSummary(itemDetail.hrid, itemIndex);
       if (summary.enhancementLevel >= 0) return summary.enhancementLevel;
       const presetEntry = service.getPresetEquipmentEntries(preset).find((item) => item.itemHrid === itemDetail.hrid);
       return Math.min(presetEntry?.enhancementLevel ?? 10, service.getMaxEnhancementLevel(itemDetail));
     },
 
     getBaselineEquipment(service, preset) {
-      return Object.values(service.getItemMap())
+      const itemMap = service.getItemMap();
+      const index = service.getCharacterItemIndex();
+      const cached = service.baselineEquipmentCache;
+      // 候选列表只依赖方案、装备表和角色物品，命中缓存时渲染不再重新扫描全表。
+      if (cached && cached.itemMap === itemMap && cached.preset === preset && cached.index === index) return cached.value;
+      const value = Object.values(itemMap)
         .filter((detail) => service.isEquipmentCompatibleWithPreset(detail, preset))
         .map((detail) => {
-          const summary = service.getCharacterItemSummary(detail.hrid);
+          const summary = service.getCharacterItemSummary(detail.hrid, index);
           return {
             itemHrid: detail.hrid,
-            enhancementLevel: service.getRecommendedEnhancementLevel(detail, preset),
+            enhancementLevel: service.getRecommendedEnhancementLevel(detail, preset, index),
             count: summary.count,
             isEquipped: summary.isEquipped,
             detail
@@ -21424,17 +21467,26 @@
             Number(left.detail?.sortIndex || 9999) - Number(right.detail?.sortIndex || 9999)
           );
         });
+      service.baselineEquipmentCache = {itemMap, preset, index, value};
+      return value;
     },
 
     getCompatibleEquipment(service, baselineItem, preset) {
       if (!baselineItem) return [];
       const logicalSlot = service.getLogicalSlot(baselineItem.detail);
-      return Object.values(service.getItemMap())
+      const itemMap = service.getItemMap();
+      const cached = service.compatibleEquipmentCache;
+      if (cached && cached.itemMap === itemMap && cached.preset === preset && cached.logicalSlot === logicalSlot) {
+        return cached.value;
+      }
+      const value = Object.values(itemMap)
         .filter(
           (detail) =>
             service.getLogicalSlot(detail) === logicalSlot && service.isEquipmentCompatibleWithPreset(detail, preset)
         )
         .sort((left, right) => Number(left.sortIndex || 9999) - Number(right.sortIndex || 9999));
+      service.compatibleEquipmentCache = {itemMap, preset, logicalSlot, value};
+      return value;
     },
 
     detectPresetKey(service) {
@@ -21700,10 +21752,6 @@
       return this.constructor.simulationBuilder.getCurrentHouseRooms(this);
     }
 
-    getCurrentAchievements() {
-      return this.constructor.simulationBuilder.getCurrentAchievements(this);
-    }
-
     getDefaultTriggers(detail) {
       return this.constructor.simulationBuilder.getDefaultTriggers(this, detail);
     }
@@ -21728,6 +21776,15 @@
       return this.constructor.simulationBuilder.buildComparisonContext(
         this,
         preset,
+        baselineItem,
+        comparisonItem,
+        comparisonEnhancementLevel
+      );
+    }
+
+    buildSelectionContext(baselineItem, comparisonItem, comparisonEnhancementLevel) {
+      return this.constructor.simulationBuilder.buildSelectionContext(
+        this,
         baselineItem,
         comparisonItem,
         comparisonEnhancementLevel
@@ -21772,12 +21829,16 @@
       return this.constructor.catalog.isEquipmentCompatibleWithPreset(this, itemDetail, preset);
     }
 
-    getCharacterItemSummary(itemHrid) {
-      return this.constructor.catalog.getCharacterItemSummary(this, itemHrid);
+    getCharacterItemIndex() {
+      return this.constructor.catalog.getCharacterItemIndex(this);
     }
 
-    getRecommendedEnhancementLevel(itemDetail, preset) {
-      return this.constructor.catalog.getRecommendedEnhancementLevel(this, itemDetail, preset);
+    getCharacterItemSummary(itemHrid, itemIndex = null) {
+      return this.constructor.catalog.getCharacterItemSummary(this, itemHrid, itemIndex);
+    }
+
+    getRecommendedEnhancementLevel(itemDetail, preset, itemIndex = null) {
+      return this.constructor.catalog.getRecommendedEnhancementLevel(this, itemDetail, preset, itemIndex);
     }
 
     getBaselineEquipment(preset) {
@@ -21832,7 +21893,21 @@
       return Boolean(this.simulationService);
     }
 
+    isIdenticalSelection(context) {
+      const baseline = context?.baselineSelection;
+      const comparison = context?.comparisonSelection;
+      return (
+        Boolean(baseline?.hrid && comparison?.hrid) &&
+        baseline.hrid === comparison.hrid &&
+        Number(baseline.enhancementLevel || 0) === Number(comparison.enhancementLevel || 0)
+      );
+    }
+
     compare(context) {
+      // 基准与对比是同一件装备时差异必然是 0，直接给结果，不启动模拟。
+      if (this.isIdenticalSelection(context)) {
+        return Promise.resolve({baselineDps: null, comparisonDps: null, change: 0});
+      }
       return this.simulationService.compare(context.baselinePlayer, context.comparisonPlayer, context.mstData);
     }
 
@@ -22252,6 +22327,7 @@
       feature.presetKey = value;
       feature.resetSelectionForPreset();
       feature.render();
+      feature.requestSimulation();
     },
 
     handleOwnedChange(feature, value) {
@@ -22342,7 +22418,7 @@
           dpsText = feature.formatSignedPercent(result.dps.value * 100, 3);
           break;
         default:
-          dpsText = i18n.t('dpsDataUnavailable');
+          dpsText = i18n.t('dpsPending');
       }
 
       let dpsTone = 'neutral';
@@ -22608,9 +22684,9 @@
       const hasComparison = Boolean(baselineItem && comparisonItem);
       const rows = hasComparison ? feature.getComparisonRows(baselineItem, comparisonItem) : [];
       // DPS 结果来自 Worker 模拟；属性差异可同步计算，二者在同一视图合并展示。
+      // 渲染只需要选择记录来算价格差，完整模拟上下文在请求模拟时再构造。
       const context = hasComparison
-        ? feature.comparisonService.buildComparisonContext(
-            feature.getPreset(),
+        ? feature.comparisonService.buildSelectionContext(
             baselineItem,
             comparisonItem,
             feature.comparisonEnhancementLevel
@@ -22931,6 +23007,8 @@
         didOpen: (popup) => {
           this.root = popup.querySelector('#mst-equipment-compare-root');
           this.render();
+          // root 就绪后再请求模拟：结果回调会校验 root，过早请求会被丢弃。
+          this.requestSimulation();
           this.mountHelpPopover(popup);
           this.marketService
             ?.load()

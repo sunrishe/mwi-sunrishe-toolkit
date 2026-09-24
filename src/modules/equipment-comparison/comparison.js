@@ -83,8 +83,30 @@ const equipmentComparisonSlotCatalog = {
 
 // equipment-comparison-inventory-catalog
 const equipmentComparisonInventoryCatalog = {
-  getCharacterItemSummary(service, itemHrid) {
+  getCharacterItemIndex(service) {
     const {CharacterDataService} = service.constructor.ctx;
+    const items = CharacterDataService.getCharacterItems();
+    // 渲染会反复查询角色物品，按 HRID 建索引并按内容签名复用，避免每个候选装备都重扫一遍背包。
+    let signature = '';
+    const byHrid = new Map();
+    items.forEach((item) => {
+      if (!item?.itemHrid) return;
+      signature += `${item.itemHrid}:${Number(item.enhancementLevel || 0)}:${item.itemLocationHrid}:${Number(item.count || 0)}|`;
+      const list = byHrid.get(item.itemHrid);
+      if (list) list.push(item);
+      else
+        byHrid.set(item.itemHrid, [
+          item
+        ]);
+    });
+    if (service.characterItemIndex?.signature === signature) return service.characterItemIndex;
+    service.characterItemIndex = {signature, byHrid};
+    return service.characterItemIndex;
+  },
+
+  getCharacterItemSummary(service, itemHrid, itemIndex = null) {
+    // index 由调用方传入时跳过签名校验，避免在批量遍历候选装备时重复计算。
+    const index = itemIndex || service.getCharacterItemIndex();
     const itemDetail = service.getItemMap()?.[itemHrid];
     const logicalSlot = service.getLogicalSlot(itemDetail);
     // 已穿戴装备优先，其次使用背包中最高强化等级作为默认基准。
@@ -96,9 +118,8 @@ const equipmentComparisonInventoryCatalog = {
         : new Set([
             service.getWearableLocationHrid(itemDetail)
           ]);
-    const items = CharacterDataService.getCharacterItems().filter(
+    const items = (index.byHrid.get(itemHrid) || []).filter(
       (item) =>
-        item?.itemHrid === itemHrid &&
         Number(item?.count || 0) > 0 &&
         (item.itemLocationHrid === '/item_locations/inventory' || equippedLocations.has(item.itemLocationHrid))
     );
@@ -114,21 +135,26 @@ const equipmentComparisonInventoryCatalog = {
     };
   },
 
-  getRecommendedEnhancementLevel(service, itemDetail, preset) {
-    const summary = service.getCharacterItemSummary(itemDetail.hrid);
+  getRecommendedEnhancementLevel(service, itemDetail, preset, itemIndex = null) {
+    const summary = service.getCharacterItemSummary(itemDetail.hrid, itemIndex);
     if (summary.enhancementLevel >= 0) return summary.enhancementLevel;
     const presetEntry = service.getPresetEquipmentEntries(preset).find((item) => item.itemHrid === itemDetail.hrid);
     return Math.min(presetEntry?.enhancementLevel ?? 10, service.getMaxEnhancementLevel(itemDetail));
   },
 
   getBaselineEquipment(service, preset) {
-    return Object.values(service.getItemMap())
+    const itemMap = service.getItemMap();
+    const index = service.getCharacterItemIndex();
+    const cached = service.baselineEquipmentCache;
+    // 候选列表只依赖方案、装备表和角色物品，命中缓存时渲染不再重新扫描全表。
+    if (cached && cached.itemMap === itemMap && cached.preset === preset && cached.index === index) return cached.value;
+    const value = Object.values(itemMap)
       .filter((detail) => service.isEquipmentCompatibleWithPreset(detail, preset))
       .map((detail) => {
-        const summary = service.getCharacterItemSummary(detail.hrid);
+        const summary = service.getCharacterItemSummary(detail.hrid, index);
         return {
           itemHrid: detail.hrid,
-          enhancementLevel: service.getRecommendedEnhancementLevel(detail, preset),
+          enhancementLevel: service.getRecommendedEnhancementLevel(detail, preset, index),
           count: summary.count,
           isEquipped: summary.isEquipped,
           detail
@@ -142,17 +168,26 @@ const equipmentComparisonInventoryCatalog = {
           Number(left.detail?.sortIndex || 9999) - Number(right.detail?.sortIndex || 9999)
         );
       });
+    service.baselineEquipmentCache = {itemMap, preset, index, value};
+    return value;
   },
 
   getCompatibleEquipment(service, baselineItem, preset) {
     if (!baselineItem) return [];
     const logicalSlot = service.getLogicalSlot(baselineItem.detail);
-    return Object.values(service.getItemMap())
+    const itemMap = service.getItemMap();
+    const cached = service.compatibleEquipmentCache;
+    if (cached && cached.itemMap === itemMap && cached.preset === preset && cached.logicalSlot === logicalSlot) {
+      return cached.value;
+    }
+    const value = Object.values(itemMap)
       .filter(
         (detail) =>
           service.getLogicalSlot(detail) === logicalSlot && service.isEquipmentCompatibleWithPreset(detail, preset)
       )
       .sort((left, right) => Number(left.sortIndex || 9999) - Number(right.sortIndex || 9999));
+    service.compatibleEquipmentCache = {itemMap, preset, logicalSlot, value};
+    return value;
   },
 
   detectPresetKey(service) {
@@ -418,10 +453,6 @@ export class EquipmentComparisonService {
     return this.constructor.simulationBuilder.getCurrentHouseRooms(this);
   }
 
-  getCurrentAchievements() {
-    return this.constructor.simulationBuilder.getCurrentAchievements(this);
-  }
-
   getDefaultTriggers(detail) {
     return this.constructor.simulationBuilder.getDefaultTriggers(this, detail);
   }
@@ -446,6 +477,15 @@ export class EquipmentComparisonService {
     return this.constructor.simulationBuilder.buildComparisonContext(
       this,
       preset,
+      baselineItem,
+      comparisonItem,
+      comparisonEnhancementLevel
+    );
+  }
+
+  buildSelectionContext(baselineItem, comparisonItem, comparisonEnhancementLevel) {
+    return this.constructor.simulationBuilder.buildSelectionContext(
+      this,
       baselineItem,
       comparisonItem,
       comparisonEnhancementLevel
@@ -490,12 +530,16 @@ export class EquipmentComparisonService {
     return this.constructor.catalog.isEquipmentCompatibleWithPreset(this, itemDetail, preset);
   }
 
-  getCharacterItemSummary(itemHrid) {
-    return this.constructor.catalog.getCharacterItemSummary(this, itemHrid);
+  getCharacterItemIndex() {
+    return this.constructor.catalog.getCharacterItemIndex(this);
   }
 
-  getRecommendedEnhancementLevel(itemDetail, preset) {
-    return this.constructor.catalog.getRecommendedEnhancementLevel(this, itemDetail, preset);
+  getCharacterItemSummary(itemHrid, itemIndex = null) {
+    return this.constructor.catalog.getCharacterItemSummary(this, itemHrid, itemIndex);
+  }
+
+  getRecommendedEnhancementLevel(itemDetail, preset, itemIndex = null) {
+    return this.constructor.catalog.getRecommendedEnhancementLevel(this, itemDetail, preset, itemIndex);
   }
 
   getBaselineEquipment(preset) {
@@ -550,7 +594,21 @@ export class EquipmentComparisonService {
     return Boolean(this.simulationService);
   }
 
+  isIdenticalSelection(context) {
+    const baseline = context?.baselineSelection;
+    const comparison = context?.comparisonSelection;
+    return (
+      Boolean(baseline?.hrid && comparison?.hrid) &&
+      baseline.hrid === comparison.hrid &&
+      Number(baseline.enhancementLevel || 0) === Number(comparison.enhancementLevel || 0)
+    );
+  }
+
   compare(context) {
+    // 基准与对比是同一件装备时差异必然是 0，直接给结果，不启动模拟。
+    if (this.isIdenticalSelection(context)) {
+      return Promise.resolve({baselineDps: null, comparisonDps: null, change: 0});
+    }
     return this.simulationService.compare(context.baselinePlayer, context.comparisonPlayer, context.mstData);
   }
 
