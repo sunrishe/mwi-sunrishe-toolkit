@@ -108,45 +108,64 @@ function loadEquipmentClasses() {
 }
 
 const {CombatSimulationService, EquipmentComparisonService, EquipmentComparisonFeature} = loadEquipmentClasses();
-const expectedDpsByBuild = {'meleeHammer.baseline': [
-    85.04177109440268, 83.9802283486494, 86.06516290726817, 88.08771929824562, 82.40434419381788
-  ], 'meleeHammer.comparison': [
-    78.58479532163743, 77.81592871066556, 77.65135059871902, 78.56502367028683, 75.77749930381509
-  ], 'meleeBulwark.baseline': [
-    59.54869226488592, 59.59154145798553, 57.18447412353923, 59.25319977740679, 59.15470228158041
-  ], 'meleeBulwark.comparison': [
-    30.627467333889353, 28.903530720044483, 29.362524325827078, 28.829302196274675, 29.909924937447872
-  ], 'meleeSword.baseline': [
-    91.89827201783723, 92.36092530657749, 92.14186176142698, 91.19955406911929, 92.59726867335563
-  ], 'meleeSword.comparison': [
-    57.876460767946575, 56.88870339454647, 56.59710628825821, 59.173622704507515, 57.40372843628269
-  ], 'meleeSpear.baseline': [
-    108.39604236343366, 109.64715719063545, 109.95819397993311, 110.39938684503902, 105.2366220735786
-  ], 'meleeSpear.comparison': [
-    57.771841958820254, 59.71953255425709, 58.30801335559266, 57.87033945464663, 57.856427378964945
-  ], 'rangedBow.baseline': [
-    82.14842662211083, 83.26176552492342, 82.32915622389307, 82.96435533277638, 81.23224728487887
-  ], 'rangedBow.comparison': [
-    53.8717306622148, 51.779632721202006, 54.31803005008347, 54.63299944351697, 53.3528102392877
-  ], 'rangedCrossbow.baseline': [
-    74.97354497354497, 75.35616819827347, 74.16986911723754, 74.76886661097187, 73.22166527429685
-  ], 'rangedCrossbow.comparison': [
-    68.76051239209134, 69.36340852130326, 68.38568643831802, 70.60233918128655, 70.17348927875244
-  ], 'magicFire.baseline': [
-    115.67615062761506, 112.03347280334728, 111.07552954292085, 112.77601115760112, 109.69063545150502
-  ], 'magicFire.comparison': [
-    53.419031719532555, 55.05648302726767, 54.240678909293266, 55.05370061213133, 55.76099053978854
-  ], 'magicWater.baseline': [
-    104.40886287625418, 101.15997770345597, 104.68394648829431, 103.77146042363434, 100.75278706800447
-  ], 'magicWater.comparison': [
-    87.6229462545252, 90.79180602006689, 89.72547380156075, 89.83528428093645, 91.67363433667782
-  ], 'magicNature.baseline': [
-    102.55267558528428, 99.44397993311037, 100.83974358974359, 98.29626532887403, 95.6128762541806
-  ], 'magicNature.comparison': [
-    76.73739905318853, 74.97577276524645, 76.25981620718463, 75.8150932887775, 79.21943748259538
-  ]};
+const expectedDpsByBuild = {
+  'meleeHammer.baseline': [
+    113.87944444444445, 110.78222222222222, 114.44638888888889, 118.07583333333334, 115.27055555555556
+  ],
+  'meleeHammer.comparison': [
+    104.70666666666666, 104.47333333333333, 106.28722222222223, 105.12083333333334, 103.25166666666667
+  ],
+  'meleeBulwark.baseline': [
+    83.79277777777777, 80.94416666666666, 78.60583333333334, 79.55333333333333, 79.36638888888889
+  ],
+  'meleeBulwark.comparison': [
+    41.731944444444444, 39.25055555555556, 39.97694444444444, 40.043055555555554, 40.68
+  ],
+  'meleeSword.baseline': [
+    122.88138888888889, 121.13861111111112, 119.21944444444445, 118.58694444444444, 124.7225
+  ],
+  'meleeSword.comparison': [
+    79.03666666666666, 76.6438888888889, 79.11916666666667, 80.8825, 78.85305555555556
+  ],
+  'meleeSpear.baseline': [
+    141.6988888888889, 143.27833333333334, 135.9013888888889, 137.0636111111111, 137.4113888888889
+  ],
+  'meleeSpear.comparison': [
+    77.40972222222223, 78.52388888888889, 78.35666666666667, 76.88833333333334, 76.18777777777778
+  ],
+  'rangedBow.baseline': [
+    111.2325, 112.55833333333334, 111.47777777777777, 111.63916666666667, 110.02361111111111
+  ],
+  'rangedBow.comparison': [
+    74.51333333333334, 70.32, 73.09055555555555, 73.09666666666666, 71.67472222222223
+  ],
+  'rangedCrossbow.baseline': [
+    101.39055555555555, 102.96916666666667, 100.52583333333334, 103.07333333333334, 101.09916666666666
+  ],
+  'rangedCrossbow.comparison': [
+    93.54777777777778, 94.86333333333333, 93.80527777777777, 95.92055555555555, 94.59138888888889
+  ],
+  'magicFire.baseline': [
+    151.6197222222222, 146.71194444444444, 147.33638888888888, 148.23777777777778, 143.06166666666667
+  ],
+  'magicFire.comparison': [
+    71.17083333333333, 73.63777777777777, 72.89472222222223, 74.38583333333334, 75.16
+  ],
+  'magicWater.baseline': [
+    136.38694444444445, 133.98777777777778, 134.175, 135.735, 130.82222222222222
+  ],
+  'magicWater.comparison': [
+    115.42722222222223, 117.95916666666666, 117.09388888888888, 114.71055555555556, 119.36611111111111
+  ],
+  'magicNature.baseline': [
+    136.4075, 133.09444444444443, 131.31666666666666, 130.39111111111112, 126.67472222222223
+  ],
+  'magicNature.comparison': [
+    102.23777777777778, 104.0513888888889, 103.44111111111111, 105.105, 108.85388888888889
+  ]
+};
 
-function runWorkerDpsJobs(jobs, simulationTime = CombatSimulationService.SIMULATION_TIME) {
+function runWorkerDpsJobs(jobs, simulationTime = CombatSimulationService.SIMULATION_TIME, onResult = null) {
   // Worker 回归测试复用真实内嵌模拟器，按固定种子逐个任务串行执行。
   const workerPrelude = `
         const {parentPort} = require('node:worker_threads');
@@ -212,6 +231,7 @@ function runWorkerDpsJobs(jobs, simulationTime = CombatSimulationService.SIMULAT
       }
       if (message.type !== 'simulation_result') return;
       values[jobs[jobIndex].id].push(service.getDps(message.simResult));
+      if (onResult) onResult(jobs[jobIndex], message.simResult);
       seedIndex += 1;
       if (seedIndex >= CombatSimulationService.SEEDS.length) {
         seedIndex = 0;
@@ -404,6 +424,74 @@ test('重置职业方案时右侧默认跟随基准装备', () => {
   assert.equal(feature.comparisonEnhancementLevel, feature.baselineEnhancementLevel);
 });
 
+test('切换职业方案后自动请求模拟', () => {
+  const feature = new EquipmentComparisonFeature();
+  let simulationRequested = 0;
+  feature.render = () => {};
+  feature.requestSimulation = () => {
+    simulationRequested++;
+  };
+
+  feature.handlePresetChange('magicFire');
+  assert.equal(feature.presetKey, 'magicFire');
+  assert.equal(simulationRequested, 1);
+
+  feature.handlePresetChange('not-a-preset');
+  assert.equal(feature.presetKey, 'magicFire');
+  assert.equal(simulationRequested, 1);
+});
+
+test('打开弹窗后立即请求模拟', () => {
+  const feature = new EquipmentComparisonFeature();
+  let simulationRequested = 0;
+  let opened = null;
+  feature.render = () => {};
+  feature.mountHelpPopover = () => {};
+  feature.requestSimulation = () => {
+    simulationRequested++;
+  };
+  const previousHtml = Notifier.html;
+  const previousAlert = Notifier.alert;
+  Notifier.html = (options) => {
+    opened = options;
+    return null;
+  };
+  Notifier.alert = () => null;
+  try {
+    feature.open();
+  } finally {
+    Notifier.html = previousHtml;
+    Notifier.alert = previousAlert;
+  }
+
+  assert.ok(opened, '弹窗应已打开');
+  assert.equal(simulationRequested, 0);
+  opened.didOpen({querySelector: () => ({})});
+  assert.ok(feature.root);
+  assert.equal(simulationRequested, 1);
+});
+
+test('候选装备列表按角色物品缓存，角色物品变化后重新生成', () => {
+  const feature = new EquipmentComparisonFeature();
+  feature.presetKey = 'meleeHammer';
+  feature.baselineItemHrid = feature.getDefaultBaselineItem().itemHrid;
+  const first = feature.getBaselineEquipment();
+  assert.equal(feature.getBaselineEquipment(), first, '未变化时应复用同一份候选列表');
+  const baseline = feature.getBaselineItem(first);
+  assert.ok(baseline);
+  assert.equal(feature.getCompatibleEquipment(baseline), feature.getCompatibleEquipment(baseline));
+
+  characterData.characterItems.push({
+    itemHrid: '/items/chaotic_flail',
+    enhancementLevel: 17,
+    count: 1,
+    itemLocationHrid: '/item_locations/inventory'
+  });
+  const second = feature.getBaselineEquipment();
+  assert.notEqual(second, first, '角色物品变化后应重新生成候选列表');
+  assert.equal(second.find((item) => item.itemHrid === '/items/chaotic_flail').enhancementLevel, 17);
+});
+
 test('双手武器替换会清除副手，主手和副手方案可同时保留', () => {
   const service = new EquipmentComparisonService();
   const meleeBuild = service.buildPresetEquipment(EquipmentComparisonFeature.PRESETS.meleeHammer);
@@ -471,11 +559,23 @@ test('完整模拟套装包含贤者三件套、暴饮之囊、固定技能等�
   );
 });
 
-test('标准标靶不会在模拟中死亡，使用统一防御属性且不携带怪物技能', () => {
+test('标准标靶的基础字段按游戏公式得到统一属性且不携带怪物技能', () => {
   const service = new EquipmentComparisonService();
   const target = service.getStandardTarget();
   const details = target.combatDetails;
+  const stats = details.combatStats;
+  // 模拟器只用基础字段重算派生属性，因此配置里的派生值必须等于公式计算结果：
+  // 生命值 = 10 * (10 + 耐力等级) + combatStats.maxHitpoints，护甲与抗性 = 0.2 * 防御等级 + combatStats.xxx，
+  // 闪避 = (10 + 防御等级) * (1 + combatStats.xxxEvasion)，魔力值 = 10 * (10 + 智力等级) + combatStats.maxManapoints。
+  assert.equal(
+    (10 * (10 + details.staminaLevel) + stats.maxHitpoints) * (1 + (stats.maxHitpointsRatio || 0)),
+    CombatSimulationService.TARGET_HITPOINTS
+  );
   assert.equal(details.maxHitpoints, CombatSimulationService.TARGET_HITPOINTS);
+  assert.equal(
+    (10 * (10 + details.intelligenceLevel) + (stats.maxManapoints || 0)) * (1 + (stats.maxManapointsRatio || 0)),
+    details.maxManapoints
+  );
   assert.deepEqual(
     [
       details.stabEvasionRating, details.slashEvasionRating, details.smashEvasionRating, details.rangedEvasionRating, details.magicEvasionRating
@@ -486,8 +586,24 @@ test('标准标靶不会在模拟中死亡，使用统一防御属性且不携�
   );
   assert.deepEqual(
     [
+      stats.stabEvasion, stats.slashEvasion, stats.smashEvasion, stats.rangedEvasion, stats.magicEvasion
+    ].map((boost) => (10 + details.defenseLevel) * (1 + (boost || 0))),
+    [
+      320, 320, 320, 320, 320
+    ]
+  );
+  assert.deepEqual(
+    [
       details.totalArmor, details.totalWaterResistance, details.totalNatureResistance, details.totalFireResistance
     ],
+    [
+      62, 62, 62, 62
+    ]
+  );
+  assert.deepEqual(
+    [
+      stats.armor, stats.waterResistance, stats.natureResistance, stats.fireResistance
+    ].map((boost) => 0.2 * details.defenseLevel + boost),
     [
       62, 62, 62, 62
     ]
@@ -508,7 +624,10 @@ test('模拟数据仅覆盖本次使用的数据，并保留游戏强化倍率�
   assert.ok(data.itemDetailMap['/items/philosophers_necklace']);
   assert.ok(data.abilityDetailMap['/abilities/rain_of_arrows']);
   assert.ok(data.houseRoomDetailMap['/house_rooms/archery_range']);
-  assert.deepEqual(data.achievementTierDetailMap, clientData.achievementTierDetailMap);
+  // 装备对比不计入角色成就增益：成就 tier 与完成度表都为空，玩家侧也不带成就记录。
+  assert.deepEqual({...player.achievements}, {});
+  assert.deepEqual({...data.achievementTierDetailMap}, {});
+  assert.deepEqual({...data.achievementDetailMap}, {});
   assert.deepEqual(data.combatTriggerDependencyDetailMap, clientData.combatTriggerDependencyDetailMap);
   assert.deepEqual(data.combatStyleDetailMap, clientData.combatStyleDetailMap);
   assert.equal(
@@ -549,17 +668,22 @@ test('九职业基准与对比装备的固定种子 DPS 与原模拟器逐值一
       comparison,
       feature.comparisonEnhancementLevel
     );
-    const target = context.mstData.combatMonsterDetailMap[CombatSimulationService.TARGET_HRID];
-    target.combatDetails.currentHitpoints = 80000;
-    target.combatDetails.maxHitpoints = 80000;
     jobs.push(
       {id: `${key}.baseline`, player: context.baselinePlayer, mstData: context.mstData},
       {id: `${key}.comparison`, player: context.comparisonPlayer, mstData: context.mstData}
     );
   }
 
-  const actual = await runWorkerDpsJobs(jobs, 60 * 60 * 1e9);
+  const targetDeathCounts = [];
+  const actual = await runWorkerDpsJobs(jobs, 60 * 60 * 1e9, (_job, simResult) => {
+    targetDeathCounts.push(simResult.deaths?.[CombatSimulationService.TARGET_HRID] || 0);
+  });
   assert.deepEqual(actual, expectedDpsByBuild);
+  assert.equal(
+    targetDeathCounts.some((count) => count > 0),
+    false,
+    `标准标靶不应在模拟中死亡，实际死亡记录：${JSON.stringify(targetDeathCounts)}`
+  );
 });
 
 test('同一主教法典从 +12 强化到 +13 时输入一致且平均 DPS 提升为正', {timeout: 120000}, async () => {
@@ -637,6 +761,60 @@ test('装备价格差只比较所选两件装备，并正确计算每 10M 提升
   assert.equal(result.comparisonDps, 110);
   assert.equal(result.dps.value, 0.1);
   assert.equal(result.dpsPerTenMillion, 10);
+});
+
+test('基准与对比为同一件装备时直接返回 0 提升且不启动模拟', async () => {
+  let compareCalls = 0;
+  const simulationService = {
+    compare() {
+      compareCalls += 1;
+      return Promise.resolve({baselineDps: 1, comparisonDps: 2, change: 1});
+    },
+    cancel() {}
+  };
+  const service = new EquipmentComparisonService(null, simulationService);
+  const selection = {hrid: '/items/chaotic_flail', enhancementLevel: 10};
+
+  const identical = await service.compare({
+    baselineSelection: selection,
+    comparisonSelection: {...selection}
+  });
+  assert.equal(compareCalls, 0);
+  // 结果对象来自 VM 上下文，展开后再比较，避免跨 realm 原型差异。
+  assert.deepEqual({...identical}, {baselineDps: null, comparisonDps: null, change: 0});
+
+  const differentLevel = await service.compare({
+    baselineSelection: selection,
+    comparisonSelection: {hrid: '/items/chaotic_flail', enhancementLevel: 11}
+  });
+  assert.equal(compareCalls, 1);
+  assert.equal(differentLevel.change, 1);
+});
+
+test('对比装备跟随基准装备时请求不触发模拟并直接给出 0 提升', async () => {
+  let compareCalls = 0;
+  const simulationService = {
+    compare() {
+      compareCalls += 1;
+      return Promise.resolve({baselineDps: 1, comparisonDps: 2, change: 1});
+    },
+    cancel() {}
+  };
+  const feature = new EquipmentComparisonFeature(null, new EquipmentComparisonService(null, simulationService));
+  feature.presetKey = 'meleeHammer';
+  feature.render = () => {};
+  feature.root = {};
+  const baseline = feature.getDefaultBaselineItem();
+  feature.baselineItemHrid = baseline.itemHrid;
+  feature.baselineEnhancementLevel = baseline.enhancementLevel;
+  feature.comparisonItemHrid = baseline.itemHrid;
+  feature.comparisonEnhancementLevel = baseline.enhancementLevel;
+
+  await feature.requestSimulation();
+  assert.equal(compareCalls, 0);
+  assert.equal(feature.simulationState.status, 'ready');
+  assert.equal(feature.simulationState.result.change, 0);
+  assert.equal(feature.simulationState.result.baselineDps, null);
 });
 
 test('真实公共数据可为九套职业构建完整且无缺项的模拟输入', () => {

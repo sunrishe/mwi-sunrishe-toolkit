@@ -1039,9 +1039,10 @@ test('中文术语保留官方 House Room 译名和已确认的市场方向简�
   assert.equal(messageIndex.upgradeNotFound.zh, '找不到房屋 {0} 等级 {1} 的升级信息');
   assert.equal(messageIndex.equipmentComparison.zh, '装备提升计算器');
   assert.equal(messageIndex.equipmentComparisonTitle.zh, '装备提升计算器');
-  assert.match(messageIndex.equipmentComparisonHelp.zh, /战斗等级、房屋等级和成就/);
+  assert.match(messageIndex.equipmentComparisonHelp.zh, /战斗等级和房屋等级使用当前角色数据/);
+  assert.match(messageIndex.equipmentComparisonHelp.zh, /不计入角色成就增益/);
   assert.match(messageIndex.equipmentComparisonHelp.zh, /对比列表不展示护符、Trinket 和生活工具/);
-  assert.doesNotMatch(messageIndex.equipmentComparisonHelp.zh, /战斗等级、房间等级和成就/);
+  assert.doesNotMatch(messageIndex.equipmentComparisonHelp.zh, /战斗等级、房间等级/);
   assert.doesNotMatch(messageIndex.equipmentComparisonHelp.zh, /对比列表不展示饰品和生活工具/);
 
   assert.equal(messageIndex.askPriceAndTotal.zh, '左一 / 总价');

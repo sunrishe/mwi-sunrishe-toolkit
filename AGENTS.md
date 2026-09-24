@@ -1,6 +1,6 @@
 # AGENTS.md
 
-本文件是 MST 项目的协作和 AI 开发入口规范，适用于整个仓库。用户最新明确要求优先级最高；当前待办以 `docs/待办与状态.md` 为准；业务功能细节以 `docs/业务功能要求.md` 为准；工程结构、文件归位和模块拆分以 `docs/工程结构与开发规范.md` 为准。
+本文件是 MST 项目的协作和 AI 开发入口规范，适用于整个仓库。用户最新明确要求优先级最高；当前待办以 `docs/待办与状态.md` 为准；业务功能细节以 `docs/业务功能要求.md` 为准；工程结构、文件归位和模块拆分以 `docs/工程结构与开发规范.md` 为准；已发布版本的记录见 `docs/archive/版本验收记录.md`。
 
 ## 基础规则
 
@@ -21,20 +21,16 @@
 ## 构建约束
 
 - 依赖统一由 Yarn Classic `1.22.22` 管理，只维护 `yarn.lock`，不得生成或提交 `package-lock.json`。
-- 最终只输出一个油猴脚本：`dist/mst.script.user.js`。
-- 开发包输出 `dist/mst.script.dev.user.js`，配合 `yarn watch` 使用。
-- 不拆成多个本地 `@require` 包；源码模块化只在构建期通过 Rollup 打包。
-- dev/prod 差异统一通过 `src/common/build-flags.js` 和构建替换控制，不在运行时读取 Node 环境变量。
+- 最终只输出一个油猴脚本 `dist/mst.script.user.js`，开发包输出 `dist/mst.script.dev.user.js`；不拆成多个本地 `@require` 包，源码模块化只在构建期通过 Rollup 打包。
+- dev/prod 差异统一通过 `src/common/build-flags.js` 和构建替换控制，不在运行时读取 Node 环境变量；构建与环境开关的完整规则见 `docs/工程结构与开发规范.md` 五。
 
 ## 版本与文档
 
 - `package.json#version` 是正式版本号的唯一来源，`userscript-header.txt` 中的版本占位符由 Rollup 自动替换，不手工维护重复版本号。
-- 版本号遵循 SemVer：不兼容变更提升 major，向后兼容的新功能提升 minor，修复和兼容性调整提升 patch。
-- 功能或用户可见行为发生变化时必须提升版本号；仅修改文档、注释、格式、测试或不影响产物行为的工程配置时可以不提升。
-- 提升版本号时必须同步更新 `docs/usage.md` 双语更新日志和 `docs/待办与状态.md` 当前版本；业务规则、工程规范或专项算法变化还要更新对应文档。
-- 版本内容统一规划到一个版本号时，更新日志和待办文档只保留规划后的版本条目，不保留中间版本条目；过程中产生的问题修复不写入更新日志，实现约束记入对应规范文档。
-- `docs/usage.md` 使用说明每个功能只写“做什么”，保持一两句话，不展开实现细节和参数清单。
-- `docs/usage.md` 更新日志必须从用户角度出发，只写用户能感知的变化，简短直接，不写实现细节、不记流水账、不堆技术名词；只写中文，专有名词除外。
+- 版本号遵循 SemVer：不兼容变更提升 major，向后兼容的新功能提升 minor，修复和兼容性调整提升 patch；功能或用户可见行为发生变化时必须提升版本号，仅修改文档、注释、格式、测试或不影响产物行为的工程配置时可以不提升。
+- 提升版本号时必须同步更新 `docs/changelog.md` 更新日志和 `docs/待办与状态.md` 当前版本；业务规则、工程规范或专项算法变化还要更新对应文档。
+- 版本内容统一规划到一个版本号时，更新日志和待办文档只保留规划后的版本条目，不保留中间版本条目；过程中产生的问题修复不写入更新日志，实现约束记入对应规范文档；版本发布时把已发布版本的记录从 `docs/待办与状态.md` 迁入 `docs/archive/版本验收记录.md`。
+- `docs/usage.md` 使用说明每个功能只写“做什么”，保持一两句话，不展开实现细节和参数清单；`docs/changelog.md` 更新日志从用户角度出发，只写用户能感知的变化，简短直接，不写实现细节、不记流水账、不堆技术名词，只写中文，专有名词除外。
 - 临时文件与本地调试产物不得提交，交付前清理工程内和任务过程中产生的临时文件，确认暂存区干净。
 - 开发构建的 `-dev.<timestamp>` 后缀由构建流程生成，不单独修改正式版本号。
 
@@ -42,23 +38,17 @@
 
 - 仅文档、注释、错别字或极小且明显低风险的改动可以不执行验证，但交付时必须说明未验证。
 - 一般代码改动至少执行相关 lint、测试或构建；涉及多个文件、多个模块、公共能力、依赖或构建流程时执行完整 `yarn run check`。
-- 使用 Playwright MCP 前必须先阅读 `docs/analysis/Playwright MCP 使用规范.md`，在 MCP 服务列表中按“Playwright”关键字找到 Playwright MCP 服务器并确认其 `browser_*` 工具；工具名前缀由客户端决定，不得按 `mcp__playwright__` 前缀查找。
-- 改动范围较大，或涉及 UI、DOM、CSS、交互流程、站点兼容时，除 `yarn run check` 外，必须使用 Playwright MCP 服务打开实际目标页面，验证核心流程、页面显示和控制台错误。
-- 本项目所称 Playwright MCP，指在 MCP 服务列表中按“Playwright”关键字找到的官方 Playwright MCP 服务器及其 `browser_*` 工具（`browser_tabs`、`browser_navigate`、`browser_snapshot` 等），识别依据是服务提供 Playwright 的 `browser_*` 工具，而不是工具名前缀。Browser plugin / Browser skill 内置的 Playwright API、Node REPL 浏览器控制和 `playwright-cli` 均不得替代，也不得在交付说明中记为“Playwright MCP 已通过”。
-- 本地预览页、静态 Mock 和测试夹具只能补充验证布局，不能代替登录后的实际目标页面。若受登录状态限制，必须把实际页面标记为未覆盖。
+- 使用 Playwright MCP 前必须先阅读 `docs/analysis/Playwright MCP 使用规范.md`。本项目所称 Playwright MCP，指在 MCP 服务列表中按“Playwright”关键字找到的官方 Playwright MCP 服务器及其 `browser_*` 工具，识别依据是服务提供 Playwright 的 `browser_*` 工具，而不是工具名前缀（前缀由客户端决定，不得按 `mcp__playwright__` 前缀查找）。Browser plugin / Browser skill 内置的 Playwright API、Node REPL 浏览器控制和 `playwright-cli` 均不得替代，也不得在交付说明中记为“Playwright MCP 已通过”。
+- 改动范围较大，或涉及 UI、DOM、CSS、交互流程、站点兼容时，除 `yarn run check` 外，必须使用 Playwright MCP 服务打开实际目标页面，验证核心流程、页面显示和控制台错误；本地预览页、静态 Mock 和测试夹具只能补充验证，不能代替登录后的实际目标页面，受登录状态限制时必须把实际页面标记为未覆盖。
 - 浏览器验证无法执行时不得默认视为通过，必须明确记录阻塞原因和未覆盖风险。
 
 ## 文件归位
 
-- 新源码只按三层归位：顶层装配进 `src/app/`，跨模块公共能力进 `src/common/`，用户功能进 `src/modules/功能名/`；具体规则见 `docs/工程结构与开发规范.md`。
+- 新源码只按三层归位：顶层装配进 `src/app/`，跨模块公共能力进 `src/common/`，用户功能进 `src/modules/功能名/`。
 - 业务模块默认以一个 `index.js` 为主体，不按 `state/view/events/controller` 机械细拆；仅纯计算、Worker、导出、稳定大数据等真实边界单独成文件。
-- i18n 文案放入 `src/common/messages.js`。全局 CSS 放入 `src/common/styles/`，模块私有 CSS 放在模块目录，并通过构建打进单文件脚本。
-- 测试放入 `tests/`，优先覆盖可回归的业务逻辑和 DOM 约束。
-- 用户说明和更新日志维护在 `docs/usage.md`。
-- 当前待办和状态维护在 `docs/待办与状态.md`。
-- 长期业务要求维护在 `docs/业务功能要求.md`。
-- 专项分析文档放入 `docs/analysis/`。
-- 外部数据、旧脚本和第三方素材放入 `references/`。
+- i18n 文案放入 `src/common/messages.js`；全局 CSS 放入 `src/common/styles/`，模块私有 CSS 放在模块目录，并通过构建打进单文件脚本。
+- 文档按职责归位：用户说明 `docs/usage.md`、更新日志 `docs/changelog.md`、当前待办与状态 `docs/待办与状态.md`、历史版本记录 `docs/archive/`、长期业务要求 `docs/业务功能要求.md`、专项分析 `docs/analysis/`；测试放入 `tests/`，外部数据、旧脚本和第三方素材放入 `references/`。
+- 各文档的写入要求和更新时机见 `docs/工程结构与开发规范.md` 三、文件归位 与 八、文档维护。
 
 ## 完整检查
 
@@ -66,4 +56,4 @@
 yarn run check
 ```
 
-`yarn build` 会先执行 `lint:fix` 与 `format`，再生成正式构建产物；`yarn build:dev` 保持轻量，只生成开发构建产物。`yarn run check` 会先执行同一套源码修复，再执行测试、dev 打包和 prod 打包，避免重复修复。Yarn Classic 自带同名 `yarn check` 命令，因此不得省略 `run`。新增目录或配置后，要确认该命令仍然覆盖关键文件。是否需要执行完整检查及 Playwright MCP 浏览器验证，按“验证分级”判断。
+`yarn run check` 会先执行同一套源码修复，再执行测试、dev 打包和 prod 打包，避免重复修复；Yarn Classic 自带同名 `yarn check` 命令，因此不得省略 `run`。新增目录或配置后，要确认该命令仍然覆盖关键文件。是否需要执行完整检查及 Playwright MCP 浏览器验证，按“验证分级”判断。
