@@ -1,0 +1,53 @@
+// ==UserScript==
+// @name               MWI Sunrishe Toolkit
+// @name:zh-CN         MWI Sunrishe 工具箱
+// @name:en            MWI Sunrishe Toolkit
+// @namespace          http://tampermonkey.net/
+// @version            2.18.0
+// @description        MWI Sunrishe 综合工具箱：提供角色/队伍名片、技能/房屋/战斗升级规划、装备提升计算器、地下城收益、配装同步和市场伴侣增强。
+// @description:zh-CN  MWI Sunrishe 综合工具箱：提供角色/队伍名片、技能/房屋/战斗升级规划、装备提升计算器、地下城收益、配装同步和市场伴侣增强。
+// @description:en     MST toolkit for character/party cards, ability/house/combat upgrade planning, equipment comparison, dungeon profit, loadout sync, and Market Mate enhancements.
+// @icon               https://www.milkywayidle.com/favicon.svg
+// @author             sunrishe
+// @license            ISC
+// @homepage           https://github.com/sunrishe/mwi-sunrishe-toolkit
+// @website            https://greasyfork.org/zh-CN/scripts/574037
+// @website            https://gf.qytechs.cn/zh-CN/scripts/574037
+// @website            https://home.greasyfork.org.cn/zh-hans/info#/zh-CN/scripts/574037
+// @require            https://cdn.jsdelivr.net/npm/html-to-image@1.11.13/dist/html-to-image.js
+// @require            https://cdn.jsdelivr.net/npm/sweetalert2@11
+// @require            https://cdn.jsdelivr.net/gh/sunrishe/mwi-sunrishe-toolkit@d2d2cf9f83bac1372495e586b751cc1eddf00697/vendor/uhtml/uhtml.iife.min.js
+// @match              https://milkywayidle.com/*
+// @match              https://milkywayidlecn.com/*
+// @match              https://test.milkywayidle.com/*
+// @match              https://test.milkywayidlecn.com/*
+// @match              https://www.milkywayidle.com/*
+// @match              https://www.milkywayidlecn.com/*
+// @match              https://milkonomy.pages.dev/*
+// @match              https://hyhfish.github.io/milkonomy/*
+// @match              https://aiwwb.github.io/milkywayidle_battle/*
+// @grant              unsafeWindow
+// @grant              GM_addValueChangeListener
+// @grant              GM.addValueChangeListener
+// @grant              GM_getValue
+// @grant              GM.getValue
+// @grant              GM_setClipboard
+// @grant              GM.setClipboard
+// @grant              GM_setValue
+// @grant              GM.setValue
+// @grant              GM_xmlhttpRequest
+// @grant              GM.xmlHttpRequest
+// @run-at             document-start
+// @connect            milkywayidle.com
+// @connect            milkywayidlecn.com
+// @connect            test.milkywayidle.com
+// @connect            test.milkywayidlecn.com
+// @connect            www.milkywayidle.com
+// @connect            www.milkywayidlecn.com
+// @connect            oapi.dingtalk.com
+// @connect            qyapi.weixin.qq.com
+// @connect            open.feishu.cn
+// @connect            js.nainai.eu.org
+// @connect            update.greasyfork.org.cn
+// @connect            update.greasyfork.org
+// ==/UserScript==

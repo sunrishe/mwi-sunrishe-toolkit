@@ -76,8 +76,8 @@ export function createSpriteService() {
       skills: '/static/media/skills_sprite.3bb4d936.svg',
       abilities: '/static/media/abilities_sprite.fdd1b4de.svg',
       actions: '/static/media/actions_sprite.e6388cbc.svg',
-      misc: '/static/media/misc_sprite.cfad291b.svg',
-      chatIcons: '/static/media/chat_icons_sprite.628944de.svg'
+      misc: '/static/media/misc_sprite.02869244.svg',
+      chatIcons: '/static/media/chat_icons_sprite.5a021815.svg'
     },
     markers: {
       items: 'items_sprite',
@@ -107,18 +107,42 @@ export function createSpriteService() {
     scanPage() {
       if (this.scannedRevision === this.domRevision) return;
       this.scannedRevision = this.domRevision;
-      const unresolved = new Set(Object.keys(this.markers));
+      // 同一 sprite 在页面上可能有多个文件名：其它脚本（如第三方悬浮面板）还在用旧 hash，
+      // 而游戏自己渲染的图标数量远多于它们，因此取出现次数最多的一个；数量并列时优先
+      // 游戏根容器（#root）内的写法，避免误用第三方脚本的旧图标集。
+      const types = Object.entries(this.markers);
+      const counts = new Map();
       for (const useElement of document.querySelectorAll('svg use')) {
         const href = this.getUseHref(useElement);
         if (!href.includes('#')) continue;
         const spritePath = href.split('#')[0];
-        for (const type of unresolved) {
-          if (!spritePath.includes(this.markers[type])) continue;
-          this.paths.set(type, spritePath);
-          unresolved.delete(type);
-          break;
+        const match = types.find(
+          ([
+            , marker
+          ]) => spritePath.includes(marker)
+        );
+        if (!match) continue;
+        const [
+          type
+        ] = match;
+        let perPath = counts.get(type);
+        if (!perPath) counts.set(type, (perPath = new Map()));
+        const entry = perPath.get(spritePath) || {path: spritePath, count: 0, inRoot: false};
+        entry.count += 1;
+        entry.inRoot = entry.inRoot || Boolean(useElement.closest?.('#root'));
+        perPath.set(spritePath, entry);
+      }
+      this.paths.clear();
+      for (const [
+        type, perPath
+      ] of counts) {
+        let best = null;
+        for (const entry of perPath.values()) {
+          if (!best || entry.count > best.count || (entry.count === best.count && entry.inRoot && !best.inRoot)) {
+            best = entry;
+          }
         }
-        if (!unresolved.size) break;
+        if (best) this.paths.set(type, best.path);
       }
     },
 

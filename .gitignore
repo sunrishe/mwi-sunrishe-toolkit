@@ -5,6 +5,7 @@
 .playwright-mcp/
 .vscode/
 dist/*.dev.user.js
+dist/*.dev.meta.js
 dist/*debug.user.js
 node_modules/
 openspec/

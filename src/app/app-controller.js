@@ -163,6 +163,8 @@ export class AppController {
       EquipmentComparisonService,
       EquipmentComparisonFeature,
       ToolkitMenuFeature,
+      ChangelogFeature,
+      UpdateCheckerFeature,
       ClipboardCartImportFeature,
       LabyrinthSupplyFeature,
       MarketplaceCartFeature,
@@ -180,6 +182,8 @@ export class AppController {
     const equipmentComparisonService = new EquipmentComparisonService(marketDataService, combatSimulationService);
     const equipmentComparison = new EquipmentComparisonFeature(this.ctx, marketDataService, equipmentComparisonService);
     const subscribeNotification = new SubscribeNotificationFeature(this.ctx);
+    const changelog = new ChangelogFeature(this.ctx);
+    const updateChecker = new UpdateCheckerFeature(this.ctx);
     const toolkitMenu = new ToolkitMenuFeature(this.ctx, {
       characterCardFeature,
       appController: this,
@@ -187,7 +191,9 @@ export class AppController {
       abilityCalculator,
       equipmentComparison,
       dungeonCalculator,
-      subscribeNotification
+      subscribeNotification,
+      changelog,
+      updateChecker
     });
     // 暴露少量实例给控制台排查，正式功能仍通过菜单入口触发。
     window.MWISunrisheToolkit = {
@@ -198,7 +204,8 @@ export class AppController {
       combatCalculator,
       abilityCalculator,
       equipmentComparison,
-      dungeonCalculator
+      dungeonCalculator,
+      updateChecker
     };
     this.ctx.pageWindow.MWISunrisheToolkitState = 'app-features';
     characterCardFeature.init();
@@ -207,6 +214,8 @@ export class AppController {
     dungeonCalculator.init();
     equipmentComparison.init();
     toolkitMenu.init();
+    changelog.init();
+    updateChecker.init();
     new ClipboardCartImportFeature(this.ctx, Notifier).init();
     new LabyrinthSupplyFeature().init();
     new MarketplaceCartFeature().init();

@@ -1,6 +1,6 @@
 // 队列跟踪器：以官方 CharacterAction.id 为准判定行动队列变动事件。
 // 纯逻辑边界，不依赖 DOM、DataHub 或 i18n，事件文案由装配层生成。
-// 官方合并语义（main.*.chunk.js handleMessageActionsUpdated，v1.20260814.0）：
+// 官方合并语义（main.*.chunk.js handleMessageActionsUpdated，v1.20260927.0）：
 // endCharacterActions 中 isDone=true 的行动从队列移除，其余按 id upsert，
 // 最后 partyID 非 0（组队/战斗行动）排在前、partyID 为 0 的在后、各组按 ordinal 升序。
 

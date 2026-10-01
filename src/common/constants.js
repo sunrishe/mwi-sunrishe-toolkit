@@ -1,5 +1,5 @@
 // 市场卖出收益统一从这里扣税，交易税调整时只改这一处。
-export const MARKET_TAX_RATE = 0.05;
+export const MARKET_TAX_RATE = 0.04;
 export const MARKET_TAX_MULTIPLIER = 1 - MARKET_TAX_RATE;
 
 // 牛铃袋在市场上出售按 18% 特殊税率扣税，与普通市场税分开管理，调整时只改这一处。

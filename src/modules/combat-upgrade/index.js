@@ -477,7 +477,7 @@ const combatUpgradeRowHtml = {
     const primaryRate = this.getRateValue(feature.popup, 'primary-rate');
     const secondaryRate = this.getRateValue(feature.popup, 'secondary-rate');
     const plan = feature.calculatePlan(primaryRate, secondaryRate);
-    const miscSprite = utils.getSpriteUrl('misc') || '/static/media/misc_sprite.cfad291b.svg';
+    const miscSprite = utils.getSpriteUrl('misc') || '/static/media/misc_sprite.02869244.svg';
     // 常用等级覆盖当前版本主要训练断点，完整输入仍由 number 控件支持。
     const levelOptions = [
       35, 50, 55, 65, 75,

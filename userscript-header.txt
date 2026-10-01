@@ -47,4 +47,7 @@
 // @connect            oapi.dingtalk.com
 // @connect            qyapi.weixin.qq.com
 // @connect            open.feishu.cn
+// @connect            js.nainai.eu.org
+// @connect            update.greasyfork.org.cn
+// @connect            update.greasyfork.org
 // ==/UserScript==

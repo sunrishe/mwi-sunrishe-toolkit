@@ -860,11 +860,10 @@
   line-height: 1.1;
   text-align: left;
 }
-.mst-upgrade-calculator-dialog .swal2-title,
-.mst-equipment-compare-dialog .swal2-title,
-.mst-house-calculator-dialog .swal2-title,
-.mst-subscribe-dialog .swal2-title,
-.mst-character-card-modal .swal2-title {
+/* 弹窗标题行统一在挂上图标后改用 flex：图标与文字垂直居中。
+   按“标题里是否含图标”判断，新增弹窗（如更新日志）无需再登记弹窗类名；
+   逐类登记时漏登记的弹窗标题是块级布局，图标会按基线排列、看起来没有对齐。 */
+.mst-swal2-theme .swal2-title:has(.mst-dialog-title-icon) {
   display: flex !important;
   align-items: center;
   gap: 0.6rem;

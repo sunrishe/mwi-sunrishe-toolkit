@@ -66,6 +66,14 @@ MST 是独立脚本，以下项目提供了参考或公开接口；参考类功�
 
 一键把当前角色与队伍数据填入模拟器。
 
+## 更新日志
+
+查看 MST 所有版本的版本号、发布日期和更新说明。
+
+## 检查更新
+
+在“更新日志”下面，点击可查看当前版本与最新版本；后台发现新版本时按钮变为“更新新版本”，点击直接打开脚本直链（油猴弹出安装确认）。
+
 ## MWI 市场伴侣剪贴板导入
 
 从剪贴板批量解析物品并加入购物车。
@@ -141,6 +149,14 @@ Copy or sync loadouts between the game, profit sites, and the combat simulator.
 ## One-Click Combat Simulator Import
 
 Fill the simulator with your current character and party data.
+
+## Changelog
+
+View the version number, release date, and update notes of every MST release.
+
+## Check for Updates
+
+Sits below "Changelog"; click it to see the installed and latest versions. When the background check finds an update, the button becomes "Update to vX" and opens the install page directly.
 
 ## MWI Market Mate Clipboard Import
 

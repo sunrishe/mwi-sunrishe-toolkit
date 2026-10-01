@@ -566,7 +566,7 @@ const houseCalculatorRoomController = {
     const houseSpriteUrl =
       utils.getSvgSpriteUrl('[class*="HousePanel_houseRoom__"] svg use') ||
       utils.getSpriteUrl('misc') ||
-      '/static/media/misc_sprite.cfad291b.svg';
+      '/static/media/misc_sprite.02869244.svg';
     const houseNameToHrid = new Map();
 
     Object.entries(ui.houseDetails).forEach(

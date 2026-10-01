@@ -147,7 +147,7 @@ test('不可交易牛铃和披风沿用康康运气的可交易替代物估值',
   // 关闭市场税选项后牛铃袋也不扣税，牛铃随袋继承；开启时才按 18% 特殊税率扣税。
   assert.equal(service.getDirectPrice('/items/cowbell', 'bid', false), 80);
   assert.equal(service.getDirectPrice('/items/chimerical_quiver', 'ask'), 5000);
-  assert.equal(service.getDirectPrice('/items/chimerical_quiver', 'ask', true), 4750);
+  assert.equal(service.getDirectPrice('/items/chimerical_quiver', 'ask', true), 4800);
   assert.equal(service.getDirectPrice('/items/chimerical_quiver', 'ask', false), 5000);
   assert.equal(service.getDirectPrice('/items/enchanted_cloak', 'bid'), 4000);
 });
@@ -237,7 +237,7 @@ test('制作材料成本读取官方配方并应用工匠茶与暴饮之囊强�
   assert.equal(service.getCostPrice('/items/pirate_entry_key', 'ask', 'market', 0.888), 100);
 });
 
-test('卖出总价按普通 5% 市场税与牛铃袋 18% 特殊税率分别扣税', () => {
+test('卖出总价按普通 4% 市场税与牛铃袋 18% 特殊税率分别扣税', () => {
   const syntheticClientData = {
     actionDetailMap: {},
     itemDetailMap: {'/items/test_chest': {hrid: '/items/test_chest'}},
@@ -274,8 +274,8 @@ test('卖出总价按普通 5% 市场税与牛铃袋 18% 特殊税率分别扣�
 
   assert.equal(untaxed.bidTotal, 200);
   assert.equal(untaxed.askTotal, 220);
-  assert.equal(taxed.bidTotal, 177);
-  assert.equal(taxed.askTotal, 196);
+  assert.equal(taxed.bidTotal, 178);
+  assert.equal(taxed.askTotal, 197);
   assert.equal(pretaxOutput.bidTotal, 200);
   assert.equal(pretaxOutput.askTotal, 220);
 });
@@ -305,7 +305,7 @@ test('商店拆分代币估值在产出中不扣税，收益中随市场税选�
       '/items/token': {0: {a: -1, b: -1}}
     })
   );
-  // token 无市场价，估值来自商店拆分：产出路径必须不扣税（含 undefined 与关闭选项），勾选时才按 5% 扣税。
+  // token 无市场价，估值来自商店拆分：产出路径必须不扣税（含 undefined 与关闭选项），勾选时才按 4% 扣税。
   assert.equal(service.getTokenValues(undefined).bid.get('/items/token'), 80);
   assert.equal(service.getTokenValues(false).bid.get('/items/token'), 80);
   assert.equal(service.getTokenValues(true).bid.get('/items/token'), 76);
@@ -338,8 +338,8 @@ test('可选择让所有背部装备产物按 0 计算收益', () => {
   });
 
   assert.equal(service.isBackEquipment('/items/chimerical_quiver'), true);
-  assert.equal(normal.askTotal, 1900);
-  assert.equal(normal.bidTotal, 1520);
+  assert.equal(normal.askTotal, 1920);
+  assert.equal(normal.bidTotal, 1536);
   assert.equal(excluded.askTotal, 0);
   assert.equal(excluded.bidTotal, 0);
   assert.equal(missing.has('/items/chimerical_quiver'), false);
@@ -412,14 +412,14 @@ test('交易税倍率只通过公共常量使用', () => {
   const constantsSource = readSourceFile('src', 'common', 'constants.js');
   const calculatorSource = readSourceFile('src', 'modules', 'dungeon-profit', 'calculator.js');
 
-  assert.match(constantsSource, /MARKET_TAX_RATE\s*=\s*0\.05/);
+  assert.match(constantsSource, /MARKET_TAX_RATE\s*=\s*0\.04/);
   assert.match(constantsSource, /MARKET_TAX_MULTIPLIER\s*=\s*1 - MARKET_TAX_RATE/);
   assert.match(constantsSource, /COWBELL_TAX_RATE\s*=\s*0\.18/);
   assert.match(constantsSource, /COWBELL_TAX_MULTIPLIER\s*=\s*1 - COWBELL_TAX_RATE/);
   assert.match(calculatorSource, /MARKET_TAX_MULTIPLIER/);
   assert.match(calculatorSource, /COWBELL_TAX_MULTIPLIER/);
   assert.doesNotMatch(calculatorSource, /\b0\.98\b/);
-  assert.doesNotMatch(calculatorSource, /\b0\.95\b/);
+  assert.doesNotMatch(calculatorSource, /\b0\.96\b/);
   assert.doesNotMatch(calculatorSource, /\b0\.82\b/);
 });
 
@@ -429,10 +429,10 @@ test('市场单侧缺价时按参考实现回退，避免宝箱产出误算为�
     createMarketService({'/items/bid_only': {0: {a: -1, b: 98}}, '/items/recent_only': {0: {a: -1, b: -1, p: 75}}})
   );
 
-  assert.equal(service.getDirectPrice('/items/bid_only', 'ask'), 104);
+  assert.equal(service.getDirectPrice('/items/bid_only', 'ask'), 103);
   assert.equal(service.getDirectPrice('/items/bid_only', 'bid'), 98);
   assert.equal(service.getDirectPrice('/items/recent_only', 'ask'), 75);
-  assert.equal(service.getDirectPrice('/items/recent_only', 'bid', true), 71);
+  assert.equal(service.getDirectPrice('/items/recent_only', 'bid', true), 72);
 });
 
 test('牛铃袋市场完全缺价时牛铃按兜底价估值且不报缺价', () => {
@@ -888,11 +888,11 @@ test('制作和购买钥匙分别扣除门票与开箱钥匙成本后得到收�
   assert.equal(result.totalChestQuantity, 1.295);
   assert.equal(result.expectedDrops[0].quantity, 2.59);
   assert.ok(Math.abs(result.totalRevenueConservative - 196.84) < 1e-12);
-  assert.ok(Math.abs(result.totalRevenueOptimistic - 246.05) < 1e-12);
+  assert.ok(Math.abs(result.totalRevenueOptimistic - 248.64) < 1e-12);
   // 每日宝箱产出完全按报价税前计算，不随市场税选项变化。
   assert.ok(Math.abs(result.normalChestOutputConservative - 207.2) < 1e-12);
   assert.ok(Math.abs(result.normalChestOutputOptimistic - 259) < 1e-12);
-  // 关闭市场税选项后普通物品按报价直接计算，收益不再扣 5% 市场税。
+  // 关闭市场税选项后普通物品按报价直接计算，收益不再扣 4% 市场税。
   const untaxedResult = service.calculate({
     actionHrid: '/actions/combat/test_dungeon',
     clearMinutes: 1440,
@@ -903,9 +903,9 @@ test('制作和购买钥匙分别扣除门票与开箱钥匙成本后得到收�
   assert.ok(Math.abs(market.totalCostConservative - 18.13) < 1e-12);
   assert.ok(Math.abs(market.totalCostOptimistic - 14.245) < 1e-12);
   assert.ok(Math.abs(market.profitConservative - 178.71) < 1e-12);
-  assert.ok(Math.abs(market.profitOptimistic - 231.805) < 1e-12);
+  assert.ok(Math.abs(market.profitOptimistic - 234.395) < 1e-12);
   assert.ok(Math.abs(market.normalChestUnitProfitConservative - 138) < 1e-12);
-  assert.ok(Math.abs(market.normalChestUnitProfitOptimistic - 179) < 1e-12);
+  assert.ok(Math.abs(market.normalChestUnitProfitOptimistic - 181) < 1e-12);
   assert.equal(market.profitPerRunConservative, market.profitConservative);
   assert.equal(market.profitPerRunOptimistic, market.profitOptimistic);
   assert.equal(materials.totalCostConservative, 0);
@@ -918,15 +918,15 @@ test('制作和购买钥匙分别扣除门票与开箱钥匙成本后得到收�
       sellSide: 'ask',
       ticketPrice: 10,
       openingKeyPrice: 4,
-      unitProfit: 176,
-      profit: 227.92
+      unitProfit: 178,
+      profit: 230.51
     }, {buySide: 'ask', sellSide: 'bid', ticketPrice: 10, openingKeyPrice: 4, unitProfit: 138, profit: 178.71}, {
       buySide: 'bid',
       sellSide: 'ask',
       ticketPrice: 8,
       openingKeyPrice: 3,
-      unitProfit: 179,
-      profit: 231.805
+      unitProfit: 181,
+      profit: 234.395
     }, {buySide: 'bid', sellSide: 'bid', ticketPrice: 8, openingKeyPrice: 3, unitProfit: 141, profit: 182.595}
   ];
   for (const customCase of customCases) {
@@ -1292,7 +1292,7 @@ test('市场税选项默认勾选，悬浮提示与帮助文案从公共常量�
   // 默认勾选并透传计算选项；悬浮提示按 {0}/{1} 占位符接收由常量生成的百分比。
   assert.equal(rendered.input.applyMarketTax, true);
   assert.equal(rendered.input.excludeCowbellValue, false);
-  assert.match(rendered.markup, /applyMarketTaxHint\(5\/18\)/);
+  assert.match(rendered.markup, /applyMarketTaxHint\(4\/18\)/);
   assert.match(rendered.markup, /\.checked=true/);
   // “牛铃不计算收益”排在“披风不计算收益”之后，且默认不勾选。
   const backEquipmentIndex = rendered.markup.indexOf('<span>excludeBackEquipmentValue</span>');
@@ -1857,7 +1857,8 @@ test('工具箱及中英文文档按计算流程排列装备提升和地下城�
   ].map((match) => match[1]);
   assert.deepEqual(actionKeys, [
     'userCharacterCard', 'subscribeNotification', 'abilityUpgradeCalculator', 'houseUpgradeCalculator', 'combatUpgradeCalculator',
-    'equipmentComparison', 'dungeonProfitCalculator', 'combatSimAiwwb', 'switchCharacter'
+    'equipmentComparison', 'dungeonProfitCalculator', 'combatSimAiwwb', 'changelog', 'checkUpdate',
+    'switchCharacter'
   ]);
 
   [

@@ -1,5 +1,6 @@
 import {AbilityUpgradeCalculatorFeature} from './ability-upgrade/index.js';
 import {BuildScoreService} from './character-card/build-score/index.js';
+import {ChangelogFeature} from './changelog/index.js';
 import {CharacterCardFeature, createOriginalCharacterCardFeature} from './character-card/index.js';
 import {CombatSimImportFeature} from './combat-sim-import/index.js';
 import {CombatUpgradeCalculatorFeature} from './combat-upgrade/index.js';
@@ -16,6 +17,7 @@ import {LabyrinthSupplyFeature} from './labyrinth-supply/index.js';
 import {MarketplaceCartFeature} from './marketplace-cart/index.js';
 import {SubscribeNotificationFeature} from './subscribe-notification/index.js';
 import {ToolkitMenuFeature} from './toolkit-menu/index.js';
+import {UpdateCheckerFeature} from './update-checker/index.js';
 
 export function installModules(ctx) {
   // 先完成静态 configure，再把构造器挂到 ctx，避免模块之间直接循环 import。
@@ -33,6 +35,7 @@ export function installModules(ctx) {
 
   ctx.AbilityUpgradeCalculatorFeature = AbilityUpgradeCalculatorFeature;
   ctx.BuildScoreService = BuildScoreService;
+  ctx.ChangelogFeature = ChangelogFeature;
   ctx.CharacterCardFeature = CharacterCardFeature;
   ctx.CombatSimulationService = CombatSimulationService;
   ctx.CombatSimImportFeature = CombatSimImportFeature;
@@ -49,4 +52,5 @@ export function installModules(ctx) {
   ctx.MarketplaceCartFeature = MarketplaceCartFeature;
   ctx.SubscribeNotificationFeature = SubscribeNotificationFeature;
   ctx.ToolkitMenuFeature = ToolkitMenuFeature;
+  ctx.UpdateCheckerFeature = UpdateCheckerFeature;
 }

@@ -96,6 +96,17 @@ function compactStringArraysPlugin() {
 function userscriptHeaderPlugin() {
   return {
     name: 'mst-userscript-header',
+    generateBundle() {
+      // 除脚本外再输出一份只含油猴头部的 meta 文件，供检查更新这类只需要 @version 的场景读取，
+      // 不必下载整个脚本；与 .user.js 同名不同后缀（meta.js ↔ user.js），
+      // 检查更新按后缀推导安装地址的规则同样适用。
+      // 头部与脚本共用 computeBanner()，版本号仍只有 package.json 一处来源。
+      this.emitFile({
+        type: 'asset',
+        fileName: isDev ? 'mst.script.dev.meta.js' : 'mst.script.meta.js',
+        source: `${computeBanner().trimEnd()}\n`
+      });
+    },
     renderChunk(code) {
       // 生产版头部直接贴入代码；开发版使用 output.banner，方便 watch 输出 dev 脚本。
       // 头部每次都实时计算，watch 重建时重新读取头部与版本文件。

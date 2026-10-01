@@ -1,0 +1,127 @@
+/* 检查更新提示与弹窗样式（模块私有）。
+   入口红框用“内层实底 + 外层渐变”双背景实现带圆角的渐变描边，右上角小点用 ::after 画，
+   都不需要额外 DOM；配色沿用游戏主题变量，红色用 scarlet 系列兜底。 */
+.mst-my-character-card-btn.mst-toolkit-update-available {
+  position: relative;
+  border-color: transparent;
+  background:
+    linear-gradient(var(--color-midnight-500, #2c2e45), var(--color-midnight-500, #2c2e45)) padding-box,
+    linear-gradient(135deg, var(--color-scarlet-500, #d0333d), var(--color-orange-400, #fbb54b)) border-box;
+  box-shadow: 0 0 0.35rem rgba(208, 51, 61, 0.6);
+}
+
+.mst-my-character-card-btn.mst-toolkit-update-available:hover {
+  background:
+    linear-gradient(var(--color-midnight-400, #323450), var(--color-midnight-400, #323450)) padding-box,
+    linear-gradient(135deg, var(--color-scarlet-400, #d95c64), var(--color-orange-300, #fcc778)) border-box;
+}
+
+.mst-my-character-card-btn.mst-toolkit-update-available::after {
+  content: '';
+  position: absolute;
+  top: -0.2rem;
+  right: -0.2rem;
+  width: 0.4rem;
+  height: 0.4rem;
+  border-radius: 50%;
+  background: var(--color-scarlet-500, #d0333d);
+  box-shadow: 0 0 0 1px var(--color-midnight-800, #191a24);
+}
+
+/* 菜单里的“更新新版本”按钮：与入口红框同款渐变描边并加粗，突出显示。 */
+.mst-toolkit-action.mst-toolkit-action-update {
+  border-color: transparent;
+  background:
+    linear-gradient(var(--color-midnight-500, #2c2e45), var(--color-midnight-500, #2c2e45)) padding-box,
+    linear-gradient(135deg, var(--color-scarlet-500, #d0333d), var(--color-orange-400, #fbb54b)) border-box;
+  color: var(--color-text-dark-mode, #e7e7e7);
+  font-weight: 600;
+}
+
+.mst-toolkit-action.mst-toolkit-action-update:hover {
+  background:
+    linear-gradient(var(--color-midnight-400, #323450), var(--color-midnight-400, #323450)) padding-box,
+    linear-gradient(135deg, var(--color-scarlet-400, #d95c64), var(--color-orange-300, #fcc778)) border-box;
+}
+
+/* 检查更新弹窗：状态行为主信息，版本对比为两行键值，底部是检查时间与来源。 */
+.mst-update-checker-root {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  text-align: left;
+}
+
+.mst-update-checker-status {
+  font-size: var(--font-size-base, 0.875rem);
+  font-weight: 600;
+  overflow-wrap: break-word;
+}
+
+.mst-update-checker-latest {
+  color: var(--color-jade-300, #82dcca);
+}
+
+.mst-update-checker-update {
+  color: var(--color-orange-400, #fbb54b);
+}
+
+.mst-update-checker-error {
+  color: var(--color-scarlet-200, #ecadb1);
+}
+
+.mst-update-checker-hint,
+.mst-update-checker-foot {
+  color: var(--color-space-200, #bbc5f1);
+  font-size: var(--font-size-sm, 0.8125rem);
+  line-height: 1.4;
+  overflow-wrap: break-word;
+}
+
+.mst-update-checker-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.mst-update-checker-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.75rem;
+  font-size: var(--font-size-base, 0.875rem);
+}
+
+.mst-update-checker-row > span:first-child {
+  opacity: 0.85;
+}
+
+.mst-update-checker-link {
+  align-self: flex-start;
+  border-radius: var(--radius-sm, 0.25rem);
+  padding: 0.35rem 0.75rem;
+  background: var(--color-primary, #4357af);
+  color: var(--color-text-dark-mode, #e7e7e7);
+  font-size: var(--font-size-base, 0.875rem);
+  text-decoration: none;
+}
+
+.mst-update-checker-link:hover {
+  background: var(--color-space-600, #4357af);
+}
+
+.mst-update-checker-retry {
+  align-self: flex-start;
+  border: 1px solid var(--color-midnight-100, #454771);
+  border-radius: var(--radius-sm, 0.25rem);
+  padding: 0.35rem 0.75rem;
+  background: var(--color-midnight-500, #2c2e45);
+  color: var(--color-text-dark-mode, #e7e7e7);
+  font: inherit;
+  font-size: var(--font-size-base, 0.875rem);
+  cursor: pointer;
+}
+
+.mst-update-checker-retry:hover {
+  border-color: var(--color-space-300, #98a7e9);
+  background: var(--color-midnight-400, #323450);
+}

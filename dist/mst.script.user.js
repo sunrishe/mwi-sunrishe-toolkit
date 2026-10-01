@@ -3,7 +3,7 @@
 // @name:zh-CN         MWI Sunrishe 工具箱
 // @name:en            MWI Sunrishe Toolkit
 // @namespace          http://tampermonkey.net/
-// @version            2.17.2
+// @version            2.18.0
 // @description        MWI Sunrishe 综合工具箱：提供角色/队伍名片、技能/房屋/战斗升级规划、装备提升计算器、地下城收益、配装同步和市场伴侣增强。
 // @description:zh-CN  MWI Sunrishe 综合工具箱：提供角色/队伍名片、技能/房屋/战斗升级规划、装备提升计算器、地下城收益、配装同步和市场伴侣增强。
 // @description:en     MST toolkit for character/party cards, ability/house/combat upgrade planning, equipment comparison, dungeon profit, loadout sync, and Market Mate enhancements.
@@ -47,12 +47,15 @@
 // @connect            oapi.dingtalk.com
 // @connect            qyapi.weixin.qq.com
 // @connect            open.feishu.cn
+// @connect            js.nainai.eu.org
+// @connect            update.greasyfork.org.cn
+// @connect            update.greasyfork.org
 // ==/UserScript==
 (function () {
   'use strict';
 
   // 构建脚本会静态替换这个占位符，业务代码不直接读取 Node 环境变量。
-  const PACKAGE_VERSION = "2.17.2";
+  const PACKAGE_VERSION = "2.18.0";
 
   const BUILD_FLAGS = Object.freeze({
     // 目前只有语言切换按钮需要区分 dev/prod：正式包不展示该调试入口。
@@ -60,7 +63,7 @@
   });
 
   // 市场卖出收益统一从这里扣税，交易税调整时只改这一处。
-  const MARKET_TAX_RATE = 0.05;
+  const MARKET_TAX_RATE = 0.04;
   const MARKET_TAX_MULTIPLIER = 1 - MARKET_TAX_RATE;
 
   // 牛铃袋在市场上出售按 18% 特殊税率扣税，与普通市场税分开管理，调整时只改这一处。
@@ -2099,7 +2102,42 @@
     houseUpgradeCalculator: {zh: '房屋升级材料计算器', en: 'House Upgrade Calculator'},
     combatUpgradeCalculator: {zh: '战斗升级计算器', en: 'Combat Upgrade Calculator'},
     abilityUpgradeCalculator: {zh: '技能升级计算器', en: 'Ability Upgrade Calculator'},
-    subscribeNotification: {zh: '订阅通知', en: 'Notifications'}
+    subscribeNotification: {zh: '订阅通知', en: 'Notifications'},
+    changelog: {zh: '更新日志', en: 'Changelog'},
+    checkUpdate: {zh: '检查更新', en: 'Check for Updates'},
+    toolkitUpdateAvailable: {zh: '更新新版本 v{0}', en: 'Update to v{0}'}
+  };
+
+  // changelog-messages
+  const CHANGELOG_MESSAGES = {
+    changelogTitle: {zh: '更新日志', en: 'Changelog'},
+    changelogCurrent: {zh: '当前版本', en: 'Installed'},
+    changelogLegacyGroup: {zh: 'EDS 历史版本', en: 'EDS Legacy Versions'}
+  };
+
+  // update-checker-messages
+  const UPDATE_CHECKER_MESSAGES = {
+    // 入口红框的悬浮说明：说明红框与右上角小点的含义（更新版本号由调用方传入）。
+    updateAvailableBadge: {zh: '有新版本 v{0} 可用', en: 'New version v{0} is available'},
+    // 检查更新弹窗：显示当前版本与最新版本，并提供重新检查。
+    checkUpdateTitle: {zh: '检查更新', en: 'Check for Updates'},
+    checkUpdateChecking: {zh: '正在检查更新…', en: 'Checking for updates…'},
+    checkUpdateCurrent: {zh: '当前版本', en: 'Installed version'},
+    checkUpdateRemote: {zh: '最新版本', en: 'Latest version'},
+    checkUpdateLatest: {zh: '已是最新版本', en: 'You are on the latest version'},
+    checkUpdateAvailable: {zh: '发现新版本 v{0}', en: 'New version v{0} is available'},
+    checkUpdateFailed: {zh: '检查更新失败', en: 'Update check failed'},
+    checkUpdateFailedHint: {
+      zh: '无法连接更新地址，请检查网络或代理后重试。',
+      en: 'Could not reach the update sources. Check your network or proxy and try again.'
+    },
+    checkUpdateRetry: {zh: '重新检查', en: 'Check again'},
+    checkUpdateInstall: {zh: '安装新版本', en: 'Install new version'},
+    checkUpdateCheckedAt: {zh: '检查时间', en: 'Checked at'},
+    checkUpdateSource: {zh: '来源', en: 'Source'},
+    checkUpdateSourceProxy: {zh: '代理地址', en: 'Proxy address'},
+    checkUpdateSourceMirror: {zh: '镜像地址', en: 'Mirror address'},
+    checkUpdateSourceOfficial: {zh: '官方地址', en: 'Official address'}
   };
 
   // subscribe-notification-messages
@@ -2450,7 +2488,9 @@
     combatCalculator: COMBAT_CALCULATOR_MESSAGES,
     abilityCalculator: ABILITY_CALCULATOR_MESSAGES,
     combatSimImport: COMBAT_SIM_IMPORT_MESSAGES,
-    subscribeNotification: SUBSCRIBE_NOTIFICATION_MESSAGES
+    subscribeNotification: SUBSCRIBE_NOTIFICATION_MESSAGES,
+    changelog: CHANGELOG_MESSAGES,
+    updateChecker: UPDATE_CHECKER_MESSAGES
   };
 
   // style-service
@@ -2531,8 +2571,8 @@
         skills: '/static/media/skills_sprite.3bb4d936.svg',
         abilities: '/static/media/abilities_sprite.fdd1b4de.svg',
         actions: '/static/media/actions_sprite.e6388cbc.svg',
-        misc: '/static/media/misc_sprite.cfad291b.svg',
-        chatIcons: '/static/media/chat_icons_sprite.628944de.svg'
+        misc: '/static/media/misc_sprite.02869244.svg',
+        chatIcons: '/static/media/chat_icons_sprite.5a021815.svg'
       },
       markers: {
         items: 'items_sprite',
@@ -2562,18 +2602,42 @@
       scanPage() {
         if (this.scannedRevision === this.domRevision) return;
         this.scannedRevision = this.domRevision;
-        const unresolved = new Set(Object.keys(this.markers));
+        // 同一 sprite 在页面上可能有多个文件名：其它脚本（如第三方悬浮面板）还在用旧 hash，
+        // 而游戏自己渲染的图标数量远多于它们，因此取出现次数最多的一个；数量并列时优先
+        // 游戏根容器（#root）内的写法，避免误用第三方脚本的旧图标集。
+        const types = Object.entries(this.markers);
+        const counts = new Map();
         for (const useElement of document.querySelectorAll('svg use')) {
           const href = this.getUseHref(useElement);
           if (!href.includes('#')) continue;
           const spritePath = href.split('#')[0];
-          for (const type of unresolved) {
-            if (!spritePath.includes(this.markers[type])) continue;
-            this.paths.set(type, spritePath);
-            unresolved.delete(type);
-            break;
+          const match = types.find(
+            ([
+              , marker
+            ]) => spritePath.includes(marker)
+          );
+          if (!match) continue;
+          const [
+            type
+          ] = match;
+          let perPath = counts.get(type);
+          if (!perPath) counts.set(type, (perPath = new Map()));
+          const entry = perPath.get(spritePath) || {path: spritePath, count: 0, inRoot: false};
+          entry.count += 1;
+          entry.inRoot = entry.inRoot || Boolean(useElement.closest?.('#root'));
+          perPath.set(spritePath, entry);
+        }
+        this.paths.clear();
+        for (const [
+          type, perPath
+        ] of counts) {
+          let best = null;
+          for (const entry of perPath.values()) {
+            if (!best || entry.count > best.count || (entry.count === best.count && entry.inRoot && !best.inRoot)) {
+              best = entry;
+            }
           }
-          if (!unresolved.size) break;
+          if (best) this.paths.set(type, best.path);
         }
       },
 
@@ -3435,7 +3499,7 @@
       const popoverId = `${prefix}-popover`;
       const triggerClass = `${prefix}-trigger`;
       const paragraphClass = `${prefix}-popover-paragraph`;
-      const miscSprite = utils.getSpriteUrl('misc') || '/static/media/misc_sprite.cfad291b.svg';
+      const miscSprite = utils.getSpriteUrl('misc') || '/static/media/misc_sprite.02869244.svg';
       const triggerHost = document.createElement('span');
       triggerHost.className = `${prefix}-anchor`;
       TemplateRenderer.render(
@@ -3966,7 +4030,7 @@
       const {TemplateRenderer, utils} = this.ctx;
       const titleElement = popup?.querySelector?.('.swal2-title');
       if (!titleElement || !icon) return;
-      const miscSprite = utils?.getSpriteUrl?.('misc') || '/static/media/misc_sprite.cfad291b.svg';
+      const miscSprite = utils?.getSpriteUrl?.('misc') || '/static/media/misc_sprite.02869244.svg';
       const host = document.createElement('span');
       host.className = 'mst-dialog-title-icon';
       TemplateRenderer.render(
@@ -4335,7 +4399,7 @@
 
     getDialogHtml(feature) {
       const {i18n, utils} = feature.ctx;
-      const miscSprite = utils.getSpriteUrl('misc') || '/static/media/misc_sprite.cfad291b.svg';
+      const miscSprite = utils.getSpriteUrl('misc') || '/static/media/misc_sprite.02869244.svg';
       return `
   <div class="mst-upgrade-calculator mst-ability-upgrade-calculator">
     <div class="mst-ability-toolbar">
@@ -6742,6 +6806,497 @@
         equipmentHidden,
         newVersion: true
       };
+    }
+  }
+
+  // 版本号解析与比较：当前构建版本（dev 构建带 -dev.<时间戳> 后缀）与 GreasyFork meta 版本
+  // 都走同一套口径，只比较数字前缀，后缀不参与比较。
+  function parseVersionNumbers(version) {
+    const base = String(version || '')
+      .trim()
+      .match(/^\d+(?:\.\d+)*/);
+    return base ? base[0].split('.').map((part) => Number(part)) : [];
+  }
+
+  function getBaseVersion(version) {
+    const numbers = parseVersionNumbers(version);
+    return numbers.length ? numbers.join('.') : '';
+  }
+
+  // 逐段比较：2.9.0 < 2.10.0（按数字而非字符串），段数不同时缺失段按 0 处理。
+  function compareVersions(left, right) {
+    const a = parseVersionNumbers(left);
+    const b = parseVersionNumbers(right);
+    const length = Math.max(a.length, b.length);
+    for (let index = 0; index < length; index++) {
+      const difference = (a[index] || 0) - (b[index] || 0);
+      if (difference) return difference > 0 ? 1 : -1;
+    }
+    return 0;
+  }
+
+  function isNewerVersion(candidate, current) {
+    return compareVersions(candidate, current) > 0;
+  }
+
+  var MST_CHANGELOG_CSS = String.raw`.mst-changelog-root{display:flex;max-height:min(60vh,34rem);flex-direction:column;gap:.7rem;overflow-y:auto;padding-right:.3rem;text-align:left}
+.mst-changelog-entry{display:flex;flex-direction:column;gap:.3rem;border-bottom:1px solid var(--color-midnight-100, #454771);padding-bottom:.6rem}
+.mst-changelog-entry:last-child{border-bottom:none;padding-bottom:0}
+.mst-changelog-entry-head{display:flex;flex-wrap:wrap;align-items:center;gap:.5rem}
+.mst-changelog-version{color:var(--color-text-dark-mode, #e7e7e7);font-size:var(--font-size-md, 1rem);font-weight:600}
+.mst-changelog-date{color:var(--color-space-200, #bbc5f1);font-size:var(--font-size-sm, .8125rem);opacity:.85}
+.mst-changelog-current{border-radius:.75rem;padding:.05rem .45rem;background:var(--color-primary, #4357af);color:var(--color-text-dark-mode, #e7e7e7);font-size:var(--font-size-sm, .8125rem);font-weight:600}
+.mst-changelog-notes{display:flex;margin:0;padding-left:1.2rem;flex-direction:column;gap:.25rem}
+.mst-changelog-notes li{font-size:.82rem;line-height:1.5;overflow-wrap:break-word}
+.mst-changelog-group{margin-top:.2rem;color:var(--color-space-200, #bbc5f1);font-size:var(--font-size-sm, .8125rem);font-weight:600;letter-spacing:.05em}`;
+
+  // 更新日志数据：与 docs/changelog.md 保持同步（版本、顺序、中文说明逐条一致，测试会校验）。
+  // 发布日期取自 GreasyFork 发布记录（脚本 574037）；`legacy: true` 表示 MST 融合前的 EDS 历史线。
+  // 版本说明只写用户可感知的变化，更新版本时先改 docs/changelog.md，再同步这里并补英文。
+  const CHANGELOG_VERSIONS = [
+    {
+      version: '2.18.0',
+      date: '2026-10-01',
+      notes: [
+        {
+          zh: '地下城收益的普通物品市场税由 5% 调整为 4%，卖出收益相应提高（牛铃与牛铃袋仍为 18%）。',
+          en: 'Dungeon Profit: the standard market tax is lowered from 5% to 4%, so selling revenue is higher (cowbells and their bags stay at 18%).'
+        }, {
+          zh: '修复游戏更新后部分图标显示不出来的问题。',
+          en: 'Fixed an issue where some icons could fail to display after a game update.'
+        }, {
+          zh: '工具箱新增“更新日志”，可查看各版本的版本号、发布日期和更新说明。',
+          en: 'New "Changelog": view every version with its number, release date, and update notes.'
+        }, {
+          zh: '工具箱新增“检查更新”：定时在后台检查新版本，有新版本时入口显示提示、按钮变为“更新新版本”并可直接安装；没有新版本时点击可查看当前版本与最新版本。',
+          en: 'New "Check for Updates": it checks in the background and, when a new version is found, shows a hint on the Toolkit entry and turns the button into "Update to vX" for one-click install; with no new version, click it to view the installed and latest versions.'
+        }
+      ]
+    }, {
+      version: '2.17.2',
+      date: '2026-09-24',
+      notes: [
+        {
+          zh: '装备提升计算器：模拟目标的护甲与生命值调整后，每秒伤害数值整体提高约三成，比较结果更稳定。',
+          en: "Equipment Comparison: after the simulated target's armor and hitpoints were adjusted, DPS values are about 30% higher overall and comparisons are more stable."
+        }, {
+          zh: '装备提升计算器：基准装备与对比装备是同一件时直接显示 0% 提升，两栏每秒伤害显示“—”，不必等待模拟。',
+          en: 'Equipment Comparison: when the baseline and comparison items are the same, it shows 0% improvement and both DPS columns show "—", with no simulation needed.'
+        }, {
+          zh: '装备提升计算器：打开弹窗和切换职业方案后自动开始模拟，不用再手动改动装备。',
+          en: 'Equipment Comparison: simulation starts automatically when the dialog opens or the profession preset changes, so no manual equipment change is needed first.'
+        }, {
+          zh: '装备提升计算器：模拟只反映所选装备本身，不再计入角色成就等固定增益；搜索和切换装备时响应更快。',
+          en: 'Equipment Comparison: the simulation reflects only the selected equipment and no longer includes fixed bonuses such as character achievements; searching and switching equipment is faster.'
+        }
+      ]
+    }, {
+      version: '2.17.1',
+      date: '2026-09-23',
+      notes: [
+        {
+          zh: '兼容性调整：工具箱改为只转发游戏连接、不再改动连接本身，去掉与其它会改写游戏连接的脚本（如 Oi momomo 公会试炼助手、MWI 战斗工具）同时使用时的冲突隐患，工具箱自己的数据同步也照常工作。',
+          en: 'Compatibility: the Toolkit now only forwards the game connection instead of modifying it, removing conflicts with other scripts that rewrite the game connection (such as the Oi momomo guild trial helper and MWI combat tools) while keeping its own data sync working.'
+        }
+      ]
+    }, {
+      version: '2.17.0',
+      date: '2026-09-23',
+      notes: [
+        {
+          zh: '新增“任务开始”通知（默认开启，可在“消息类型”里单独关闭）：队首换成另一个任务时推送并列出接下来 3 项等待队列，被其他任务顶掉后重新开始的任务（迷宫、个人战斗这类任务编号没变的也一样）同样推送；组队战斗改在每次真正开战时推送。任务完成与任务开始发生在同一次切换时只发一条通知（一条消息里可以同时有“完成”和“开始”两行），同一任务一直在队首执行（例如迷宫跑不同环节、战斗打不同波次）不会重复推送。',
+          en: 'New "Task start" notification (on by default, can be turned off separately under "Message types"): it is pushed when the queue head switches to another task and lists the next 3 waiting tasks; tasks that resume after being pushed aside (even with an unchanged task id, such as the labyrinth or solo battles) are pushed too, and party battles are announced once per actual battle start. When a task completes and the next one starts in the same transition only one message is sent (it can contain both a "complete" and a "start" line), and a task that keeps running at the head (e.g. labyrinth rooms or battle waves) is not pushed repeatedly.'
+        }, {
+          zh: '通知里的行动名与游戏内保持一致：点金、分解、转化、解精炼显示“行动名: 物品名”，强化显示“物品名 +强化等级”。',
+          en: 'Action names in notifications now match the game: alchemy actions (transmute, decompose, convert, refine) show "Action: Item", and enhancing shows "Item +level".'
+        }, {
+          zh: '掉线或未登录时不再收到提醒：没有拿到角色队列数据时不再当成队列为空，检测到掉线会暂停“队列为空”和定期进度提醒，重连后自动恢复。',
+          en: 'No more reminders while disconnected or not logged in: a missing character queue is no longer treated as an empty queue, and disconnection pauses the "empty queue" and periodic progress pushes until the connection is restored.'
+        }, {
+          zh: '关闭订阅通知一段时间后再开启，通知按当前队列继续，不再停留在关闭前的旧任务，也不会立刻补推一条。',
+          en: 'After subscription notifications have been off for a while, re-enabling them continues with the current queue instead of the old task from before, without an immediate catch-up push.'
+        }, {
+          zh: '通知末尾取不到角色名时显示“角色 <编号>”以便区分账号，连角色信息都没有时显示“未知角色”。',
+          en: 'When the character name is unavailable, notifications show "Character <id>" to tell accounts apart, and "Unknown character" when no character info is available at all.'
+        },
+        {
+          zh: '“消息类型”选项顺序调整为任务开始、任务完成、队列为空、定期进度；最小推送间隔默认值由 10 秒改为 5 秒（已保存的设置不变）。',
+          en: 'The "Message types" options are reordered to task start, task completion, empty queue, periodic progress; the default minimum push interval changed from 10 to 5 seconds (saved settings are unchanged).'
+        }, {
+          zh: '地下城收益新增“牛铃不计算收益”选项（默认不勾选）：勾选后牛铃和牛铃袋都不计入收益，收益结果与掉落物表里的这部分价值按 0 显示。',
+          en: 'Dungeon Profit adds an "Exclude cowbell value" option (off by default): when checked, cowbells and bags of cowbells are excluded from profit and their value in the results and drop table shows as 0.'
+        }
+      ]
+    }, {
+      version: '2.16.0',
+      date: '2026-09-08',
+      notes: [
+        {
+          zh: '新增订阅通知：行动队列任务完成、新任务开始或长时间未完成时，推送通知到钉钉、企业微信或飞书机器人，队列腾空时附加提醒；任务完成和定期进度通知可分别开关，在工具箱菜单的“订阅通知”里配置和测试发送，仅在游戏页面打开期间接收，密钥只保存在本地。组队战斗取消准备后再次准备时，进度从重新准备时重新计数；游戏连接断开或同账号在其他页面登录被挤掉后，旧页面暂停推送进度和队列已空提醒，重连后自动恢复。',
+          en: 'New subscription notifications: push task completion, new task start, or long-running progress to a DingTalk, WeCom, or Feishu bot, plus a reminder when the queue becomes empty. Completion and periodic progress notifications can be toggled separately; configure and test sending under "Notifications" in the Toolkit menu. Notifications are only received while the game page is open and keys are stored locally. For party battles, progress restarts after a new ready-up; when the game connection drops or the account is kicked by another login, the old page pauses progress and empty-queue pushes until it reconnects.'
+        }, {
+          zh: '角色名片：勾选“使用最高强化等级”时，按库存与已穿戴中的最高强化等级生成名片；悬浮装备、技能、房屋图标显示单项评分，点击评分区域可查看战斗、生活各分项的明细（按游戏内顺序排列），并可一键复制明细（每行同时包含名称和分数）；游戏以英文启动后切换到中文时，名片里的物品名也能正常显示中文。',
+          en: 'Character Card: with "Use highest enhancement level" checked, the card is generated from the highest enhancement level in inventory and equipped gear. Hovering equipment, ability, or house icons shows per-item scores, clicking the score area shows the combat and skilling breakdowns (in game order), and the breakdown can be copied in one click (each line contains both the name and the score). Item names now display correctly when the game starts in English and then switches to Chinese.'
+        }, {
+          zh: '战斗模拟：一键导入与角色名片共用队友资料，游戏内查看过的队友资料自动同步；跨公会队友的神龛等级按其所在公会的神龛等级计算（在游戏内查看过该公会资料页后生效）；配装页面复制的战斗模拟数据补充神龛信息。',
+          en: "Combat Simulator: one-click import shares party profiles with the Character Card and syncs any profile you open in game; cross-guild members' shrine levels follow their guild's shrine levels (after viewing that guild's profile page in game); combat sim data copied from the loadout page now includes shrine info."
+        }, {
+          zh: '工具箱各功能弹窗标题前显示与菜单一致的图标，弹窗和菜单入口更容易一一对应。',
+          en: 'Every Toolkit dialog now shows the same icon as its menu entry, making dialogs and menu entries easy to match.'
+        }
+      ]
+    },
+    {
+      version: '2.15.0',
+      date: '2026-08-28',
+      notes: [
+        {
+          zh: '点击右上角头像弹出的菜单里新增「Sunrishe 工具箱」入口，点击后原地打开工具箱下拉（页头原有入口不变）。',
+          en: 'A new "Sunrishe Toolkit" entry appears at the top of the avatar menu, opening the Toolkit dropdown in place (the header entry is unchanged).'
+        }, {
+          zh: '战斗升级计算器在没有主修职业时也能规划升级，按各行经验估算耗时和预计升级时间。',
+          en: "Combat Upgrade Calculator can now plan upgrades without a major profession, estimating duration and completion time from each row's XP."
+        }
+      ]
+    }, {
+      version: '2.14.0',
+      date: '2026-08-26',
+      notes: [
+        {
+          zh: '地下城收益新增批量模拟：把多个地下城加入列表，每行单独设置难度、队伍人数、耗时和每日成本，一次对比制作/购买钥匙的每日成本和期望收益；参数修改后自动保存，可随时恢复默认。',
+          en: 'Dungeon Profit adds batch simulation: add multiple dungeons to a list, set difficulty, party size, run time, and daily cost per row, then compare daily cost and expected profit of crafting versus buying keys at once; parameters are saved automatically and can be reset to defaults.'
+        }, {
+          zh: '技能升级：从技能页面打开计算器时，自动填入当前装配的技能；技能书菜单里的计算器入口按钮与游戏其他操作按钮外观一致。',
+          en: 'Ability Upgrade: opening the calculator from the abilities page now pre-fills currently equipped abilities, and the calculator button in the ability book menu matches the look of other game action buttons.'
+        }, {
+          zh: '地下城收益的“掉落物”页签外观改为与游戏页面页签一致。',
+          en: 'The Dungeon Profit "Drops" tab now matches the game\'s tab style.'
+        }
+      ]
+    }, {
+      version: '2.13.0',
+      date: '2026-08-21',
+      notes: [
+        {
+          zh: '新增战斗模拟器一键导入：在 aiwwb 模拟器页面填入当前角色与队伍数据并刷新价格，队友数据来自游戏内点开过的资料。',
+          en: 'New one-click Combat Simulator import: fill the aiwwb simulator with the current character and party data and refresh prices; party data comes from profiles you have opened in game.'
+        }, {
+          zh: '工具箱菜单新增“战斗模拟 aiwwb”入口（复用同一窗口）。',
+          en: 'New "Combat Sim aiwwb" entry in the Toolkit menu (reuses the same window).'
+        }, {
+          zh: '修复与 MWITools 同时使用时其头部按钮被挤到居中排列的问题。',
+          en: 'Fixed MWITools header buttons being squeezed toward the center when both scripts are installed.'
+        }
+      ]
+    }, {
+      version: '2.12.0',
+      date: '2026-08-19',
+      notes: [
+        {
+          zh: '地下城收益计算器增强：地下城下拉框增加 D1-D4 序号，方便对照游戏内地下城地图；结果区新增“掉落物”页签，按官方宝箱掉落物列表分普通、精炼宝箱逐条展示物品、掉率、期望数量和左一/右一价格，掉率和期望数量悬浮可查看详情，价格按市场报价税前计算。',
+          en: 'Dungeon Profit improvements: the dungeon dropdown now shows D1-D4 numbers to match the in-game dungeon map, and the results area has a new "Drops" tab listing items, drop rates, expected quantities, and best-ask/best-bid prices per standard and refined chest, with details on hover; prices are calculated from market quotes before tax.'
+        }
+      ]
+    }, {
+      version: '2.11.1',
+      date: '2026-08-18',
+      notes: [
+        {
+          zh: '修复市场“加入购物车”按钮与“生产采集增强优化”等其他脚本同时启用时，提示“当前没有可加入购物车的市场物品”的问题。',
+          en: 'Fixed the "no market item to add to cart" message when the Marketplace Add to Cart button is used together with other scripts such as the production/gathering optimizer.'
+        }, {
+          zh: '同时安装多份本脚本（如正式版与本地调试版）时，“加入购物车”按钮保持稳定出现，不再互相干扰。',
+          en: 'When several copies of this script are installed (e.g. the release and a local dev build), the Add to Cart button now appears consistently without the copies interfering with each other.'
+        }
+      ]
+    },
+    {
+      version: '2.11.0',
+      date: '2026-08-18',
+      notes: [
+        {
+          zh: '迷宫入口新增“补充补给”：在“进入迷宫”按钮上方提供补给按钮，鼠标悬浮时弹出小窗口选择 1~5 次入场，把缺少的火把、斗筜、探照灯和茶箱、咖啡箱、食物箱加入 MWITools 购物车（道具按页面配置与携带上限补足，补给箱按入场次数补足，页面未配置时按专家档位；只加入购物车，不自动下单）。',
+          en: 'The labyrinth entry adds "Restock supplies": a button above "Enter Labyrinth" opens a small window to choose 1-5 runs and adds missing torches, shrouds, beacons, and tea/coffee/food crates to the MWITools cart (items top up to the carry cap, crates to the run count, expert tier by default; cart only, never orders).'
+        }, {
+          zh: '市场新增“加入购物车”按钮：在市场“刷新”按钮右侧，点击把当前查看的物品加入 MWITools 购物车，每次 1 个；查看具体强化等级的订单时按该等级加入，未强化物品按 +0 加入（只加入购物车，不自动下单）。',
+          en: 'Marketplace adds an "Add to cart" button next to "Refresh" that adds the currently viewed item to the MWITools cart, 1 per click; a specific enhancement level is kept and unenhanced items are added as +0 (cart only, never orders).'
+        }
+      ]
+    }, {
+      version: '2.10.2',
+      date: '2026-08-17',
+      notes: [
+        {
+          zh: '修复市场行情来源：市场数据改为始终按当前所在服务器读取（正式服、测试服、中文站各自读取本站行情），在带 www、不带 www 或测试服域名的页面打开时都能正确读取，不再依赖固定的域名跳转。',
+          en: 'Fixed the market data source: prices are always read from the current server (release, test, and Chinese sites each use their own market), so pages with or without www or on the test domain all work without a fixed domain redirect.'
+        }
+      ]
+    }, {
+      version: '2.10.1',
+      date: '2026-08-17',
+      notes: [
+        {
+          zh: '战力打造分全面升级为着装评分：新增“启用着装评分”选项（默认勾选），评分与 MWITools 最新版保持一致并分战斗、生活两行展示（✦ 标识在文案前，悬浮提示可查看各项明细），市场行情按当前所在服务器读取；不勾选时保持原有的战力打造分。',
+          en: 'Combat Power Score upgraded to Wardrobe Score: new "Enable wardrobe score" option (on by default); scores match the latest MWITools and are shown in separate combat and skilling lines (with a ✦ marker and a hover breakdown), and market data follows the current server; unchecking keeps the original Combat Power Score.'
+        }, {
+          zh: '购物车功能切换到 MWITools：原“市场伴侣”插件已停用，技能书、房屋材料和剪贴板导入都改由 MWITools 购物车处理。',
+          en: 'Cart features moved to MWITools: the old Market Mate plugin is retired, and ability books, house materials, and clipboard import all use the MWITools cart now.'
+        }, {
+          zh: '地下城收益新增“收益扣除市场税”选项（默认勾选），可按需切换是否在卖出收益中扣除市场税（普通物品 5%，牛铃与牛铃袋 18%）；预期产出区新增每日普通宝箱和精炼宝箱产出两行；宝箱内物品缺价时不再以官方指导价兜底，更贴近实际挂单与成交。',
+          en: 'Dungeon Profit adds a "Deduct market tax" option (on by default) to switch market tax on selling revenue (5% for regular items, 18% for cowbells and their bags); the expected output area adds daily standard and refined chest outputs; missing prices no longer fall back to the official guide price, closer to actual listings and trades.'
+        }, {
+          zh: '技能升级“添加技能”的选择窗口改为在计算器内部显示，技能以卡片列表呈现，不再全屏遮挡。',
+          en: 'The "Add ability" picker in Ability Upgrade now appears inside the calculator as a card list instead of covering the screen.'
+        }, {
+          zh: '市场技能书菜单新增“技能升级计算器”入口，点击后直接打开计算器并预填该技能。',
+          en: 'New "Ability Upgrade Calculator" entry in the ability book market menu, opening the calculator with that ability pre-filled.'
+        },
+        {
+          zh: '多个弹窗的下拉框、复选框边框与输入框同色，不再刺眼。',
+          en: 'Dropdowns and checkboxes in several dialogs now share the input border color instead of standing out.'
+        }, {
+          zh: '装备提升计算器“职业方案”的中文名称与游戏官方保持一致：重盾、长枪。',
+          en: 'Equipment Comparison profession names in Chinese now match the official game names: 重盾 and 长枪.'
+        }
+      ]
+    }, {
+      version: '2.9.3',
+      date: '2026-08-15',
+      notes: [
+        {
+          zh: '地下城收益按最新游戏规则调整市场税：卖出收入固定扣除 5% 市场税（原 2%），牛铃袋按 18% 特殊税率扣税。',
+          en: 'Dungeon Profit applies the latest market tax rules: selling revenue is reduced by a fixed 5% market tax (up from 2%), and bags of cowbells use the 18% special rate.'
+        }, {
+          zh: '修复地下城收益中牛铃价值可能算成 0 的问题：牛铃袋缺价时按官方市场指导价估值，指导价也缺失时才按市场快照成交价兜底（约 107.5 万金币/袋），牛铃按十分之一折算，不再显示为 0。',
+          en: 'Fixed cowbell value sometimes being calculated as 0: when a bag of cowbells has no market price it falls back to the official guide price and then to the market snapshot trade price (about 1.075M coins per bag), with cowbells at one tenth, so it no longer shows 0.'
+        }
+      ]
+    }, {
+      version: '2.9.1',
+      date: '2026-08-11',
+      notes: [
+        {
+          zh: '优化名片角色资料缓存：只保存名片展示所需的字段，缓存体积大幅缩小，超出上限或浏览器存储不足时自动清理最旧资料。',
+          en: 'Character profile caching optimized: only the fields needed by the card are cached, greatly reducing cache size, and the oldest profiles are cleaned up when the limit is exceeded or browser storage is low.'
+        }
+      ]
+    },
+    {
+      version: '2.9.0',
+      date: '2026-08-05',
+      notes: [
+        {
+          zh: '地下城收益计算器新增队伍人数选项（1-5 人），宝箱数量按官方公式 `5 ÷ 队伍人数` 计算，默认 5 人时每车普通宝箱仍为 1.295 个，门票、钥匙和收益随人数自动调整。',
+          en: 'Dungeon Profit adds a party size option (1-5): chest quantity uses the official formula `5 ÷ party size`, so with the default 5 members a standard chest is still 1.295 per run, and tickets, keys, and profit adjust automatically.'
+        }
+      ]
+    }, {
+      version: '2.8.3',
+      date: '2026-08-04',
+      notes: [
+        {
+          zh: '修复右上角工具箱入口布局；本地调试脚本新增文件版和网页版；地下城收益新增“披风不计算收益”并修复数量提前四舍五入导致的轻微偏差；战斗升级新增“使用当前战斗经验”；装备提升修复双手武器方案误叠副手导致伤害输出提升被高估的问题。',
+          en: 'Fixed the Toolkit entry layout in the header; local debug scripts now include a file version and a web version; Dungeon Profit adds "Exclude cape value" and fixes a small deviation from rounding quantities too early; Combat Upgrade adds "Use current combat XP"; Equipment Comparison fixes two-handed weapon setups double-counting the off-hand and overstating the damage gain.'
+        }
+      ]
+    }, {
+      version: '2.7.26',
+      date: '2026-08-03',
+      notes: [
+        {
+          zh: '优化脚本加载和浏览器兼容性，修复火狐浏览器下游戏连接、原生跳转、配装读取、游戏名称语言和油猴接口相关问题；装备提升中选择基准装备后，对比装备也会自动选中相同装备。',
+          en: 'Improved script loading and browser compatibility, fixing game connection, native navigation, loadout reading, game name language, and userscript API issues in Firefox; in Equipment Comparison, selecting a baseline item now also selects the same item for comparison.'
+        }
+      ]
+    }, {
+      version: '2.7.22',
+      date: '2026-08-02',
+      notes: [
+        {
+          zh: '优化技能和战斗升级输入体验，等级输入不会再显示多余的数字加减箭头。',
+          en: 'Improved level input in ability and combat upgrades — no more leftover number spinner arrows.'
+        }, {
+          zh: '优化弹窗在小屏和手机浏览器下的位置，技能选择和工具箱菜单会尽量保持在当前可见区域内。',
+          en: 'Improved dialog positioning on small screens and mobile browsers so the ability picker and Toolkit menu stay within the visible area.'
+        }
+      ]
+    }, {
+      version: '2.7.20',
+      date: '2026-08-02',
+      notes: [
+        {
+          zh: '从原 EDS 配装同步升级为 **MWI Sunrishe Toolkit**：保留 Milkonomy、hyhfish 和战斗模拟器相关复制/同步能力，并统一收进游戏顶部的工具箱入口。',
+          en: 'Upgraded from the EDS loadout sync into **MWI Sunrishe Toolkit**: Milkonomy, hyhfish, and combat simulator copy/sync features are kept and gathered under the Toolkit entry at the top of the game.'
+        }, {
+          zh: '新增角色、队伍和配装名片：可读取当前角色、公开资料、队伍和配装数据，支持缓存角色、布局切换、图片下载与复制。',
+          en: 'New character, party, and loadout cards: read the current character, public profiles, party, and loadout data, with profile caching, layout switching, image download, and copy.'
+        }, {
+          zh: '新增技能、房屋和战斗升级计算器：可结合角色等级、经验、库存、市场价格和常用方案规划升级材料、技能书、耗时与预计完成时间。',
+          en: 'New ability, house, and combat upgrade calculators: plan materials, ability books, duration, and completion time using character levels, XP, inventory, market prices, and common presets.'
+        }, {
+          zh: '新增装备提升计算器：按职业方案比较两件装备的属性差异、模拟伤害输出、装备价格差和每 1000 万金币带来的提升。',
+          en: 'New Equipment Comparison: compare two items by stats, simulated damage, price difference, and improvement per 10M coins by profession preset.'
+        }, {
+          zh: '新增地下城收益计算器：按官方掉落表、当前市场价格、制作/购买钥匙、自定义买卖档位和每日药品饮料成本估算长期期望收益。',
+          en: 'New Dungeon Profit calculator: estimate long-term expected profit from official drop tables, current market prices, crafted/bought keys, custom buy/sell tiers, and daily potion/food costs.'
+        },
+        {
+          zh: '增强 MWI 市场伴侣配合能力：支持剪贴板批量导入、房屋材料和技能书加入购物车，并保留“只加入购物车、不自动下单”的安全边界。',
+          en: 'Enhanced MWI Market Mate integration: clipboard batch import plus house materials and ability books to the cart, keeping the "cart only, never order" safety boundary.'
+        }, {
+          zh: '优化整体使用体验：界面语言跟随游戏实时切换，弹窗提示、移动端显示、官方中文术语和市场价格方向已统一整理；中文里最佳出售价/最佳收购价按游戏习惯显示为左一/右一。',
+          en: 'Overall experience: the interface language follows the game in real time, and dialogs, mobile display, official Chinese terms, and market price directions are unified; best sell/buy prices display as 左一/右一 in Chinese, following game conventions.'
+        }
+      ]
+    },
+    {
+      version: '1.2.7',
+      date: '2026-05-07',
+      legacy: true,
+      notes: [
+        {
+          zh: '新利润网（hyhfish 改版）支持同步披风。',
+          en: 'The new profit site (hyhfish version) supports cape sync.'
+        }, {
+          zh: '修复复制 Milkonomy 数据时遗漏个人成就增益的问题。',
+          en: 'Fixed missing personal achievement bonuses when copying Milkonomy data.'
+        }
+      ]
+    }, {
+      version: '1.2.5',
+      date: '2026-04-17',
+      legacy: true,
+      notes: [
+        {
+          zh: '增加对新利润网 `hyhfish.github.io/milkonomy` 的支持。',
+          en: 'Added support for the new profit site `hyhfish.github.io/milkonomy`.'
+        }
+      ]
+    }, {
+      // 未在 GreasyFork 发布过，无发布记录可查，不标注日期。
+      version: '1.1.3',
+      date: '',
+      legacy: true,
+      notes: [
+        {
+          zh: '战斗配装支持复制战斗模拟器格式的数据。',
+          en: 'Combat loadouts can be copied in combat simulator format.'
+        }, {
+          zh: '避免在非游戏网站注入游戏界面样式。',
+          en: 'Avoid injecting game UI styles on non-game sites.'
+        }
+      ]
+    }, {
+      version: '1.0.2',
+      date: '2026-04-15',
+      legacy: true,
+      notes: [
+        {
+          zh: '修复 Milkonomy 从未配置过方案时无法同步的问题。',
+          en: 'Fixed Milkonomy sync failing when no loadout had ever been configured.'
+        }
+      ]
+    }, {
+      version: '1.0.1',
+      date: '2026-04-15',
+      legacy: true,
+      notes: [
+        {
+          zh: '修复中文镜像站无法使用的问题。',
+          en: 'Fixed the Chinese mirror site being unusable.'
+        }
+      ]
+    },
+    {
+      version: '1.0.0',
+      date: '2026-04-15',
+      legacy: true,
+      notes: [
+        {
+          zh: '支持在游戏网站复制生活配装方案数据。',
+          en: 'Copy skilling loadout data on the game site.'
+        }, {
+          zh: '支持在 Milkonomy 网站同步生活配装方案。',
+          en: 'Sync skilling loadouts on the Milkonomy site.'
+        }
+      ]
+    }
+  ];
+
+  // 更新日志：在工具箱菜单里打开弹窗，按版本倒序列出所有版本的版本号、发布日期和更新说明。
+  // 数据与 docs/changelog.md 保持同步（测试校验），发布日期取自 GreasyFork 发布记录。
+
+  class ChangelogFeature {
+    constructor(ctx) {
+      this.ctx = ctx;
+      this.root = null;
+    }
+
+    init() {
+      const {LanguageEvents} = this.ctx;
+      StyleService.ensure('mst-changelog-style', MST_CHANGELOG_CSS);
+      LanguageEvents?.subscribe(() => this.refreshLanguage());
+    }
+
+    open() {
+      const {Notifier, TemplateRenderer, i18n} = this.ctx;
+      return Notifier.html({
+        title: i18n.t('changelogTitle'),
+        width: 'min(40rem, calc(100vw - 1rem))',
+        popupClass: 'mst-changelog-dialog',
+        icon: 'patch_notes',
+        html: () => TemplateRenderer.html`<div class="mst-changelog-root" id="mst-changelog-root"></div>`,
+        didOpen: (popup) => {
+          this.root = popup?.querySelector('#mst-changelog-root') || document.getElementById('mst-changelog-root');
+          this.render();
+        },
+        willClose: () => {
+          this.root = null;
+        }
+      });
+    }
+
+    render() {
+      const {TemplateRenderer} = this.ctx;
+      if (!this.root) return;
+      TemplateRenderer.render(() => this.template(), this.root);
+    }
+
+    // 语言切换时更新标题与列表文案，保持已打开弹窗的内容一致。
+    refreshLanguage() {
+      const {i18n} = this.ctx;
+      if (!this.root?.isConnected) return;
+      const title = this.root.closest('.mst-changelog-dialog')?.querySelector('.swal2-title');
+      if (title) title.textContent = i18n.t('changelogTitle');
+      this.render();
+    }
+
+    template() {
+      const {TemplateRenderer, i18n} = this.ctx;
+      const currentVersion = getBaseVersion(PACKAGE_VERSION);
+      const legacyEntries = CHANGELOG_VERSIONS.filter((entry) => entry.legacy);
+      const renderEntry = (entry) => TemplateRenderer.html`
+  <section class="mst-changelog-entry">
+    <div class="mst-changelog-entry-head">
+      <span class="mst-changelog-version">v${entry.version}</span>
+      ${entry.date ? TemplateRenderer.html`<span class="mst-changelog-date">${entry.date}</span>` : TemplateRenderer.empty}
+      ${
+        entry.version === currentVersion
+          ? TemplateRenderer.html`<span class="mst-changelog-current">${i18n.t('changelogCurrent')}</span>`
+          : TemplateRenderer.empty
+      }
+    </div>
+    <ol class="mst-changelog-notes">
+      ${entry.notes.map((note) => TemplateRenderer.html`<li>${i18n.pick(note)}</li>`)}
+    </ol>
+  </section>`;
+      // uhtml 数组插值必须保持扁平：MST 版本、历史分组标题和历史版本展开进同一层数组。
+      const nodes = [
+        ...CHANGELOG_VERSIONS.filter((entry) => !entry.legacy).map(
+          renderEntry
+        ), legacyEntries.length ? TemplateRenderer.html`<div class="mst-changelog-group">${i18n.t('changelogLegacyGroup')}</div>` : null, ...legacyEntries.map(renderEntry)
+      ].filter(Boolean);
+      return TemplateRenderer.html`${nodes}`;
     }
   }
 
@@ -12643,7 +13198,7 @@
       const primaryRate = this.getRateValue(feature.popup, 'primary-rate');
       const secondaryRate = this.getRateValue(feature.popup, 'secondary-rate');
       const plan = feature.calculatePlan(primaryRate, secondaryRate);
-      const miscSprite = utils.getSpriteUrl('misc') || '/static/media/misc_sprite.cfad291b.svg';
+      const miscSprite = utils.getSpriteUrl('misc') || '/static/media/misc_sprite.02869244.svg';
       // 常用等级覆盖当前版本主要训练断点，完整输入仍由 number 控件支持。
       const levelOptions = [
         35, 50, 55, 65, 75,
@@ -13415,7 +13970,7 @@
       // 挂单价缺失时按 bid 反推 ask 挂单价恒用该倍率还原，与“收益扣除市场税”选项无关。
       const marketTaxMultiplier =
         marketHrid === '/items/bag_of_10_cowbells' ? COWBELL_TAX_MULTIPLIER : MARKET_TAX_MULTIPLIER;
-      // 开启市场税时普通物品按 5%、牛铃袋按 18% 分别扣税；
+      // 开启市场税时普通物品按 4%、牛铃袋按 18% 分别扣税；
       // 未开启（或第三参缺省的成本/产出估值）时所有物品都按报价不扣税，牛铃袋也不例外。
       const taxMultiplier = applyMarketTax
         ? marketHrid === '/items/bag_of_10_cowbells'
@@ -14339,7 +14894,7 @@
         )
         .join('');
       const customMode = Boolean(feature.state.customMode);
-      const miscSprite = utils?.getSpriteUrl?.('misc') || '/static/media/misc_sprite.cfad291b.svg';
+      const miscSprite = utils?.getSpriteUrl?.('misc') || '/static/media/misc_sprite.02869244.svg';
       return `
   <tr data-batch-row-id="${row.id}">
     <td class="mst-sequence-cell mst-dungeon-batch-index" draggable="true" title="${escapeHtmlText(
@@ -23708,7 +24263,7 @@
       const houseSpriteUrl =
         utils.getSvgSpriteUrl('[class*="HousePanel_houseRoom__"] svg use') ||
         utils.getSpriteUrl('misc') ||
-        '/static/media/misc_sprite.cfad291b.svg';
+        '/static/media/misc_sprite.02869244.svg';
       const houseNameToHrid = new Map();
 
       Object.entries(ui.houseDetails).forEach(
@@ -24750,7 +25305,7 @@
 
   // 队列跟踪器：以官方 CharacterAction.id 为准判定行动队列变动事件。
   // 纯逻辑边界，不依赖 DOM、DataHub 或 i18n，事件文案由装配层生成。
-  // 官方合并语义（main.*.chunk.js handleMessageActionsUpdated，v1.20260814.0）：
+  // 官方合并语义（main.*.chunk.js handleMessageActionsUpdated，v1.20260927.0）：
   // endCharacterActions 中 isDone=true 的行动从队列移除，其余按 id upsert，
   // 最后 partyID 非 0（组队/战斗行动）排在前、partyID 为 0 的在后、各组按 ordinal 升序。
 
@@ -26117,7 +26672,9 @@
         abilityCalculator,
         equipmentComparison,
         dungeonCalculator,
-        subscribeNotification
+        subscribeNotification,
+        changelog,
+        updateChecker
       }
     ) {
       this.ctx = ctx;
@@ -26128,6 +26685,8 @@
       this.equipmentComparison = equipmentComparison;
       this.dungeonCalculator = dungeonCalculator;
       this.subscribeNotification = subscribeNotification;
+      this.changelog = changelog;
+      this.updateChecker = updateChecker;
       this.dropdownCleanup = null;
       this.outsideClickHandler = (event) => {
         const dropdown = document.getElementById('mst-toolkit-character-dropdown');
@@ -26140,8 +26699,15 @@
     getActions() {
       const {GameNavigationService, Notifier, i18n} = this.ctx;
       // 菜单顺序按常用工作流排列：资料与升级工具在前，站点导航放最后。
+      // “检查更新”是固定入口，位置在“更新日志”下面：检查到新版本时变成高亮的
+      // “更新新版本”并直接打开安装页，否则打开检查更新弹窗显示当前版本与最新版本。
+      const hasUpdate = this.updateChecker.hasUpdate();
       return [
-        {key: 'userCharacterCard', icon: 'social', handler: () => this.characterCardFeature.showMyCharacterCard()}, {
+        {
+          key: 'userCharacterCard',
+          icon: 'social',
+          handler: () => this.characterCardFeature.showMyCharacterCard()
+        }, {
           key: 'subscribeNotification',
           icon: 'action_queue',
           handler: () => this.subscribeNotification.openSettings()
@@ -26162,7 +26728,17 @@
           key: 'combatSimAiwwb',
           icon: 'combat',
           handler: () => this.openCombatSimulator()
-        }, {
+        }, {key: 'changelog', icon: 'patch_notes', handler: () => this.changelog.open()}, {
+          key: 'checkUpdate',
+          icon: 'news',
+          variant: hasUpdate ? 'update' : '',
+          label: hasUpdate
+            ? i18n.t('toolkitUpdateAvailable', this.updateChecker.getLatestVersion())
+            : i18n.t('checkUpdate'),
+          handler: () =>
+            this.updateChecker.hasUpdate() ? this.updateChecker.openInstallUrl() : this.updateChecker.openDialog()
+        },
+        {
           key: 'switchCharacter',
           icon: 'switch_character',
           handler: () => {
@@ -26175,16 +26751,6 @@
     // 跳转 aiwwb 战斗模拟器；window.open 传固定 target 名，重复点击复用同一窗口不新开。
     openCombatSimulator() {
       window.open('https://aiwwb.github.io/milkywayidle_battle/dist/', 'mst-combat-sim-aiwwb');
-    }
-
-    refresh() {
-      const {i18n} = this.ctx;
-      document.querySelectorAll('.mst-my-character-card-btn').forEach((button) => {
-        const text = i18n.t('toolkitShort');
-        const title = i18n.t('toolkitTitle');
-        if (button.textContent !== text) button.textContent = text;
-        if (button.getAttribute('title') !== title) button.setAttribute('title', title);
-      });
     }
 
     toggleDropdown(trigger, anchorRect) {
@@ -26270,23 +26836,28 @@
     renderDropdown(dropdown) {
       const {TemplateRenderer, i18n, utils} = this.ctx;
       if (!dropdown) return;
-      const miscSprite = utils.getSpriteUrl('misc') || '/static/media/misc_sprite.cfad291b.svg';
+      const miscSprite = utils.getSpriteUrl('misc') || '/static/media/misc_sprite.02869244.svg';
       TemplateRenderer.render(
         () => TemplateRenderer.html`
   <div class="mst-toolkit-dropdown-title">${i18n.t('toolkitTitle')}</div>
-  ${this.getActions().map(
-    ({key, icon, handler}) => TemplateRenderer.html`
-  <button type="button" class="mst-toolkit-action" @click=${() => {
+  ${this.getActions().map((action) => this.renderAction(action, dropdown, miscSprite))}
+`,
+        dropdown
+      );
+    }
+
+    renderAction({key, icon, label, variant, handler}, dropdown, miscSprite) {
+      const {TemplateRenderer, i18n} = this.ctx;
+      // “更新新版本”用红色渐变描边样式；class 必须整值插值，uhtml 不支持“静态片段 + 插值”混写。
+      const className = variant === 'update' ? 'mst-toolkit-action mst-toolkit-action-update' : 'mst-toolkit-action';
+      return TemplateRenderer.html`
+  <button type="button" class=${className} @click=${() => {
     dropdown.remove();
     handler();
   }}>
     <svg aria-hidden="true"><use href=${miscSprite + '#' + icon}></use></svg>
-    <span>${i18n.t(key)}</span>
-  </button>`
-  )}
-`,
-        dropdown
-      );
+    <span>${label || i18n.t(key)}</span>
+  </button>`;
     }
 
     // 在右上角头像弹出层（游戏原生 Header_avatarMenu 菜单）里注入工具箱入口，
@@ -26331,15 +26902,27 @@
       else menu.appendChild(button);
     }
 
+    // 检测到新版本时入口按钮加红框渐变描边与右上角小点，悬浮提示说明可用版本。
     refresh() {
       const {i18n} = this.ctx;
+      const hasUpdate = this.updateChecker.hasUpdate();
+      const updateVersion = hasUpdate ? this.updateChecker.getLatestVersion() : '';
       document.querySelectorAll('.mst-my-character-card-btn').forEach((button) => {
         const text = i18n.t('toolkitShort');
         const title = i18n.t('toolkitTitle');
+        const fullTitle = hasUpdate ? `${title} · ${i18n.t('updateAvailableBadge', updateVersion)}` : title;
         if (button.textContent !== text) button.textContent = text;
-        if (button.getAttribute('title') !== title) button.setAttribute('title', title);
+        if (button.getAttribute('title') !== fullTitle) button.setAttribute('title', fullTitle);
+        button.classList.toggle('mst-toolkit-update-available', hasUpdate);
       });
       this.addAvatarMenuEntry();
+    }
+
+    // 更新状态变化时刷新入口标记；下拉已打开时同步补上或移除“更新新版本”。
+    handleUpdateChange() {
+      this.refresh();
+      const dropdown = document.getElementById('mst-toolkit-character-dropdown');
+      if (dropdown) this.renderDropdown(dropdown);
     }
 
     init() {
@@ -26351,6 +26934,346 @@
       LanguageEvents.subscribe(() => {
         this.refresh();
       });
+      this.updateChecker.onChange(() => this.handleUpdateChange());
+    }
+  }
+
+  var MST_UPDATE_CHECKER_CSS = String.raw`.mst-my-character-card-btn.mst-toolkit-update-available{position:relative;border-color:transparent;background:linear-gradient(var(--color-midnight-500, #2c2e45),var(--color-midnight-500, #2c2e45)) padding-box,linear-gradient(135deg,var(--color-scarlet-500, #d0333d),var(--color-orange-400, #fbb54b)) border-box;box-shadow:0 0 .35rem #d0333d99}
+.mst-my-character-card-btn.mst-toolkit-update-available:hover{background:linear-gradient(var(--color-midnight-400, #323450),var(--color-midnight-400, #323450)) padding-box,linear-gradient(135deg,var(--color-scarlet-400, #d95c64),var(--color-orange-300, #fcc778)) border-box}
+.mst-my-character-card-btn.mst-toolkit-update-available:after{content:"";position:absolute;top:-.2rem;right:-.2rem;width:.4rem;height:.4rem;border-radius:50%;background:var(--color-scarlet-500, #d0333d);box-shadow:0 0 0 1px var(--color-midnight-800, #191a24)}
+.mst-toolkit-action.mst-toolkit-action-update{border-color:transparent;background:linear-gradient(var(--color-midnight-500, #2c2e45),var(--color-midnight-500, #2c2e45)) padding-box,linear-gradient(135deg,var(--color-scarlet-500, #d0333d),var(--color-orange-400, #fbb54b)) border-box;color:var(--color-text-dark-mode, #e7e7e7);font-weight:600}
+.mst-toolkit-action.mst-toolkit-action-update:hover{background:linear-gradient(var(--color-midnight-400, #323450),var(--color-midnight-400, #323450)) padding-box,linear-gradient(135deg,var(--color-scarlet-400, #d95c64),var(--color-orange-300, #fcc778)) border-box}
+.mst-update-checker-root{display:flex;flex-direction:column;gap:.6rem;text-align:left}
+.mst-update-checker-status{font-size:var(--font-size-base, .875rem);font-weight:600;overflow-wrap:break-word}
+.mst-update-checker-latest{color:var(--color-jade-300, #82dcca)}
+.mst-update-checker-update{color:var(--color-orange-400, #fbb54b)}
+.mst-update-checker-error{color:var(--color-scarlet-200, #ecadb1)}
+.mst-update-checker-hint,.mst-update-checker-foot{color:var(--color-space-200, #bbc5f1);font-size:var(--font-size-sm, .8125rem);line-height:1.4;overflow-wrap:break-word}
+.mst-update-checker-rows{display:flex;flex-direction:column;gap:.25rem}
+.mst-update-checker-row{display:flex;justify-content:space-between;gap:.75rem;font-size:var(--font-size-base, .875rem)}
+.mst-update-checker-row>span:first-child{opacity:.85}
+.mst-update-checker-link{align-self:flex-start;border-radius:var(--radius-sm, .25rem);padding:.35rem .75rem;background:var(--color-primary, #4357af);color:var(--color-text-dark-mode, #e7e7e7);font-size:var(--font-size-base, .875rem);text-decoration:none}
+.mst-update-checker-link:hover{background:var(--color-space-600, #4357af)}
+.mst-update-checker-retry{align-self:flex-start;border:1px solid var(--color-midnight-100, #454771);border-radius:var(--radius-sm, .25rem);padding:.35rem .75rem;background:var(--color-midnight-500, #2c2e45);color:var(--color-text-dark-mode, #e7e7e7);font:inherit;font-size:var(--font-size-base, .875rem);cursor:pointer}
+.mst-update-checker-retry:hover{border-color:var(--color-space-300, #98a7e9);background:var(--color-midnight-400, #323450)}`;
+
+  // 检查更新的数据源与解析：按顺序尝试各源，只读取 meta.js 头部里的 @version。
+  // 每一项都自带 meta 地址、来源标签与配套的安装地址——谁检查成功就用谁的安装地址，
+  // 因为网络不通时“查得到版本”和“装得上脚本”往往必须是同一条链路（代理站、镜像站各自可用）；
+  // 来源标签写在源上，弹窗按标签显示，不按下标硬编码（顺序调整后下标会错位）。
+  // 第一个返回合法版本号的源即作为本次结果，更靠后的源不再请求；
+  // 顺序即优先级：当前为 GreasyFork 官方 → js.nainai 代理 → org.cn 镜像；
+  // 以后新增镜像时在数组末尾按优先级追加一项即可，其余逻辑无需改动。
+  const META_SUFFIX = '.meta.js';
+  const SCRIPT_SUFFIX = '.user.js';
+
+  function createSource(metaUrl, sourceKey) {
+    return {
+      metaUrl,
+      sourceKey,
+      // 同一路径下 meta 与脚本只差后缀，安装地址由 meta 地址直接推导，避免两处各写一份写歪。
+      installUrl: metaUrl.endsWith(META_SUFFIX) ? metaUrl.slice(0, -META_SUFFIX.length) + SCRIPT_SUFFIX : metaUrl
+    };
+  }
+
+  const UPDATE_CHECK_SOURCES = [
+    createSource(
+      'https://update.greasyfork.org/scripts/574037/MWI%20Sunrishe%20Toolkit.meta.js',
+      'checkUpdateSourceOfficial'
+    ), createSource('https://js.nainai.eu.org/proxy/https://update.greasyfork.org/scripts/574037/MWI%20Sunrishe%20Toolkit.meta.js', 'checkUpdateSourceProxy'), createSource('https://update.greasyfork.org.cn/scripts/574037/MWI%20Sunrishe%20Toolkit.meta.js', 'checkUpdateSourceMirror')
+  ];
+
+  // 一次检查都没有成功过时的兜底安装地址（官方直链）。
+  const FALLBACK_INSTALL_URL = 'https://update.greasyfork.org/scripts/574037/MWI%20Sunrishe%20Toolkit.user.js';
+
+  // meta.js 里每行头部形如 `// @version            2.17.2`。
+  function parseMetaVersion(text) {
+    const match = String(text || '').match(/^\s*\/\/\s*@version\s+(\S+)\s*$/m);
+    return match ? match[1].trim() : '';
+  }
+
+  // 按顺序请求各源：拿到合法版本号立即返回（带该源的安装地址与来源标签）；地址不可用或解析不到版本号才继续下一个。
+  async function fetchLatestVersion(sources, requestText) {
+    const errors = [];
+    for (let index = 0; index < sources.length; index++) {
+      const source = sources[index];
+      try {
+        const version = parseMetaVersion(await requestText(source.metaUrl));
+        if (version) return {version, sourceIndex: index, sourceKey: source.sourceKey, installUrl: source.installUrl};
+        errors.push(source.metaUrl + ': @version not found');
+      } catch (error) {
+        errors.push(source.metaUrl + ': ' + (error?.message || error));
+      }
+    }
+    console.warn('[MST] 检查更新失败:', errors);
+    return {version: '', errors};
+  }
+
+  // 检查更新：后台定期从镜像地址读取脚本 meta.js 的 @version（只读版本号，不下载脚本本体）。
+  // 工具箱菜单固定提供“检查更新”入口：发现新版本时它变成“更新新版本”并直接打开安装直链，
+  // 没有新版本时打开检查弹窗显示当前版本与最新版本；同时给工具箱入口加红框与小点提示。
+  // 安装直链跟随检查成功的那个源（网络不通时“查得到”和“装得上”必须是同一条链路）。
+  // 检查状态只存内存（最近检查时间、远端版本号与来源），页面刷新后重新检查一次，不做任何持久化。
+
+  // 后台检查间隔：6 小时；页面持续打开时每 30 分钟判断一次是否到期。
+  const UPDATE_CHECK_INTERVAL_MS = 6 * 60 * 60 * 1000;
+  const UPDATE_CHECK_TICK_MS = 30 * 60 * 1000;
+  // 启动后延迟再检查，避开页面加载高峰。
+  const UPDATE_CHECK_INITIAL_DELAY_MS = 10000;
+  // 单个地址的请求超时。
+  const REQUEST_TIMEOUT_MS = 15000;
+
+  class UpdateCheckerFeature {
+    constructor(ctx) {
+      this.ctx = ctx;
+      this.latestVersion = '';
+      this.lastCheckedAt = 0;
+      this.sourceKey = '';
+      this.installUrl = '';
+      this.checkPromise = null;
+      this.listeners = new Set();
+      this.initialTimer = null;
+      this.timer = null;
+      this.dialogRoot = null;
+      this.dialogState = null;
+      this.dialogToken = 0;
+    }
+
+    init() {
+      const {CONFIG, LanguageEvents} = this.ctx;
+      // 工具箱只在游戏页面存在，非游戏站不建定时器、不发请求。
+      if (!CONFIG.isGameSite) return;
+      StyleService.ensure('mst-update-checker-style', MST_UPDATE_CHECKER_CSS);
+      this.notifyListeners();
+      // 启动后先检查一次，之后按间隔判断是否到期；状态只存内存，刷新页面重新检查。
+      this.initialTimer = setTimeout(() => this.checkIfDue(), UPDATE_CHECK_INITIAL_DELAY_MS);
+      this.timer = setInterval(() => this.checkIfDue(), UPDATE_CHECK_TICK_MS);
+      LanguageEvents?.subscribe(() => this.refreshLanguage());
+    }
+
+    onChange(listener) {
+      if (typeof listener !== 'function') return () => {};
+      this.listeners.add(listener);
+      return () => this.listeners.delete(listener);
+    }
+
+    notifyListeners() {
+      this.listeners.forEach((listener) => {
+        try {
+          listener();
+        } catch (error) {
+          console.error('[MST] 更新状态监听失败:', error);
+        }
+      });
+    }
+
+    // 远端版本高于当前构建（dev 后缀不参与比较）时才提示更新。
+    hasUpdate() {
+      return Boolean(this.latestVersion) && isNewerVersion(this.latestVersion, PACKAGE_VERSION);
+    }
+
+    getLatestVersion() {
+      return this.latestVersion;
+    }
+
+    // 安装地址跟随检查成功的源；一次都没成功过时用官方直链兜底。
+    getInstallUrl() {
+      return this.installUrl || FALLBACK_INSTALL_URL;
+    }
+
+    // 打开脚本直链；固定 target 名，重复点击复用同一窗口不新开。
+    openInstallUrl() {
+      window.open(this.getInstallUrl(), 'mst-update-install');
+    }
+
+    // ---- 检查更新弹窗（工具箱菜单入口：没有新版本时打开） ----
+
+    openDialog() {
+      const {Notifier, TemplateRenderer, i18n} = this.ctx;
+      this.dialogState = {status: 'loading'};
+      return Notifier.html({
+        title: i18n.t('checkUpdateTitle'),
+        width: 'min(30rem, calc(100vw - 1rem))',
+        popupClass: 'mst-update-checker-dialog',
+        icon: 'news',
+        html: () => TemplateRenderer.html`<div class="mst-update-checker-root" id="mst-update-checker-root"></div>`,
+        didOpen: (popup) => {
+          this.dialogRoot =
+            popup?.querySelector('#mst-update-checker-root') || document.getElementById('mst-update-checker-root');
+          this.renderDialog();
+          this.runDialogCheck();
+        },
+        willClose: () => {
+          // 关闭后丢弃在途结果，避免向已卸载的弹窗写状态。
+          this.dialogRoot = null;
+          this.dialogState = null;
+          this.dialogToken += 1;
+        }
+      });
+    }
+
+    async runDialogCheck() {
+      const token = ++this.dialogToken;
+      this.dialogState = {status: 'loading'};
+      this.renderDialog();
+      const success = await this.check();
+      if (token !== this.dialogToken || !this.dialogRoot?.isConnected) return;
+      this.dialogState = {
+        status: success ? (this.hasUpdate() ? 'update' : 'latest') : 'error',
+        checkedAt: this.lastCheckedAt
+      };
+      this.renderDialog();
+    }
+
+    renderDialog() {
+      const {TemplateRenderer} = this.ctx;
+      if (!this.dialogRoot) return;
+      TemplateRenderer.render(() => this.dialogTemplate(), this.dialogRoot);
+    }
+
+    // 语言切换时刷新入口提示与已打开的弹窗文案，保留当前结果不重新发起检查。
+    refreshLanguage() {
+      const {i18n} = this.ctx;
+      this.notifyListeners();
+      if (!this.dialogRoot?.isConnected) return;
+      const title = this.dialogRoot.closest('.mst-update-checker-dialog')?.querySelector('.swal2-title');
+      if (title) title.textContent = i18n.t('checkUpdateTitle');
+      this.renderDialog();
+    }
+
+    dialogTemplate() {
+      const {TemplateRenderer, i18n} = this.ctx;
+      const state = this.dialogState || {status: 'loading'};
+      if (state.status === 'loading') {
+        return TemplateRenderer.html`<div class="mst-update-checker-status">${i18n.t('checkUpdateChecking')}</div>`;
+      }
+      const currentRow = TemplateRenderer.html`
+  <div class="mst-update-checker-row"><span>${i18n.t('checkUpdateCurrent')}</span><span>v${PACKAGE_VERSION}</span></div>`;
+      if (state.status === 'error') {
+        return TemplateRenderer.html`
+  <div class="mst-update-checker-status mst-update-checker-error">❌ ${i18n.t('checkUpdateFailed')}</div>
+  <div class="mst-update-checker-rows">${currentRow}</div>
+  <div class="mst-update-checker-hint">${i18n.t('checkUpdateFailedHint')}</div>
+  ${this.renderDialogActions(state)}`;
+      }
+      const hasUpdate = state.status === 'update';
+      return TemplateRenderer.html`
+  <div class=${hasUpdate ? 'mst-update-checker-status mst-update-checker-update' : 'mst-update-checker-status mst-update-checker-latest'}>
+    ${hasUpdate ? '🆕 ' + i18n.t('checkUpdateAvailable', this.latestVersion) : '✅ ' + i18n.t('checkUpdateLatest')}
+  </div>
+  <div class="mst-update-checker-rows">
+    ${currentRow}
+    ${
+      this.latestVersion
+        ? TemplateRenderer.html`<div class="mst-update-checker-row"><span>${i18n.t('checkUpdateRemote')}</span><span>v${this.latestVersion}</span></div>`
+        : TemplateRenderer.empty
+    }
+  </div>
+  ${this.renderDialogActions(state)}`;
+    }
+
+    // 有更新时给安装页链接（与菜单按钮跳转同一地址），其余情况给“重新检查”。
+    renderDialogActions(state) {
+      const {TemplateRenderer, i18n, utils} = this.ctx;
+      const parts = [
+        state.status === 'update'
+          ? TemplateRenderer.html`<a
+    class="mst-update-checker-link"
+    href=${this.getInstallUrl()}
+    target="_blank"
+    rel="noopener noreferrer"
+  >${i18n.t('checkUpdateInstall')}</a>`
+          : TemplateRenderer.html`<button
+    type="button"
+    class="mst-update-checker-retry"
+    @click=${() => this.runDialogCheck()}
+  >${i18n.t('checkUpdateRetry')}</button>`
+      ];
+      if (state.checkedAt) {
+        // 来源标签由命中的源自带，不按数组下标硬编码（顺序调整后下标会错位）。
+        parts.push(TemplateRenderer.html`<div class="mst-update-checker-foot">
+    ${i18n.t('checkUpdateCheckedAt')} ${utils.formatDateTime(new Date(state.checkedAt))} · ${i18n.t('checkUpdateSource')} ${i18n.t(this.sourceKey || 'checkUpdateSourceOfficial')}
+  </div>`);
+      }
+      return parts;
+    }
+
+    checkIfDue() {
+      if (this.checkPromise) return;
+      if (this.lastCheckedAt && Date.now() - this.lastCheckedAt < UPDATE_CHECK_INTERVAL_MS) return;
+      this.check();
+    }
+
+    // 检查一次并返回是否拿到版本号；同一时刻只发一次请求，重复调用共用同一个结果。
+    check() {
+      if (this.checkPromise) return this.checkPromise;
+      this.checkPromise = this.runCheck().finally(() => {
+        this.checkPromise = null;
+      });
+      return this.checkPromise;
+    }
+
+    async runCheck() {
+      const result = await fetchLatestVersion(UPDATE_CHECK_SOURCES, (url) => this.requestText(url));
+      const success = Boolean(result.version);
+      // 全部地址都不可用时保留上次结果，只记录本次检查时间，避免短时间内反复请求。
+      if (success) {
+        this.latestVersion = result.version;
+        this.sourceKey = result.sourceKey;
+        this.installUrl = result.installUrl;
+      }
+      this.lastCheckedAt = Date.now();
+      this.notifyListeners();
+      return success;
+    }
+
+    // 优先走 GM 请求（受头部 @connect 授权与脚本管理器代理保护）；
+    // 管理器不可用或请求被拒绝（如本地调试壳未同步 @connect）时退回页面 fetch，
+    // 代理地址带 CORS 允许跨域，官方地址能否成功取决于其自身响应头。
+    async requestText(url) {
+      const {GmApi} = this.ctx;
+      const request = GmApi?.xmlHttpRequestApi?.();
+      if (!request) return this.requestViaFetch(url);
+      try {
+        return await this.requestViaGm(request, url);
+      } catch (error) {
+        console.warn('[MST] GM 请求失败，改用页面请求:', url, error?.message || error);
+      }
+      return this.requestViaFetch(url);
+    }
+
+    requestViaGm(request, url) {
+      return new Promise((resolve, reject) => {
+        let settled = false;
+        const finish = (callback, value) => {
+          if (settled) return;
+          settled = true;
+          callback(value);
+        };
+        const handleResponse = (response) => {
+          if (response.status && (response.status < 200 || response.status >= 300)) {
+            finish(reject, new Error('HTTP ' + response.status));
+            return;
+          }
+          finish(resolve, String(response.responseText || ''));
+        };
+        const result = request({
+          method: 'GET',
+          url,
+          timeout: REQUEST_TIMEOUT_MS,
+          onload: handleResponse,
+          onerror: () => finish(reject, new Error('network error')),
+          ontimeout: () => finish(reject, new Error('timeout'))
+        });
+        // 部分管理器返回 Promise 而不触发回调，两条路径只取先到的结果。
+        if (result?.then) result.then(handleResponse).catch((error) => finish(reject, error));
+      });
+    }
+
+    async requestViaFetch(url) {
+      const response = await fetch(url, {cache: 'no-store'});
+      if (!response.ok) throw new Error('HTTP ' + response.status);
+      return response.text();
     }
   }
 
@@ -26370,6 +27293,7 @@
 
     ctx.AbilityUpgradeCalculatorFeature = AbilityUpgradeCalculatorFeature;
     ctx.BuildScoreService = BuildScoreService;
+    ctx.ChangelogFeature = ChangelogFeature;
     ctx.CharacterCardFeature = CharacterCardFeature;
     ctx.CombatSimulationService = CombatSimulationService;
     ctx.CombatSimImportFeature = CombatSimImportFeature;
@@ -26386,6 +27310,7 @@
     ctx.MarketplaceCartFeature = MarketplaceCartFeature;
     ctx.SubscribeNotificationFeature = SubscribeNotificationFeature;
     ctx.ToolkitMenuFeature = ToolkitMenuFeature;
+    ctx.UpdateCheckerFeature = UpdateCheckerFeature;
   }
 
   var MST_APP_BASE_CSS = String.raw`:root{--mst-z-popup: 1000;--mst-z-toast: 2147483550}
@@ -26515,7 +27440,7 @@
 .mst-combat-profession svg{grid-row:1/3;width:1.75rem;height:1.75rem}
 .mst-combat-profession strong{max-width:100%;align-self:end;justify-self:start;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:var(--font-size-small, .75rem);line-height:1.1;text-align:left}
 .mst-combat-profession small{align-self:start;justify-self:start;color:var(--color-neutral-300, #b9bbca);font-size:var(--font-size-tiny, .6875rem);line-height:1.1;text-align:left}
-.mst-upgrade-calculator-dialog .swal2-title,.mst-equipment-compare-dialog .swal2-title,.mst-house-calculator-dialog .swal2-title,.mst-subscribe-dialog .swal2-title,.mst-character-card-modal .swal2-title{display:flex!important;align-items:center;gap:.6rem}
+.mst-swal2-theme .swal2-title:has(.mst-dialog-title-icon){display:flex!important;align-items:center;gap:.6rem}
 .mst-dialog-title-icon{display:inline-flex;width:1.25rem;height:1.25rem;flex:0 0 auto;align-self:center}
 .mst-dialog-title-icon svg{width:100%;height:100%}
 .mst-combat-help-anchor,.mst-ability-help-anchor,.mst-equipment-help-anchor,.mst-dungeon-help-anchor,.mst-house-help-anchor,.mst-subscribe-help-anchor{position:relative;display:inline-flex;width:var(--spacing-lg-plus, 1.25rem);height:var(--spacing-lg-plus, 1.25rem);flex:0 0 auto;align-self:center;align-items:center;pointer-events:auto;vertical-align:middle}
@@ -26943,6 +27868,8 @@ to{transform:translateY(0);opacity:1}
         EquipmentComparisonService,
         EquipmentComparisonFeature,
         ToolkitMenuFeature,
+        ChangelogFeature,
+        UpdateCheckerFeature,
         ClipboardCartImportFeature,
         LabyrinthSupplyFeature,
         MarketplaceCartFeature,
@@ -26960,6 +27887,8 @@ to{transform:translateY(0);opacity:1}
       const equipmentComparisonService = new EquipmentComparisonService(marketDataService, combatSimulationService);
       const equipmentComparison = new EquipmentComparisonFeature(this.ctx, marketDataService, equipmentComparisonService);
       const subscribeNotification = new SubscribeNotificationFeature(this.ctx);
+      const changelog = new ChangelogFeature(this.ctx);
+      const updateChecker = new UpdateCheckerFeature(this.ctx);
       const toolkitMenu = new ToolkitMenuFeature(this.ctx, {
         characterCardFeature,
         appController: this,
@@ -26967,7 +27896,9 @@ to{transform:translateY(0);opacity:1}
         abilityCalculator,
         equipmentComparison,
         dungeonCalculator,
-        subscribeNotification
+        subscribeNotification,
+        changelog,
+        updateChecker
       });
       // 暴露少量实例给控制台排查，正式功能仍通过菜单入口触发。
       window.MWISunrisheToolkit = {
@@ -26978,7 +27909,8 @@ to{transform:translateY(0);opacity:1}
         combatCalculator,
         abilityCalculator,
         equipmentComparison,
-        dungeonCalculator
+        dungeonCalculator,
+        updateChecker
       };
       this.ctx.pageWindow.MWISunrisheToolkitState = 'app-features';
       characterCardFeature.init();
@@ -26987,6 +27919,8 @@ to{transform:translateY(0);opacity:1}
       dungeonCalculator.init();
       equipmentComparison.init();
       toolkitMenu.init();
+      changelog.init();
+      updateChecker.init();
       new ClipboardCartImportFeature(this.ctx, Notifier).init();
       new LabyrinthSupplyFeature().init();
       new MarketplaceCartFeature().init();

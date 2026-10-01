@@ -9,7 +9,9 @@ export class ToolkitMenuFeature {
       abilityCalculator,
       equipmentComparison,
       dungeonCalculator,
-      subscribeNotification
+      subscribeNotification,
+      changelog,
+      updateChecker
     }
   ) {
     this.ctx = ctx;
@@ -20,6 +22,8 @@ export class ToolkitMenuFeature {
     this.equipmentComparison = equipmentComparison;
     this.dungeonCalculator = dungeonCalculator;
     this.subscribeNotification = subscribeNotification;
+    this.changelog = changelog;
+    this.updateChecker = updateChecker;
     this.dropdownCleanup = null;
     this.outsideClickHandler = (event) => {
       const dropdown = document.getElementById('mst-toolkit-character-dropdown');
@@ -32,8 +36,15 @@ export class ToolkitMenuFeature {
   getActions() {
     const {GameNavigationService, Notifier, i18n} = this.ctx;
     // 菜单顺序按常用工作流排列：资料与升级工具在前，站点导航放最后。
+    // “检查更新”是固定入口，位置在“更新日志”下面：检查到新版本时变成高亮的
+    // “更新新版本”并直接打开安装页，否则打开检查更新弹窗显示当前版本与最新版本。
+    const hasUpdate = this.updateChecker.hasUpdate();
     return [
-      {key: 'userCharacterCard', icon: 'social', handler: () => this.characterCardFeature.showMyCharacterCard()}, {
+      {
+        key: 'userCharacterCard',
+        icon: 'social',
+        handler: () => this.characterCardFeature.showMyCharacterCard()
+      }, {
         key: 'subscribeNotification',
         icon: 'action_queue',
         handler: () => this.subscribeNotification.openSettings()
@@ -54,7 +65,17 @@ export class ToolkitMenuFeature {
         key: 'combatSimAiwwb',
         icon: 'combat',
         handler: () => this.openCombatSimulator()
-      }, {
+      }, {key: 'changelog', icon: 'patch_notes', handler: () => this.changelog.open()}, {
+        key: 'checkUpdate',
+        icon: 'news',
+        variant: hasUpdate ? 'update' : '',
+        label: hasUpdate
+          ? i18n.t('toolkitUpdateAvailable', this.updateChecker.getLatestVersion())
+          : i18n.t('checkUpdate'),
+        handler: () =>
+          this.updateChecker.hasUpdate() ? this.updateChecker.openInstallUrl() : this.updateChecker.openDialog()
+      },
+      {
         key: 'switchCharacter',
         icon: 'switch_character',
         handler: () => {
@@ -67,16 +88,6 @@ export class ToolkitMenuFeature {
   // 跳转 aiwwb 战斗模拟器；window.open 传固定 target 名，重复点击复用同一窗口不新开。
   openCombatSimulator() {
     window.open('https://aiwwb.github.io/milkywayidle_battle/dist/', 'mst-combat-sim-aiwwb');
-  }
-
-  refresh() {
-    const {i18n} = this.ctx;
-    document.querySelectorAll('.mst-my-character-card-btn').forEach((button) => {
-      const text = i18n.t('toolkitShort');
-      const title = i18n.t('toolkitTitle');
-      if (button.textContent !== text) button.textContent = text;
-      if (button.getAttribute('title') !== title) button.setAttribute('title', title);
-    });
   }
 
   toggleDropdown(trigger, anchorRect) {
@@ -163,23 +174,28 @@ export class ToolkitMenuFeature {
   renderDropdown(dropdown) {
     const {TemplateRenderer, i18n, utils} = this.ctx;
     if (!dropdown) return;
-    const miscSprite = utils.getSpriteUrl('misc') || '/static/media/misc_sprite.cfad291b.svg';
+    const miscSprite = utils.getSpriteUrl('misc') || '/static/media/misc_sprite.02869244.svg';
     TemplateRenderer.render(
       () => TemplateRenderer.html`
   <div class="mst-toolkit-dropdown-title">${i18n.t('toolkitTitle')}</div>
-  ${this.getActions().map(
-    ({key, icon, handler}) => TemplateRenderer.html`
-  <button type="button" class="mst-toolkit-action" @click=${() => {
+  ${this.getActions().map((action) => this.renderAction(action, dropdown, miscSprite))}
+`,
+      dropdown
+    );
+  }
+
+  renderAction({key, icon, label, variant, handler}, dropdown, miscSprite) {
+    const {TemplateRenderer, i18n} = this.ctx;
+    // “更新新版本”用红色渐变描边样式；class 必须整值插值，uhtml 不支持“静态片段 + 插值”混写。
+    const className = variant === 'update' ? 'mst-toolkit-action mst-toolkit-action-update' : 'mst-toolkit-action';
+    return TemplateRenderer.html`
+  <button type="button" class=${className} @click=${() => {
     dropdown.remove();
     handler();
   }}>
     <svg aria-hidden="true"><use href=${miscSprite + '#' + icon}></use></svg>
-    <span>${i18n.t(key)}</span>
-  </button>`
-  )}
-`,
-      dropdown
-    );
+    <span>${label || i18n.t(key)}</span>
+  </button>`;
   }
 
   // 在右上角头像弹出层（游戏原生 Header_avatarMenu 菜单）里注入工具箱入口，
@@ -224,15 +240,27 @@ export class ToolkitMenuFeature {
     else menu.appendChild(button);
   }
 
+  // 检测到新版本时入口按钮加红框渐变描边与右上角小点，悬浮提示说明可用版本。
   refresh() {
     const {i18n} = this.ctx;
+    const hasUpdate = this.updateChecker.hasUpdate();
+    const updateVersion = hasUpdate ? this.updateChecker.getLatestVersion() : '';
     document.querySelectorAll('.mst-my-character-card-btn').forEach((button) => {
       const text = i18n.t('toolkitShort');
       const title = i18n.t('toolkitTitle');
+      const fullTitle = hasUpdate ? `${title} · ${i18n.t('updateAvailableBadge', updateVersion)}` : title;
       if (button.textContent !== text) button.textContent = text;
-      if (button.getAttribute('title') !== title) button.setAttribute('title', title);
+      if (button.getAttribute('title') !== fullTitle) button.setAttribute('title', fullTitle);
+      button.classList.toggle('mst-toolkit-update-available', hasUpdate);
     });
     this.addAvatarMenuEntry();
+  }
+
+  // 更新状态变化时刷新入口标记；下拉已打开时同步补上或移除“更新新版本”。
+  handleUpdateChange() {
+    this.refresh();
+    const dropdown = document.getElementById('mst-toolkit-character-dropdown');
+    if (dropdown) this.renderDropdown(dropdown);
   }
 
   init() {
@@ -244,5 +272,6 @@ export class ToolkitMenuFeature {
     LanguageEvents.subscribe(() => {
       this.refresh();
     });
+    this.updateChecker.onChange(() => this.handleUpdateChange());
   }
 }
