@@ -263,7 +263,7 @@ const abilityUpgradeDialogView = {
 
   getDialogHtml(feature) {
     const {i18n, utils} = feature.ctx;
-    const miscSprite = utils.getSpriteUrl('misc') || '/static/media/misc_sprite.cfad291b.svg';
+    const miscSprite = utils.getSpriteUrl('misc') || '/static/media/misc_sprite.02869244.svg';
     return `
   <div class="mst-upgrade-calculator mst-ability-upgrade-calculator">
     <div class="mst-ability-toolbar">

@@ -318,7 +318,42 @@ export const TOOLKIT_MENU_MESSAGES = {
   houseUpgradeCalculator: {zh: '房屋升级材料计算器', en: 'House Upgrade Calculator'},
   combatUpgradeCalculator: {zh: '战斗升级计算器', en: 'Combat Upgrade Calculator'},
   abilityUpgradeCalculator: {zh: '技能升级计算器', en: 'Ability Upgrade Calculator'},
-  subscribeNotification: {zh: '订阅通知', en: 'Notifications'}
+  subscribeNotification: {zh: '订阅通知', en: 'Notifications'},
+  changelog: {zh: '更新日志', en: 'Changelog'},
+  checkUpdate: {zh: '检查更新', en: 'Check for Updates'},
+  toolkitUpdateAvailable: {zh: '更新新版本 v{0}', en: 'Update to v{0}'}
+};
+
+// changelog-messages
+export const CHANGELOG_MESSAGES = {
+  changelogTitle: {zh: '更新日志', en: 'Changelog'},
+  changelogCurrent: {zh: '当前版本', en: 'Installed'},
+  changelogLegacyGroup: {zh: 'EDS 历史版本', en: 'EDS Legacy Versions'}
+};
+
+// update-checker-messages
+export const UPDATE_CHECKER_MESSAGES = {
+  // 入口红框的悬浮说明：说明红框与右上角小点的含义（更新版本号由调用方传入）。
+  updateAvailableBadge: {zh: '有新版本 v{0} 可用', en: 'New version v{0} is available'},
+  // 检查更新弹窗：显示当前版本与最新版本，并提供重新检查。
+  checkUpdateTitle: {zh: '检查更新', en: 'Check for Updates'},
+  checkUpdateChecking: {zh: '正在检查更新…', en: 'Checking for updates…'},
+  checkUpdateCurrent: {zh: '当前版本', en: 'Installed version'},
+  checkUpdateRemote: {zh: '最新版本', en: 'Latest version'},
+  checkUpdateLatest: {zh: '已是最新版本', en: 'You are on the latest version'},
+  checkUpdateAvailable: {zh: '发现新版本 v{0}', en: 'New version v{0} is available'},
+  checkUpdateFailed: {zh: '检查更新失败', en: 'Update check failed'},
+  checkUpdateFailedHint: {
+    zh: '无法连接更新地址，请检查网络或代理后重试。',
+    en: 'Could not reach the update sources. Check your network or proxy and try again.'
+  },
+  checkUpdateRetry: {zh: '重新检查', en: 'Check again'},
+  checkUpdateInstall: {zh: '安装新版本', en: 'Install new version'},
+  checkUpdateCheckedAt: {zh: '检查时间', en: 'Checked at'},
+  checkUpdateSource: {zh: '来源', en: 'Source'},
+  checkUpdateSourceProxy: {zh: '代理地址', en: 'Proxy address'},
+  checkUpdateSourceMirror: {zh: '镜像地址', en: 'Mirror address'},
+  checkUpdateSourceOfficial: {zh: '官方地址', en: 'Official address'}
 };
 
 // subscribe-notification-messages
@@ -669,5 +704,7 @@ export const I18N_MESSAGE_GROUPS = {
   combatCalculator: COMBAT_CALCULATOR_MESSAGES,
   abilityCalculator: ABILITY_CALCULATOR_MESSAGES,
   combatSimImport: COMBAT_SIM_IMPORT_MESSAGES,
-  subscribeNotification: SUBSCRIBE_NOTIFICATION_MESSAGES
+  subscribeNotification: SUBSCRIBE_NOTIFICATION_MESSAGES,
+  changelog: CHANGELOG_MESSAGES,
+  updateChecker: UPDATE_CHECKER_MESSAGES
 };

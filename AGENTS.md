@@ -21,7 +21,7 @@
 ## 构建约束
 
 - 依赖统一由 Yarn Classic `1.22.22` 管理，只维护 `yarn.lock`，不得生成或提交 `package-lock.json`。
-- 最终只输出一个油猴脚本 `dist/mst.script.user.js`，开发包输出 `dist/mst.script.dev.user.js`；不拆成多个本地 `@require` 包，源码模块化只在构建期通过 Rollup 打包。
+- 最终只输出一个油猴脚本 `dist/mst.script.user.js` 和配套的元数据文件 `dist/mst.script.meta.js`（只含油猴头部，不含代码）；开发包对应 `dist/mst.script.dev.user.js` 与 `dist/mst.script.dev.meta.js`；不拆成多个本地 `@require` 包，源码模块化只在构建期通过 Rollup 打包。
 - dev/prod 差异统一通过 `src/common/build-flags.js` 和构建替换控制，不在运行时读取 Node 环境变量；构建与环境开关的完整规则见 `docs/工程结构与开发规范.md` 五。
 
 ## 版本与文档

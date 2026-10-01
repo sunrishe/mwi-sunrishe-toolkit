@@ -9,7 +9,7 @@ MWI Sunrishe Toolkit 是《银河奶牛放置》的油猴综合工具箱。当�
 - `docs/`：用户说明、更新日志、工程规范、业务要求、专项分析和历史归档。
 - `references/`：游戏数据、游戏下载源码、历史脚本、外部工具和第三方素材，仅供核对与测试。
 - `vendor/`：运行时需要托管到仓库的第三方静态文件。
-- `dist/`：构建产物；开发包和调试包已加入 `.gitignore`，正式包由构建命令生成。
+- `dist/`：构建产物；正式包为 `mst.script.user.js`（脚本）与 `mst.script.meta.js`（只含油猴头部），开发包为对应的 `mst.script.dev.*`，开发包和调试包已加入 `.gitignore`，正式包由构建命令生成。
 
 ## 指导文档
 
@@ -31,4 +31,4 @@ yarn test
 yarn run check
 ```
 
-首次开发先执行 `yarn install`。开发时使用 `yarn watch` 持续生成 `dist/mst.script.dev.user.js`；需要油猴本地调试入口时使用 `yarn watch:server` 持续刷新文件版和 HTTP 版入口。正式发布使用 `yarn build` 生成 `dist/mst.script.user.js`。命令细节和验证要求见 `docs/工程结构与开发规范.md`。
+首次开发先执行 `yarn install`。开发时使用 `yarn watch` 持续生成 `dist/mst.script.dev.user.js`；需要油猴本地调试入口时使用 `yarn watch:server` 持续刷新文件版和 HTTP 版入口。正式发布使用 `yarn build` 生成 `dist/mst.script.user.js` 与配套的 `dist/mst.script.meta.js`。命令细节和验证要求见 `docs/工程结构与开发规范.md`。

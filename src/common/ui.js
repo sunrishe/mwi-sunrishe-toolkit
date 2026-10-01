@@ -99,7 +99,7 @@ export class CalculatorHelpPopover {
     const popoverId = `${prefix}-popover`;
     const triggerClass = `${prefix}-trigger`;
     const paragraphClass = `${prefix}-popover-paragraph`;
-    const miscSprite = utils.getSpriteUrl('misc') || '/static/media/misc_sprite.cfad291b.svg';
+    const miscSprite = utils.getSpriteUrl('misc') || '/static/media/misc_sprite.02869244.svg';
     const triggerHost = document.createElement('span');
     triggerHost.className = `${prefix}-anchor`;
     TemplateRenderer.render(
@@ -630,7 +630,7 @@ const swalDialogMethods = {
     const {TemplateRenderer, utils} = this.ctx;
     const titleElement = popup?.querySelector?.('.swal2-title');
     if (!titleElement || !icon) return;
-    const miscSprite = utils?.getSpriteUrl?.('misc') || '/static/media/misc_sprite.cfad291b.svg';
+    const miscSprite = utils?.getSpriteUrl?.('misc') || '/static/media/misc_sprite.02869244.svg';
     const host = document.createElement('span');
     host.className = 'mst-dialog-title-icon';
     TemplateRenderer.render(

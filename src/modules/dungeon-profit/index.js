@@ -525,7 +525,7 @@ const dungeonProfitBatchView = {
       )
       .join('');
     const customMode = Boolean(feature.state.customMode);
-    const miscSprite = utils?.getSpriteUrl?.('misc') || '/static/media/misc_sprite.cfad291b.svg';
+    const miscSprite = utils?.getSpriteUrl?.('misc') || '/static/media/misc_sprite.02869244.svg';
     return `
   <tr data-batch-row-id="${row.id}">
     <td class="mst-sequence-cell mst-dungeon-batch-index" draggable="true" title="${escapeHtmlText(

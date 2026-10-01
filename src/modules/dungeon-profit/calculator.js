@@ -318,7 +318,7 @@ const dungeonProfitPricingMethods = {
     // 挂单价缺失时按 bid 反推 ask 挂单价恒用该倍率还原，与“收益扣除市场税”选项无关。
     const marketTaxMultiplier =
       marketHrid === '/items/bag_of_10_cowbells' ? COWBELL_TAX_MULTIPLIER : MARKET_TAX_MULTIPLIER;
-    // 开启市场税时普通物品按 5%、牛铃袋按 18% 分别扣税；
+    // 开启市场税时普通物品按 4%、牛铃袋按 18% 分别扣税；
     // 未开启（或第三参缺省的成本/产出估值）时所有物品都按报价不扣税，牛铃袋也不例外。
     const taxMultiplier = applyMarketTax
       ? marketHrid === '/items/bag_of_10_cowbells'

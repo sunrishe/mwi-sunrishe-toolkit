@@ -1,0 +1,75 @@
+/* 更新日志弹窗（模块私有样式）。
+   内容区固定最大高度、只在内部纵向滚动，避免长列表把弹窗撑出视口；
+   配色沿用 Swal 主题的游戏变量。 */
+.mst-changelog-root {
+  display: flex;
+  max-height: min(60vh, 34rem);
+  flex-direction: column;
+  gap: 0.7rem;
+  overflow-y: auto;
+  padding-right: 0.3rem;
+  text-align: left;
+}
+
+.mst-changelog-entry {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  border-bottom: 1px solid var(--color-midnight-100, #454771);
+  padding-bottom: 0.6rem;
+}
+
+.mst-changelog-entry:last-child {
+  border-bottom: none;
+  padding-bottom: 0;
+}
+
+.mst-changelog-entry-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.mst-changelog-version {
+  color: var(--color-text-dark-mode, #e7e7e7);
+  font-size: var(--font-size-md, 1rem);
+  font-weight: 600;
+}
+
+.mst-changelog-date {
+  color: var(--color-space-200, #bbc5f1);
+  font-size: var(--font-size-sm, 0.8125rem);
+  opacity: 0.85;
+}
+
+.mst-changelog-current {
+  border-radius: 0.75rem;
+  padding: 0.05rem 0.45rem;
+  background: var(--color-primary, #4357af);
+  color: var(--color-text-dark-mode, #e7e7e7);
+  font-size: var(--font-size-sm, 0.8125rem);
+  font-weight: 600;
+}
+
+.mst-changelog-notes {
+  display: flex;
+  margin: 0;
+  padding-left: 1.2rem;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.mst-changelog-notes li {
+  font-size: 0.82rem;
+  line-height: 1.5;
+  overflow-wrap: break-word;
+}
+
+.mst-changelog-group {
+  margin-top: 0.2rem;
+  color: var(--color-space-200, #bbc5f1);
+  font-size: var(--font-size-sm, 0.8125rem);
+  font-weight: 600;
+  letter-spacing: 0.05em;
+}
