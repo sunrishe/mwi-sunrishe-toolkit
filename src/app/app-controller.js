@@ -167,6 +167,7 @@ export class AppController {
       UpdateCheckerFeature,
       ClipboardCartImportFeature,
       LabyrinthSupplyFeature,
+      MarketHistoryFeature,
       MarketplaceCartFeature,
       SubscribeNotificationFeature,
       Notifier
@@ -182,6 +183,7 @@ export class AppController {
     const equipmentComparisonService = new EquipmentComparisonService(marketDataService, combatSimulationService);
     const equipmentComparison = new EquipmentComparisonFeature(this.ctx, marketDataService, equipmentComparisonService);
     const subscribeNotification = new SubscribeNotificationFeature(this.ctx);
+    const marketHistory = new MarketHistoryFeature();
     const changelog = new ChangelogFeature(this.ctx);
     const updateChecker = new UpdateCheckerFeature(this.ctx);
     const toolkitMenu = new ToolkitMenuFeature(this.ctx, {
@@ -192,6 +194,7 @@ export class AppController {
       equipmentComparison,
       dungeonCalculator,
       subscribeNotification,
+      marketHistory,
       changelog,
       updateChecker
     });
@@ -205,6 +208,8 @@ export class AppController {
       abilityCalculator,
       equipmentComparison,
       dungeonCalculator,
+      subscribeNotification,
+      marketHistory,
       updateChecker
     };
     this.ctx.pageWindow.MWISunrisheToolkitState = 'app-features';
@@ -219,6 +224,7 @@ export class AppController {
     new ClipboardCartImportFeature(this.ctx, Notifier).init();
     new LabyrinthSupplyFeature().init();
     new MarketplaceCartFeature().init();
+    marketHistory.init();
     subscribeNotification.init();
     this.languageController.init();
     this.observeDOM();

@@ -1448,6 +1448,8 @@ test('地下城只计算 1 日期望并展示每日净利润', () => {
   // 单图视图与结果表是嵌套容器：querySelector 需要支持两层查找，批量容器在单图页签下不渲染。
   feature.root = {querySelector: () => ({querySelector: () => ({})})};
   feature.resetState();
+  // 用例只覆盖单图页签的渲染与入参，默认页签是“批量模拟”，这里显式切到单图。
+  feature.batchEnabled = false;
   feature.renderResult = (result) => {
     renderedResult = result;
     return TemplateRenderer.html``;
@@ -1528,9 +1530,9 @@ test('分析文档列明宝箱数量公式、递归开箱和门票规则', () =>
   assert.doesNotMatch(analysisSource, /## 5\. 历史利润/);
 });
 
-test('地下城收益用复选框切换批量模拟并按三行布局展示', () => {
-  // 批量视图文案中英文齐全，单图不再有页签文案。
-  assert.doesNotMatch(dungeonMessagesSource, /simTabSingle/);
+test('地下城收益用页签切换批量模拟并按三行布局展示', () => {
+  // 单图/批量页签文案中英文齐全。
+  assert.match(dungeonMessagesSource, /simTabSingle: \{zh: '单图模拟', en: 'Single Map'\}/);
   assert.match(dungeonMessagesSource, /simTabBatch: \{zh: '批量模拟', en: 'Batch Simulation'\}/);
   assert.match(dungeonMessagesSource, /leftBuyRightSell: \{zh: '左买\/右卖', en: 'Ask Buy\/Bid Sell'\}/);
   assert.match(dungeonMessagesSource, /rightBuyLeftSell: \{zh: '右买\/左卖', en: 'Bid Buy\/Ask Sell'\}/);
@@ -1545,27 +1547,46 @@ test('地下城收益用复选框切换批量模拟并按三行布局展示', ()
   assert.match(dungeonMessagesSource, /dailyConsumablesCostLine2: \{zh: '饮料成本（M）', en: 'Drink Cost \(M\)'\}/);
   assert.doesNotMatch(dungeonMessagesSource, /saveConfig|configSaved|dailyConsumablesCostShort|unitMillion/);
   assert.match(dungeonMessagesSource, /restoreDefaultConfig: \{zh: '恢复默认', en: 'Restore Defaults'\}/);
-  // 帮助文案改为复选框表述，并说明默认四地图、拖动排序与自动保存。
-  assert.match(dungeonMessagesSource, /勾选顶部的“批量模拟”复选框进入批量模拟/);
-  assert.match(dungeonMessagesSource, /tick the Batch Simulation checkbox on top/);
+  // 帮助文案改为页签表述，并说明默认四地图、拖动排序与自动保存。
+  assert.match(dungeonMessagesSource, /点击顶部的“批量模拟”页签进入批量模拟/);
+  assert.match(dungeonMessagesSource, /click the Batch Simulation tab on top/);
   assert.match(dungeonMessagesSource, /随调整自动保存/);
   assert.match(dungeonMessagesSource, /saved locally automatically as you adjust them/);
-  // 批量开关是与选项一致的复选框（单图操作区与批量选项行各一个），默认不勾选（单图模拟）。
-  assert.match(dungeonFeatureSource, /data-batch-toggle/);
-  assert.match(dungeonFeatureSource, /getBatchToggleHtml/);
-  assert.match(dungeonFeatureSource, /i18n\.t\('simTabBatch'\)/);
-  assert.match(dungeonFeatureSource, /feature\.batchEnabled = event\.target\.checked/);
-  assert.match(dungeonFeatureSource, /feature\.batchEnabled = batchToggle\.checked/);
+  // 模式切换是顶部页签（样式同市场交易记录），复选框已移除：两个页签常驻模板、按 batchEnabled 高亮。
+  assert.match(dungeonFeatureSource, /mst-dungeon-sim-tabs/);
+  assert.match(dungeonFeatureSource, /'mst-dungeon-sim-tab' \+ \(Boolean\(feature\.batchEnabled\) === batch/);
+  assert.match(dungeonFeatureSource, /mst-dungeon-sim-tab-active/);
+  // 页签顺序为“批量模拟”在前、“单图模拟”在后，顺序与默认页签同源于 SIM_TABS：打开停在第一个页签。
+  assert.match(dungeonFeatureSource, /const SIM_TABS = Object\.freeze\(/);
+  assert.match(dungeonFeatureSource, /true, 'simTabBatch'[\s\S]{0,40}false, 'simTabSingle'/);
+  assert.match(dungeonFeatureSource, /const DEFAULT_SIM_BATCH = SIM_TABS\[0\]\[0\]/);
+  assert.match(dungeonFeatureSource, /this\.batchEnabled = DEFAULT_SIM_BATCH/);
+  assert.match(dungeonFeatureSource, /const simTabs = SIM_TABS\.map/);
+  // 页签不落盘：不再写入或读取 batchEnabled，只在自动保存时清掉旧版本留下的字段。
+  assert.match(dungeonFeatureSource, /delete store\.batchEnabled/);
+  assert.doesNotMatch(dungeonFeatureSource, /store\.batchEnabled =|batchEnabled = store\.batchEnabled/);
+  assert.match(dungeonFeatureSource, /i18n\.t\(labelKey\)/);
+  assert.match(dungeonFeatureSource, /feature\.batchEnabled = batch/);
+  assert.doesNotMatch(dungeonFeatureSource, /data-batch-toggle|getBatchToggleHtml|batchToggle\.checked/);
   assert.match(dungeonFeatureSource, /\.hidden=\$\{Boolean\(feature\.batchEnabled\)\}/);
   assert.match(dungeonFeatureSource, /\.hidden=\$\{!feature\.batchEnabled\}/);
   assert.match(dungeonFeatureSource, /mst-dungeon-single-view/);
   assert.match(dungeonFeatureSource, /mst-dungeon-batch-view/);
-  assert.doesNotMatch(dungeonFeatureSource, /mst-dungeon-sim-tabs|simTabSingle|mst-dungeon-batch-toggle/);
-  // 勾选批量时弹窗加宽到默认容纳表格全部列（66rem，窄屏收缩出滚动）；单图保持原 38rem。
+  // 切到批量时弹窗加宽到默认容纳表格全部列（66rem，窄屏收缩出滚动）；单图保持原 38rem。
   assert.match(dungeonFeatureSource, /applyDialogWidth/);
   assert.match(dungeonFeatureSource, /min\(66rem, calc\(100vw - 1rem\)\)/);
   assert.match(dungeonFeatureSource, /width: 'min\(38rem, calc\(100vw - 1rem\)\)'/);
   assert.match(dungeonFeatureSource, /this\.batchEnabled \? 'min\(66rem/);
+  // 页签样式按市场交易记录的页签复刻：无底色文字 + 2px 下划线指示条与整行底部分隔线。
+  assert.match(integratedCssSource, /\.mst-dungeon-sim-tabs\s*\{[^}]*border-bottom:\s*2px solid/s);
+  assert.match(
+    integratedCssSource,
+    /\.mst-dungeon-sim-tabs\s+\.mst-dungeon-sim-tab\s*\{[^}]*background:\s*transparent/s
+  );
+  assert.match(
+    integratedCssSource,
+    /\.mst-dungeon-sim-tabs\s+\.mst-dungeon-sim-tab-active[^{]*\{[^}]*border-bottom-color:\s*var\(--color-space-400/s
+  );
   // 第一行选项与单图共享 state（从使用工匠茶开始），逐项列出全部共享选项；选项行保留恢复默认按钮。
   [
     'useArtisanTea', 'useGuzzlingPouch', 'guzzlingLevel', 'applyMarketTax', 'excludeBackEquipmentValue',
@@ -1711,11 +1732,14 @@ test('批量模拟配置只存输入参数，同一 key 分模式保存并在打
     .slice(0, 2)
     .map((dungeon) => Feature.batchView.createBatchRow(feature, dungeon.hrid));
   Feature.batchView.autosave(feature);
-  // 批量勾选状态作为共享开关存入同一存储的顶层字段，重开（含重新加载页面）后恢复。
-  const storedToggle = JSON.parse(storage.get('MST_DUNGEON_config'));
-  assert.equal(storedToggle.batchEnabled, true);
+  // 页签不落盘：存的是两种模式各自的参数，顶层不再出现 batchEnabled（旧版本的字段会被清掉）。
+  const storedSingle = JSON.parse(storage.get('MST_DUNGEON_config'));
+  assert.equal(storedSingle.batchEnabled, undefined);
+  assert.equal(storedSingle.single.actionHrid, '/actions/combat/pirate_cove');
+  assert.equal(storedSingle.batch.rows.length, 2);
 
-  // 重开时按保存的批量快照恢复行与批量勾选状态，单图小节字段应用到共享 state，结果不落盘、全部重新计算。
+  // 重开时按保存的批量快照恢复行，单图小节字段应用到共享 state，结果不落盘、全部重新计算；
+  // 页签不参与恢复，恢复配置不改动当前页签。
   const fresh = new Feature(service);
   fresh.state = {useArtisanTea: false, guzzlingLevel: '0'};
   fresh.resetState = () => {
@@ -1724,8 +1748,9 @@ test('批量模拟配置只存输入参数，同一 key 分模式保存并在打
   fresh.batchRows = [];
   fresh.batchNextRowId = 0;
   fresh.batchInitialized = false;
+  fresh.batchEnabled = false;
   Feature.batchView.loadSavedConfigs(fresh);
-  assert.equal(fresh.batchEnabled, true);
+  assert.equal(fresh.batchEnabled, false);
   assert.equal(fresh.batchRows.length, 2);
   assert.equal(fresh.batchRows[0].actionHrid, service.getDungeons()[0].hrid);
   assert.equal(fresh.state.useArtisanTea, true);
@@ -1856,9 +1881,9 @@ test('工具箱及中英文文档按计算流程排列装备提升和地下城�
     ...menuSource.slice(actionsArrayStart, actionsArrayEnd).matchAll(/\{\s*key:\s*'([^']+)'/g)
   ].map((match) => match[1]);
   assert.deepEqual(actionKeys, [
-    'userCharacterCard', 'subscribeNotification', 'abilityUpgradeCalculator', 'houseUpgradeCalculator', 'combatUpgradeCalculator',
-    'equipmentComparison', 'dungeonProfitCalculator', 'combatSimAiwwb', 'changelog', 'checkUpdate',
-    'switchCharacter'
+    'userCharacterCard', 'subscribeNotification', 'marketHistory', 'abilityUpgradeCalculator', 'houseUpgradeCalculator',
+    'combatUpgradeCalculator', 'equipmentComparison', 'dungeonProfitCalculator', 'combatSimAiwwb', 'changelog',
+    'checkUpdate', 'switchCharacter'
   ]);
 
   [

@@ -498,6 +498,79 @@ test('房屋材料按升级区间逐级累加且不混入区间外材料', () =>
   assert.throws(() => calculator.calculateUpgradeMaterials('/house_rooms/missing', 1, 2), /houseNotFound/);
 });
 
+test('房屋起始等级可选 0（未建造），目标等级下限随起始等级为 1 级', () => {
+  const utils = loadUtils();
+  const HouseCalculatorUI = vm.runInNewContext(
+    `${readVmSource('src/common/constants.js', 'src/modules/house-calculator/index.js')}
+        HouseCalculatorUI.configure({
+            CONFIG: {
+              MIN_FROM_LEVEL: HOUSE_MIN_FROM_LEVEL,
+              MAX_FROM_LEVEL: HOUSE_MAX_FROM_LEVEL,
+              MAX_TO_LEVEL: HOUSE_MAX_TO_LEVEL
+            },
+            DataHub: {},
+            CharacterDataService: {},
+            MarketMateBridge: {isReady: () => false},
+            TemplateRenderer: {
+              html(strings, ...values) {
+                return strings.reduce((result, string, index) => result + string + (values[index] ?? ''), '');
+              }
+            },
+            i18n: {t: (key) => key},
+            utils
+        }, {});
+        HouseCalculatorUI;`,
+    {utils}
+  );
+  const houseDetails = {
+    '/house_rooms/test': {
+      hrid: '/house_rooms/test',
+      name: 'Test Room',
+      sortIndex: 1,
+      // 官方升级配置从 1 级（建造）开始，没有 0 级成本。
+      upgradeCostsMap: {
+        1: [
+          {itemHrid: '/items/log', count: 5}
+        ],
+        2: [
+          {itemHrid: '/items/log', count: 10}
+        ]
+      }
+    }
+  };
+
+  // 房间未建造（没有读到等级）时起始等级取 0，目标等级从 1 级起。
+  const unbuilt = new HouseCalculatorUI(houseDetails, {}, {});
+  assert.equal(Object.keys(unbuilt.currentRoomLevels).length, 0, '未读到房间等级时不应有当前等级');
+  const unbuiltRooms = unbuilt.renderRooms();
+  assert.match(unbuiltRooms, /data-type="from">[\s\S]*<option value="0" selected>0<\/option>/);
+  assert.match(unbuiltRooms, /<option value="7">7<\/option>/);
+  const unbuiltTo = unbuiltRooms.match(/data-type="to">([\s\S]*?)<\/select>/)[1];
+  assert.match(unbuiltTo, /<option value="1" selected>1<\/option>/);
+  assert.doesNotMatch(unbuiltTo, /value="0"/);
+
+  // 已建造房间（记录等级）起始等级仍可回退到 0，目标等级从当前等级 +1 起。
+  const built = new HouseCalculatorUI(houseDetails, {}, {});
+  built.currentRoomLevels = {'/house_rooms/test': 5};
+  const builtRooms = built.renderRooms();
+  assert.match(builtRooms, /data-type="from">[\s\S]*<option value="0">0<\/option>/);
+  assert.match(builtRooms, /<option value="5" selected>5<\/option>/);
+  assert.match(builtRooms.match(/data-type="to">([\s\S]*?)<\/select>/)[1], /<option value="6" selected>6<\/option>/);
+
+  // 顶部批量起始等级从 0 起、批量目标等级从 1 级起。
+  const toolbar = unbuilt.render();
+  const batchFrom = toolbar.match(/id="mst-hccp-batch-from-level"[^>]*>([\s\S]*?)<\/select>/)[1];
+  assert.match(batchFrom, /<option value="0" selected>0<\/option>/);
+  assert.match(batchFrom, /<option value="7">7<\/option>/);
+  const batchTo = toolbar.match(/id="mst-hccp-batch-to-level"[^>]*>([\s\S]*?)<\/select>/)[1];
+  assert.match(batchTo, /<option value="1">1<\/option>/);
+
+  // 从 0 级起算时按官方配置累加 1 级（建造）成本。
+  const HouseCalculator = loadHouseCalculator();
+  const calculator = new HouseCalculator({i18n: {t: (key) => key}}, houseDetails);
+  assert.deepEqual({...calculator.calculateUpgradeMaterials('/house_rooms/test', 0, 2)}, {'/items/log': 15});
+});
+
 test('房屋物品显示格式切换以当前勾选状态为准', () => {
   const classSource = readSourceFile('src', 'modules', 'house-calculator', 'index.js');
   const HouseCalculatorUI = vm.runInNewContext(

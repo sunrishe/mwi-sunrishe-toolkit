@@ -20,6 +20,27 @@ function getToolSlotOrder(clientData) {
     .map((detail) => `/item_locations/${String(detail.skillHrid).split('/').pop()}_tool`);
 }
 
+// 评分行随名片内容模式取值：战斗布局只显示战斗分、生活布局只显示生活分，「全部」
+// 布局两个都显示。战力打造分只有一个分数，任何布局都显示（不受此规则限制）。
+function getCardScoreRowVisibility(state, contentMode) {
+  const mode = [
+    'combat', 'life', 'all'
+  ].includes(contentMode) ? contentMode : state.cardContentMode;
+  return {battle: mode !== 'life', skilling: mode !== 'combat'};
+}
+
+// 装备图标右上角等级取自官方数据：有需求等级时显示需求等级（多项需求取最高，
+// 如精炼装备 110、护符按对应技能、袋子按总等级），没有需求等级的装备（项链、
+// 戒指、耳环、任务徽章）沿用官方物品等级 itemLevel。口径与 MWITools v26.4.18 起一致。
+function getCardItemLevel(clientData, itemHrid) {
+  const detail = clientData?.raw?.itemDetailMap?.[itemHrid];
+  const requirements = detail?.equipmentDetail?.levelRequirements;
+  if (Array.isArray(requirements) && requirements.length) {
+    return requirements.reduce((max, requirement) => Math.max(max, Number(requirement?.level) || 0), 0);
+  }
+  return Number(detail?.itemLevel || 0);
+}
+
 export class CharacterCardIconRenderer {
   constructor(deps) {
     this.ctx = deps.ctx;
@@ -167,8 +188,9 @@ export class CharacterCardBuildScoreRenderer {
     return key;
   }
 
-  // 着装评分分战斗/生活两行展示（✦ 在文案前，标签后跟分数）；战力打造分保持
-  // 单块布局（标签在上、数值在下）。
+  // 着装评分分战斗/生活两行展示（✦ 在文案前，标签后跟分数），显示哪几行由名片内容
+  // 模式决定（战斗布局只看战斗分、生活布局只看生活分、全部布局两行都看）；战力打造分
+  // 保持单块布局（标签在上、数值在下），只有一个分数，不受内容模式限制。
   renderBuildScore(scoreElement, score) {
     const battleRow = scoreElement.querySelector('[data-score-row="battle"]');
     const skillingRow = scoreElement.querySelector('[data-score-row="skilling"]');
@@ -176,6 +198,11 @@ export class CharacterCardBuildScoreRenderer {
     const battleValue = battleRow?.querySelector('.mst-card-build-score-value');
     const skillingLabel = skillingRow?.querySelector('.mst-card-build-score-label');
     const skillingValue = skillingRow?.querySelector('.mst-card-build-score-value');
+    const rowVisibility = getCardScoreRowVisibility(this.state);
+    const setRowVisibility = () => {
+      if (battleRow) battleRow.hidden = !rowVisibility.battle;
+      if (skillingRow) skillingRow.hidden = !rowVisibility.skilling;
+    };
     const setMarker = (hidden) => {
       scoreElement.querySelectorAll('.mst-card-build-score-new').forEach((marker) => {
         marker.hidden = hidden;
@@ -185,12 +212,12 @@ export class CharacterCardBuildScoreRenderer {
       if (battleRow) battleRow.classList.toggle('mst-card-build-score-legacy', legacy);
     };
     if (typeof score === 'string') {
-      // 计算中或错误提示：两个分数块同显，不显示新版本标识。
+      // 计算中或错误提示：按内容模式显示的分数块同显该提示，不显示新版本标识。
       if (battleLabel) battleLabel.textContent = this.i18n.t('battleScore');
       if (battleValue) battleValue.textContent = score;
       if (skillingLabel) skillingLabel.textContent = this.i18n.t('skillingScore');
       if (skillingValue) skillingValue.textContent = score;
-      if (skillingRow) skillingRow.hidden = false;
+      setRowVisibility();
       setLegacyLayout(false);
       setMarker(true);
       return;
@@ -204,13 +231,14 @@ export class CharacterCardBuildScoreRenderer {
       if (skillingValue) {
         skillingValue.textContent = score.skilling.available ? `${score.skilling.total.toFixed(1)}${hiddenText}` : '-';
       }
-      if (skillingRow) skillingRow.hidden = false;
+      setRowVisibility();
       setLegacyLayout(false);
       setMarker(false);
     } else {
       // 战力打造分：标签在上、数值在下，生活行隐藏。
       if (battleLabel) battleLabel.textContent = this.i18n.t('buildScore');
       if (battleValue) battleValue.textContent = `${score.total.toFixed(1)}${hiddenText}`;
+      if (battleRow) battleRow.hidden = false;
       if (skillingRow) skillingRow.hidden = true;
       setLegacyLayout(true);
       setMarker(true);
@@ -734,7 +762,7 @@ export class CharacterCardEquipmentRenderer {
 
         if (item) {
           const enhancementLevel = item.enhancementLevel || 0;
-          const itemLevel = Number(this.DataHub.clientData.raw?.itemDetailMap?.[item.itemHrid]?.itemLevel || 0);
+          const itemLevel = getCardItemLevel(this.DataHub.clientData, item.itemHrid);
           const itemName = this.DataHub.getLocalizedGameName('itemNames', item.itemHrid, this.i18n.languageKey);
 
           html += `<div class="Item_item__2De2O Item_clickable__3viV6" style="position:relative;" title="${this.utils.escapeHtml(itemName)}" data-card-item-name="${this.utils.escapeHtml(itemName)}" data-card-item-hrid="${this.utils.escapeHtml(item.itemHrid)}" data-card-item-level="${enhancementLevel}" data-card-item-location="${this.utils.escapeHtml(item.itemLocationHrid)}">`;
@@ -820,7 +848,7 @@ export class CharacterCardLifeRenderer {
             : emptyName;
         const itemName = item ? this.DataHub.getLocalizedGameName('itemNames', item.itemHrid, language) : emptyName;
         const enhancementLevel = Number(item?.enhancementLevel || 0);
-        const itemLevel = Number(this.DataHub.clientData.raw?.itemDetailMap?.[item?.itemHrid]?.itemLevel || 0);
+        const itemLevel = item ? getCardItemLevel(this.DataHub.clientData, item.itemHrid) : 0;
         return `
   <div class="mst-life-tool-slot" title="${this.utils.escapeHtml(itemName)}"${
     item
@@ -1225,6 +1253,8 @@ export function createCharacterCardRenderer(deps) {
     ].includes(options.contentMode) ? options.contentMode : state.cardContentMode;
     const showCombat = contentMode !== 'life';
     const showLife = contentMode !== 'combat';
+    // 评分行与内容区块同构：战斗布局只留战斗分，生活布局只留生活分。
+    const scoreRowVisibility = getCardScoreRowVisibility(state, contentMode);
     const equipmentPanel =
       availability.equipment === false ? '' : equipmentRenderer.generateEquipmentPanel(characterObj);
     const lifeToolsPanel =
@@ -1262,14 +1292,14 @@ export function createCharacterCardRenderer(deps) {
     <div class="mst-card-header">
       <div class="mst-card-header-identity">${TemplateRenderer.raw(headerContent)}</div>
       <span class="mst-card-build-score" data-build-score-key=${buildScoreKey} data-score-state="pending">
-        <span class="mst-card-build-score-row" data-score-row="battle">
+        <span class="mst-card-build-score-row" data-score-row="battle" hidden=${!scoreRowVisibility.battle}>
           <span class="mst-card-build-score-heading">
             <span class="mst-card-build-score-new" title=${i18n.t('newBuildScoreBadge')} hidden>✦</span>
             <span class="mst-card-build-score-label">${i18n.t('battleScore')}</span>
           </span>
           <span class="mst-card-build-score-value">${i18n.t('calculating')}</span>
         </span>
-        <span class="mst-card-build-score-row" data-score-row="skilling">
+        <span class="mst-card-build-score-row" data-score-row="skilling" hidden=${!scoreRowVisibility.skilling}>
           <span class="mst-card-build-score-heading">
             <span class="mst-card-build-score-new" title=${i18n.t('newBuildScoreBadge')} hidden>✦</span>
             <span class="mst-card-build-score-label">${i18n.t('skillingScore')}</span>

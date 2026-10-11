@@ -3,6 +3,24 @@
 // 版本说明只写用户可感知的变化，更新版本时先改 docs/changelog.md，再同步这里并补英文。
 export const CHANGELOG_VERSIONS = [
   {
+    version: '2.19.0',
+    date: '2026-10-11',
+    notes: [
+      {
+        zh: '新增“市场交易记录”：自动记录自己的挂牌、成交、取消、过期和立即购买 / 立即出售订单，入口在市场“商品列表 / 我的挂牌”旁边，也能从工具箱打开。支持搜索、筛选、排序、分页与批量删除，底部给出成交数量、收入与支出的本页合计与筛选总计；记录可导出导入，多台设备各自记录的部分会按订单合并成一条完整记录。“统计”页签用独立筛选查看时间范围、方向、分类与物品关键词，总览给出笔数、成交数量、收入、支出与净收支，另有收支趋势、物品排行、分类构成和记录构成四张图表，“按物品汇总”把出售金额与购买金额分列；“帮助”页签写明“食用工具”桥接脚本的接入方法，可把它的历史市场订单导入，也能把记录导回食用工具。记录显示官方创建时间、过期时间与税费；缺少官方到账数据的历史记录会按成交当时的市场税率推算并在悬浮提示里说明——出售扣税，购买不扣税。',
+        en: 'New Market History: automatically records your listings, fills, cancellations, expirations, and instant buy/sell orders; open it next to the market listings tabs or from the Toolkit. Records support search, filters, sorting, paging, and bulk delete, the footer shows this-page and filtered totals of filled quantity, income, and expense, and records can be exported or imported — parts recorded on different devices merge into one complete record per order. The Stats tab has its own filters by time range, direction, category, and item keyword, with an overview of records, filled quantity, income, expense, and net, plus four charts (income and expense over time, top items, category breakdown, record breakdown) and a by-item table that lists sell and buy amounts in separate columns; the Help tab explains how to add the Edible Tools bridge script, which can import its order history and export records back. Records show the official created time, expiration time, and tax taken; records without official collection data are estimated with the market tax rate at the time of the sale and labeled in the tooltip — sells are taxed, buys are not.'
+      }, {
+        zh: '角色名片：评分随布局显示——战斗布局只显示战斗评分、生活布局只显示生活评分，选“全部”才同时显示两个，只剩一个评分时靠下摆放；装备与生活工具的等级角标改为游戏里的需求等级，项链、戒指、耳环和任务徽章没有等级要求，仍显示物品等级。',
+        en: 'Character Cards: the score rows follow the layout — the combat layout shows only the combat score, the life layout only the life score, and All shows both, with a single score placed at the bottom; the level badges on equipment and tool icons now show the in-game requirement, while necklaces, rings, earrings, and task badges have no requirement and keep showing their item level.'
+      }, {
+        zh: '房屋升级计算器：起始等级可以选择 0（未建造），从 0 级起算会把建到 1 级的材料一起算上。',
+        en: 'House Upgrade Calculator: the start level can now be 0 for rooms that are not built, which includes the materials needed to build the room to level 1.'
+      }, {
+        zh: '地下城收益计算器：单图与批量的切换改为顶部页签，打开默认停在第一个页签“批量模拟”，两个模式的参数照旧分别自动保存。',
+        en: 'The Dungeon Profit Calculator now switches between a single map and batch mode with tabs at the top, opening on the first tab, Batch Simulation; parameters of both modes are still saved automatically.'
+      }
+    ]
+  }, {
     version: '2.18.0',
     date: '2026-10-01',
     notes: [
@@ -75,7 +93,8 @@ export const CHANGELOG_VERSIONS = [
         en: 'Dungeon Profit adds an "Exclude cowbell value" option (off by default): when checked, cowbells and bags of cowbells are excluded from profit and their value in the results and drop table shows as 0.'
       }
     ]
-  }, {
+  },
+  {
     version: '2.16.0',
     date: '2026-09-08',
     notes: [
@@ -93,8 +112,7 @@ export const CHANGELOG_VERSIONS = [
         en: 'Every Toolkit dialog now shows the same icon as its menu entry, making dialogs and menu entries easy to match.'
       }
     ]
-  },
-  {
+  }, {
     version: '2.15.0',
     date: '2026-08-28',
     notes: [
@@ -145,7 +163,8 @@ export const CHANGELOG_VERSIONS = [
         en: 'Dungeon Profit improvements: the dungeon dropdown now shows D1-D4 numbers to match the in-game dungeon map, and the results area has a new "Drops" tab listing items, drop rates, expected quantities, and best-ask/best-bid prices per standard and refined chest, with details on hover; prices are calculated from market quotes before tax.'
       }
     ]
-  }, {
+  },
+  {
     version: '2.11.1',
     date: '2026-08-18',
     notes: [
@@ -157,8 +176,7 @@ export const CHANGELOG_VERSIONS = [
         en: 'When several copies of this script are installed (e.g. the release and a local dev build), the Add to Cart button now appears consistently without the copies interfering with each other.'
       }
     ]
-  },
-  {
+  }, {
     version: '2.11.0',
     date: '2026-08-18',
     notes: [
@@ -175,8 +193,8 @@ export const CHANGELOG_VERSIONS = [
     date: '2026-08-17',
     notes: [
       {
-        zh: '修复市场行情来源：市场数据改为始终按当前所在服务器读取（正式服、测试服、中文站各自读取本站行情），在带 www、不带 www 或测试服域名的页面打开时都能正确读取，不再依赖固定的域名跳转。',
-        en: 'Fixed the market data source: prices are always read from the current server (release, test, and Chinese sites each use their own market), so pages with or without www or on the test domain all work without a fixed domain redirect.'
+        zh: '修复市场行情来源：市场数据改为始终按当前入口域名读取本站行情（正式服与测试服是两个环境，cn 域名是正式服的中国官方镜像入口），在带 www、不带 www 或测试服域名的页面打开时都能正确读取，不再依赖固定的域名跳转。',
+        en: 'Fixed the market data source: prices are now always read from the current entry domain (release and test are separate environments, and the cn domain is a mirror entry of the release server), so pages with or without www or on the test domain all work without a fixed domain redirect.'
       }
     ]
   }, {
@@ -219,7 +237,8 @@ export const CHANGELOG_VERSIONS = [
         en: 'Fixed cowbell value sometimes being calculated as 0: when a bag of cowbells has no market price it falls back to the official guide price and then to the market snapshot trade price (about 1.075M coins per bag), with cowbells at one tenth, so it no longer shows 0.'
       }
     ]
-  }, {
+  },
+  {
     version: '2.9.1',
     date: '2026-08-11',
     notes: [
@@ -228,8 +247,7 @@ export const CHANGELOG_VERSIONS = [
         en: 'Character profile caching optimized: only the fields needed by the card are cached, greatly reducing cache size, and the oldest profiles are cleaned up when the limit is exceeded or browser storage is low.'
       }
     ]
-  },
-  {
+  }, {
     version: '2.9.0',
     date: '2026-08-05',
     notes: [
@@ -268,7 +286,8 @@ export const CHANGELOG_VERSIONS = [
         en: 'Improved dialog positioning on small screens and mobile browsers so the ability picker and Toolkit menu stay within the visible area.'
       }
     ]
-  }, {
+  },
+  {
     version: '2.7.20',
     date: '2026-08-02',
     notes: [
@@ -296,8 +315,7 @@ export const CHANGELOG_VERSIONS = [
         en: 'Overall experience: the interface language follows the game in real time, and dialogs, mobile display, official Chinese terms, and market price directions are unified; best sell/buy prices display as 左一/右一 in Chinese, following game conventions.'
       }
     ]
-  },
-  {
+  }, {
     version: '1.2.7',
     date: '2026-05-07',
     legacy: true,
@@ -344,7 +362,8 @@ export const CHANGELOG_VERSIONS = [
         en: 'Fixed Milkonomy sync failing when no loadout had ever been configured.'
       }
     ]
-  }, {
+  },
+  {
     version: '1.0.1',
     date: '2026-04-15',
     legacy: true,
@@ -354,8 +373,7 @@ export const CHANGELOG_VERSIONS = [
         en: 'Fixed the Chinese mirror site being unusable.'
       }
     ]
-  },
-  {
+  }, {
     version: '1.0.0',
     date: '2026-04-15',
     legacy: true,

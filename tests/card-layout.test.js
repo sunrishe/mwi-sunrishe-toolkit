@@ -256,3 +256,30 @@ test('顶部用户名片入口只增强角色名与总等级，不改变原有�
   );
   assert.doesNotMatch(characterCardStylesSource, /\.mst-header-card-level-layout/);
 });
+
+test('评分块按内容模式只渲染对应的评分行', () => {
+  const {context, generateCharacterCard} = loadGenerateCharacterCard();
+  const data = {player: {}, dataTimestamp: 1};
+
+  context.state.cardContentMode = 'combat';
+  const combat = generateCharacterCard(data, 'Test');
+  assert.match(combat, /data-score-row="battle" hidden=false/);
+  assert.match(combat, /data-score-row="skilling" hidden=true/);
+
+  context.state.cardContentMode = 'life';
+  const life = generateCharacterCard(data, 'Test');
+  assert.match(life, /data-score-row="battle" hidden=true/);
+  assert.match(life, /data-score-row="skilling" hidden=false/);
+
+  context.state.cardContentMode = 'all';
+  const all = generateCharacterCard(data, 'Test');
+  assert.match(all, /data-score-row="battle" hidden=false/);
+  assert.match(all, /data-score-row="skilling" hidden=false/);
+
+  // 只有一个评分（隐藏了一行）时评分贴下边摆放：评分块保持两行高度，单行贴下沿。
+  assert.match(characterCardStylesSource, /\.mst-card-build-score\s*\{[^}]*min-height:\s*25px;/);
+  assert.match(
+    characterCardStylesSource,
+    /\.mst-card-build-score:has\(\.mst-card-build-score-row\[hidden\]\)\s*\{[^}]*justify-content:\s*flex-end;/
+  );
+});

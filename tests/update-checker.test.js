@@ -244,7 +244,7 @@ test('检查更新：按间隔判断是否到期，未到期不重复检查', ()
 });
 
 test('检查更新：判定新版本、状态只存内存、跳转脚本直链', async () => {
-  const {feature, openedWindows, listeners, storageWrites} = createUpdateChecker();
+  const {feature, openedWindows, storageWrites} = createUpdateChecker();
   let notified = 0;
   feature.onChange(() => {
     notified += 1;

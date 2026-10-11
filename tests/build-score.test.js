@@ -1128,3 +1128,218 @@ test('公会神龛生效等级按游戏规则取增益等级与神龛等级较�
   assert.equal(detail.battle[0].value, 14.36);
   assert.equal(detail.skilling.length, 0);
 });
+
+// 名片图标角标值（与 MWITools v26.4.18 起“护符等装备显示真正的需求等级”一致）。
+function loadCardItemRenderers() {
+  const context = {
+    i18n: {
+      languageKey: 'zh',
+      t(key) {
+        return key;
+      },
+      pick(entry) {
+        return entry?.zh ?? entry?.en ?? '';
+      }
+    },
+    TemplateRenderer: createTemplateRenderer(),
+    DataHub: {
+      clientData: {raw: clientData},
+      getLocalizedGameName(group, hrid) {
+        const detailMap =
+          group === 'skillNames' ? clientData.skillDetailMap : group === 'itemNames' ? clientData.itemDetailMap : null;
+        return detailMap?.[hrid]?.name || hrid.split('/').pop().replace(/_/g, ' ');
+      },
+      getGameI18nResources() {
+        return null;
+      }
+    },
+    utils: {
+      substrLastSlash(value) {
+        return String(value).split('/').pop();
+      },
+      escapeHtml(value) {
+        return String(value);
+      }
+    },
+    state: {cardContentMode: 'all'}
+  };
+  return vm.runInNewContext(
+    `${readVmSource('src/modules/character-card/data.js', 'src/modules/character-card/renderer.js')}
+        const createSvgIcon = (itemId, type) => '<svg data-type="' + (type || 'items') + '" data-hrid="' + itemId + '"></svg>';
+        const equipmentRenderer = new CharacterCardEquipmentRenderer({ctx: {DataHub, i18n, utils}, createSvgIcon});
+        const lifeRenderer = new CharacterCardLifeRenderer({ctx: {DataHub, i18n, utils}, createSvgIcon});
+        ({
+            getCardItemLevel,
+            generateEquipmentPanel: equipmentRenderer.generateEquipmentPanel.bind(equipmentRenderer),
+            generateLifeToolsPanel: lifeRenderer.generateLifeToolsPanel.bind(lifeRenderer)
+        });`,
+    context
+  );
+}
+
+// 图标块按 data-card-item-hrid 切分，逐块取自己的角标；没有角标记为 null。
+function collectCardItemBadges(html) {
+  const badges = {};
+  html
+    .split('data-card-item-hrid="')
+    .slice(1)
+    .forEach((block) => {
+      const itemHrid = block.slice(0, block.indexOf('"'));
+      const matched = block.match(/class="mst-item-level">(\d+)</);
+      badges[itemHrid] = matched ? Number(matched[1]) : null;
+    });
+  return badges;
+}
+
+test('装备图标角标按官方需求等级显示，无需求等级的装备回落到官方物品等级', () => {
+  const renderers = loadCardItemRenderers();
+  const rawClientData = {raw: clientData};
+
+  // 全量核对 init_client 数据：有需求等级的装备取最高需求（精炼装备、护符、袋子按总等级），
+  // 官方没有需求等级的装备（项链、戒指、耳环、任务徽章）回落到官方物品等级。
+  Object.entries(clientData.itemDetailMap).forEach(
+    ([
+      itemHrid, detail
+    ]) => {
+      if (!detail.equipmentDetail) return;
+      const requirements = (detail.equipmentDetail.levelRequirements || []).map(
+        (requirement) => Number(requirement.level) || 0
+      );
+      const expected = requirements.length ? Math.max(...requirements) : Number(detail.itemLevel || 0);
+      assert.equal(
+        renderers.getCardItemLevel(rawClientData, itemHrid),
+        expected,
+        `${itemHrid} 角标等级与官方数据不一致`
+      );
+    }
+  );
+
+  // 关键样本锁定口径（数据更新后这些值若变化，需要重新核对官方数据）。
+  assert.equal(renderers.getCardItemLevel(rawClientData, '/items/acrobatic_hood_refined'), 110);
+  assert.equal(renderers.getCardItemLevel(rawClientData, '/items/master_alchemy_charm'), 100);
+  assert.equal(renderers.getCardItemLevel(rawClientData, '/items/guzzling_pouch'), 1250);
+  assert.equal(renderers.getCardItemLevel(rawClientData, '/items/philosophers_ring'), 90);
+  assert.equal(renderers.getCardItemLevel(rawClientData, '/items/advanced_task_badge'), 30);
+  assert.equal(renderers.getCardItemLevel(rawClientData, '/items/not_an_item'), 0);
+});
+
+test('名片装备与生活工具图标渲染的角标与官方需求等级一致', () => {
+  const renderers = loadCardItemRenderers();
+  const rawClientData = {raw: clientData};
+  const wornItems = characterData.characterItems.filter(
+    (item) => item.itemLocationHrid !== '/item_locations/inventory'
+  );
+
+  const equipmentBadges = collectCardItemBadges(renderers.generateEquipmentPanel({characterItems: wornItems}));
+  const combatBadges = Object.fromEntries(
+    Object.entries(equipmentBadges).filter(
+      ([
+        itemHrid
+      ]) => !itemHrid.includes('_tool')
+    )
+  );
+  assert.equal(Object.keys(combatBadges).length, 14, '战斗装备面板应渲染角色当前穿戴的 14 件装备图标');
+  // 当前角色：精炼装备与护符按需求等级（110 / 100），袋子按总等级（1250），
+  // 项链戒指耳环与任务徽章官方没有需求等级，沿用官方物品等级 90 / 60。
+  assert.equal(equipmentBadges['/items/magicians_hat_refined'], 110);
+  assert.equal(equipmentBadges['/items/blooming_trident_refined'], 110);
+  assert.equal(equipmentBadges['/items/master_magic_charm'], 100);
+  assert.equal(equipmentBadges['/items/guzzling_pouch'], 1250);
+  assert.equal(equipmentBadges['/items/philosophers_necklace'], 90);
+  assert.equal(equipmentBadges['/items/expert_task_badge'], 60);
+  Object.entries(equipmentBadges).forEach(
+    ([
+      itemHrid, badge
+    ]) => {
+      assert.equal(badge, renderers.getCardItemLevel(rawClientData, itemHrid), `${itemHrid} 渲染角标与官方等级不一致`);
+    }
+  );
+
+  const toolsHTML = renderers.generateLifeToolsPanel(
+    {characterSkills: characterData.characterSkills},
+    {equipment: wornItems}
+  );
+  const toolBadges = collectCardItemBadges(toolsHTML);
+  assert.equal(Object.keys(toolBadges).length, 10, '生活工具面板应渲染 10 个工具位');
+  Object.entries(toolBadges).forEach(
+    ([
+      itemHrid, badge
+    ]) => {
+      assert.equal(badge, renderers.getCardItemLevel(rawClientData, itemHrid), `${itemHrid} 工具角标与官方等级不一致`);
+    }
+  );
+});
+
+// 评分块的 DOM 桩：只提供 renderBuildScore 用到的方法（行查询、classList、hidden）。
+function createScoreElementStub() {
+  const createRow = () => ({
+    hidden: false,
+    classList: {toggle() {}},
+    querySelector: () => ({textContent: ''})
+  });
+  const rows = {battle: createRow(), skilling: createRow()};
+  return {
+    rows,
+    querySelector(selector) {
+      const matched = /data-score-row="(battle|skilling)"/.exec(String(selector));
+      return matched ? rows[matched[1]] : null;
+    },
+    querySelectorAll: () => []
+  };
+}
+
+test('评分行随名片内容模式显示：战斗只看战斗分、生活只看生活分、全部两个都看', () => {
+  const renderer = loadBuildScoreDetailRenderer();
+  const newVersionScore = {
+    battle: {total: 12.3},
+    skilling: {total: 4.5, available: true},
+    equipmentHidden: false,
+    newVersion: true
+  };
+
+  renderer.state.cardContentMode = 'combat';
+  let element = createScoreElementStub();
+  renderer.renderBuildScore(element, newVersionScore);
+  assert.equal(element.rows.battle.hidden, false, '战斗布局应显示战斗分');
+  assert.equal(element.rows.skilling.hidden, true, '战斗布局不应显示生活分');
+
+  renderer.state.cardContentMode = 'life';
+  element = createScoreElementStub();
+  renderer.renderBuildScore(element, newVersionScore);
+  assert.equal(element.rows.battle.hidden, true, '生活布局不应显示战斗分');
+  assert.equal(element.rows.skilling.hidden, false, '生活布局应显示生活分');
+
+  renderer.state.cardContentMode = 'all';
+  element = createScoreElementStub();
+  renderer.renderBuildScore(element, newVersionScore);
+  assert.equal(element.rows.battle.hidden, false, '全部布局应显示战斗分');
+  assert.equal(element.rows.skilling.hidden, false, '全部布局应显示生活分');
+
+  // 计算中/错误提示只留在当前内容模式显示的那一行，不重复显示。
+  renderer.state.cardContentMode = 'life';
+  element = createScoreElementStub();
+  renderer.renderBuildScore(element, 'calculating');
+  assert.equal(element.rows.battle.hidden, true);
+  assert.equal(element.rows.skilling.hidden, false);
+
+  // 生活分不可用（资料页缺少工具数据）时仍按内容模式隐藏，只在生活布局显示“-”。
+  renderer.state.cardContentMode = 'all';
+  element = createScoreElementStub();
+  renderer.renderBuildScore(element, {...newVersionScore, skilling: {available: false}});
+  assert.equal(element.rows.skilling.hidden, false);
+});
+
+test('战力打造分只有一个分数，任何内容模式下都显示战斗行', () => {
+  const renderer = loadBuildScoreDetailRenderer();
+  const legacyScore = {total: 8.8, equipmentHidden: false, newVersion: false};
+
+  [
+    'combat', 'life', 'all'
+  ].forEach((mode) => {
+    renderer.state.cardContentMode = mode;
+    const element = createScoreElementStub();
+    renderer.renderBuildScore(element, legacyScore);
+    assert.equal(element.rows.battle.hidden, false, `${mode} 布局应显示战力打造分`);
+    assert.equal(element.rows.skilling.hidden, true, `${mode} 布局不应显示生活分`);
+  });
+});

@@ -35,8 +35,8 @@ export const HOUSE_CALCULATOR_MESSAGES = {
   title: {zh: '房屋升级材料计算器', en: 'House Upgrade Material Calculator'},
   houseCalculatorHelpTitle: {zh: '查看房屋升级说明', en: 'View house upgrade instructions'},
   houseCalculatorHelp: {
-    zh: '使用：勾选需要升级的房屋，分别设置每个房屋的起始等级和目标等级；也可以用顶部批量等级快速设置。起始等级会优先读取当前角色房屋数据，重置等级会恢复为当前读取到的房屋等级。\n\n计算：未勾选任何房屋时不会计算材料。每个房屋按官方升级配置逐级累加材料，并结合当前背包库存计算缺口；结果会显示升级房屋、市场数据时间、材料种类、缺少数量、总价值、所需金币、已有材料价值和缺口价值。\n\n操作：物品显示格式可在名称和 HRID 之间切换，导出 CSV 会导出当前计算结果。MWITools 购物车就绪后，可以把缺失材料加入购物车；只会加入缺口材料，不会自动下单。\n\n限制：房屋数据、库存和市场价格来自当前游戏页面已加载数据；市场缺价时对应价值可能为 0 或不完整。',
-    en: "Usage: Select the house rooms to upgrade, then set each room's start and target levels. The batch level controls can quickly set multiple rows. Start levels prefer the current character house data, and Reset Levels restores the levels currently read from the game.\n\nCalculation: No materials are calculated until at least one room is selected. Each selected room sums official upgrade costs level by level, then compares them with current inventory to calculate shortages. Results include selected upgrades, market data time, material types, missing quantity, total value, required coins, owned material value, and shortfall value.\n\nActions: Item display can switch between names and HRIDs, and Export CSV exports the current result. When MWI Market Mate is installed and ready, missing materials can be added to its cart; only shortages are added, and no orders are placed automatically.\n\nLimits: House data, inventory, and market prices come from the data currently loaded on the game page. Missing market prices can make related values 0 or incomplete."
+    zh: '使用：勾选需要升级的房屋，分别设置每个房屋的起始等级和目标等级；也可以用顶部批量等级快速设置。起始等级可选 0（房间未建造，即游戏里显示“未建造”的等级，从 0 级起算会包含建到 1 级的材料），会优先读取当前角色房屋数据，重置等级会恢复为当前读取到的房屋等级。\n\n计算：未勾选任何房屋时不会计算材料。每个房屋按官方升级配置逐级累加材料，并结合当前背包库存计算缺口；结果会显示升级房屋、市场数据时间、材料种类、缺少数量、总价值、所需金币、已有材料价值和缺口价值。\n\n操作：物品显示格式可在名称和 HRID 之间切换，导出 CSV 会导出当前计算结果。MWITools 购物车就绪后，可以把缺失材料加入购物车；只会加入缺口材料，不会自动下单。\n\n限制：房屋数据、库存和市场价格来自当前游戏页面已加载数据；市场缺价时对应价值可能为 0 或不完整。',
+    en: "Usage: Select the house rooms to upgrade, then set each room's start and target levels. The batch level controls can quickly set multiple rows. Start levels accept 0 for rooms that are not built yet (the level shown as not built in game, which includes the materials needed to reach level 1), prefer the current character house data, and Reset Levels restores the levels currently read from the game.\n\nCalculation: No materials are calculated until at least one room is selected. Each selected room sums official upgrade costs level by level, then compares them with current inventory to calculate shortages. Results include selected upgrades, market data time, material types, missing quantity, total value, required coins, owned material value, and shortfall value.\n\nActions: Item display can switch between names and HRIDs, and Export CSV exports the current result. When MWI Market Mate is installed and ready, missing materials can be added to its cart; only shortages are added, and no orders are placed automatically.\n\nLimits: House data, inventory, and market prices come from the data currently loaded on the game page. Missing market prices can make related values 0 or incomplete."
   },
   trigger: {zh: '升级计算器', en: 'Upgrade Calculator'},
   selectLife: {zh: '生活', en: 'Skilling'},
@@ -434,8 +434,8 @@ export const SUBSCRIBE_NOTIFICATION_MESSAGES = {
 export const DUNGEON_CALCULATOR_MESSAGES = {
   dungeonCalculatorHelpTitle: {zh: '查看地下城收益说明', en: 'View dungeon profit instructions'},
   dungeonCalculatorHelp: {
-    zh: '使用：选择地下城、难度、队伍人数和单次耗时；每日固定按 24 小时计算。每日药品/饮料成本可留空，填写时单位为 M。工匠茶和暴饮之囊只影响制作钥匙成本，暴饮之囊需要勾选后才会按所选强化等级生效。\n\n期望：每日轮次 = 1440 ÷ 单次耗时，计算保留完整精度。普通宝箱按官方公式 5 ÷ 队伍人数 × (1 + 29.5% 战斗掉落数量)计算，5 人时每车 1.295 个；T0 不掉精炼宝箱，T1 精炼宝箱为每车普通宝箱 × 0.33，T2 为每车普通宝箱。门票数量等于普通宝箱期望数量，数量显示最多保留两位小数并去掉末尾 0。\n\n成本：默认同时展示制作钥匙和购买钥匙。制作钥匙读取官方配方并受工匠茶、暴饮之囊影响；购买钥匙读取门票和开箱钥匙的成品市场价。材料成本区只显示买入方向，预期产出区只显示卖出方向。自定义模式可选择钥匙来源、买入档位和卖出档位；左侧保留所选来源的区间，右侧显示自定义组合。\n\n收益：宝箱内容按官方掉落率和平均数量递归展开，重复物品会合并，嵌套宝箱会继续展开。“掉落物”页签按官方宝箱的掉落物列表直接展示（不递归展开嵌套宝箱），普通/精炼宝箱各一小节，每行列出掉率/掉落数量、期望数量（悬浮查看计算公式）与按市场报价税前折算的价值。每日普通/精炼宝箱产出完全按市场报价税前计算（不扣税）。“收益扣除市场税”默认勾选，卖出收入按市场税扣除（普通物品 {0}%、牛铃/牛铃袋 {1}%）；不勾选时所有物品都按市场报价直接计算，不扣任何税。勾选“披风不计算收益”后，所有背部装备产物按 0 估值；勾选“牛铃不计算收益”后，牛铃与牛铃袋产物按 0 估值。单个普通宝箱收益会扣除单箱分摊的门票和普通开箱钥匙成本；单个精炼宝箱收益只扣除精炼开箱钥匙成本。每日期望收益按单箱收益乘每日宝箱数量汇总后，再扣除每日药品/饮料成本；每车期望收益等于每日期望收益除以每日轮次。\n\n限制：通关耗时和队伍人数需要手动填写/选择，当前不会自动读取战斗耗时和队伍组成。结果是当前参数和市场价格下的确定性期望，不预测价格变化。完全缺价的物品按 0 估值并提示。\n\n批量模拟：勾选顶部的“批量模拟”复选框进入批量模拟，取消勾选回到单图模拟。批量第一行选项与单图模拟从“使用工匠茶”开始的选项一致，对列表内全部地图生效；第二行双击地下城卡片把地图加入列表，右侧展示市场数据时间；列表每行单独设置难度、队伍人数、单次耗时和每日药品/饮料成本，期望数量按“普通宝箱 / 精炼宝箱”分两行展示；“制作钥匙”与“购买钥匙”各分“左买/右卖”“右买/左卖”两列，单元格上行是每日总成本、下行是每日期望收益。序号列可拖动排序，列表默认展示四个地下城。勾选自定义模式后，“购买钥匙”区域直接改为按所选钥匙来源和买卖档位计算的自定义结果。单图和批量各自的参数都会随调整自动保存到本地（共用同一个存储键、两个模式分别保存），结果始终按当前市场数据重新计算，不会读取已保存的计算结果；恢复默认清空当前模式的已存配置并回到默认参数（批量恢复为四个默认地图）。',
-    en: 'Usage: Select a dungeon, tier, party size, and clear time. Every day uses a fixed 24-hour calculation. Daily food/drink cost is optional and entered in millions. Artisan Tea and Guzzling Pouch affect crafted-key costs only; Guzzling Pouch applies only when its checkbox is enabled and uses the selected enhancement level.\n\nExpectation: Daily runs = 1440 ÷ clear time, kept at full precision for calculation. Normal Chests use the official formula 5 ÷ Party Size × (1 + 29.5% Combat Drop Quantity); at Party Size 5 that is 1.295 per run. T0 has no Refinement Chest; T1 uses Normal Chests × 0.33 per run; T2 uses the Normal Chest expectation per run. Entry Ticket quantity equals expected Normal Chest quantity, and displayed quantities use at most two decimals and hide trailing zeros.\n\nCosts: Crafted Keys and Purchased Keys are shown by default. Crafted-key costs use official recipes and are affected by Artisan Tea and Guzzling Pouch; purchased-key costs use finished Entry Ticket and Chest Key market prices. The Material Costs section shows purchase sides only, and Expected Output shows sale sides only. Custom Mode selects the key source, buy side, and sell side; the left columns keep the selected source range, while the right column shows the custom combination.\n\nProfit: Chest contents recursively use official drop rates and average quantities; duplicate items are combined and nested chests are expanded. The Loot tab lists the official chest drop entries directly (nested chests are not expanded), split into Normal and Refined Chest sections; each row shows drop rate / drop quantity, expected quantity (hover for the formula), and pretax value at quoted market prices. Daily Normal/Refinement Chest Output is valued at quoted market prices before tax (no tax deducted). Deduct Market Tax is enabled by default and sale revenue deducts the market tax (regular items {0}%, Cowbells and Cowbell Bags {1}%); when disabled, all items use quoted prices directly with no tax deducted. When Exclude Back Equipment Profit is enabled, all back-equipment output is valued at 0; when Exclude Cowbell Profit is enabled, Cowbell and Cowbell Bag output is valued at 0. Each Normal Chest Profit deducts allocated Entry Ticket and Normal Chest Key costs; each Refinement Chest Profit deducts its Refinement Chest Key cost. Daily Expected Profit multiplies per-chest profit by daily chest quantities, then deducts daily food/drink cost; Expected Profit per Run divides it by Daily Runs.\n\nLimits: Clear time is entered manually and party size is selected manually; they are not read from combat automatically. Results are deterministic expectations at current parameters and market prices and do not predict price changes. Items with no valid price are valued at 0 and reported.\n\nBatch simulation: tick the Batch Simulation checkbox on top to switch modes; untick it to return to Single Map. Its first option row mirrors the Single Map options starting from Use Artisan Tea and applies to every map in the list. Double-click a dungeon card in the second row to add a map; the market data time sits on the right. Each list row has its own tier, party size, clear time, and daily food/drink cost, and expected quantity lists Normal and Refined chests on two lines. Craft Keys and Buy Keys each split into Ask Buy/Bid Sell and Bid Buy/Ask Sell columns; every cell shows the daily total cost on the first line and the daily expected profit on the second line. Drag the Sequence cell to reorder rows, and the list defaults to all four dungeons. With Custom Mode enabled, the Buy Keys area directly shows the custom result for the selected key source and trade sides. Parameters of both modes are saved locally automatically as you adjust them (one shared storage key with separate sections for Single Map and Batch), and results are always recalculated from the current market data; saved results are never reused. Restore Defaults removes the stored config of the currently active mode and returns to default parameters (Batch restores the four default dungeons).'
+    zh: '使用：选择地下城、难度、队伍人数和单次耗时；每日固定按 24 小时计算。每日药品/饮料成本可留空，填写时单位为 M。工匠茶和暴饮之囊只影响制作钥匙成本，暴饮之囊需要勾选后才会按所选强化等级生效。\n\n期望：每日轮次 = 1440 ÷ 单次耗时，计算保留完整精度。普通宝箱按官方公式 5 ÷ 队伍人数 × (1 + 29.5% 战斗掉落数量)计算，5 人时每车 1.295 个；T0 不掉精炼宝箱，T1 精炼宝箱为每车普通宝箱 × 0.33，T2 为每车普通宝箱。门票数量等于普通宝箱期望数量，数量显示最多保留两位小数并去掉末尾 0。\n\n成本：默认同时展示制作钥匙和购买钥匙。制作钥匙读取官方配方并受工匠茶、暴饮之囊影响；购买钥匙读取门票和开箱钥匙的成品市场价。材料成本区只显示买入方向，预期产出区只显示卖出方向。自定义模式可选择钥匙来源、买入档位和卖出档位；左侧保留所选来源的区间，右侧显示自定义组合。\n\n收益：宝箱内容按官方掉落率和平均数量递归展开，重复物品会合并，嵌套宝箱会继续展开。“掉落物”页签按官方宝箱的掉落物列表直接展示（不递归展开嵌套宝箱），普通/精炼宝箱各一小节，每行列出掉率/掉落数量、期望数量（悬浮查看计算公式）与按市场报价税前折算的价值。每日普通/精炼宝箱产出完全按市场报价税前计算（不扣税）。“收益扣除市场税”默认勾选，卖出收入按市场税扣除（普通物品 {0}%、牛铃/牛铃袋 {1}%）；不勾选时所有物品都按市场报价直接计算，不扣任何税。勾选“披风不计算收益”后，所有背部装备产物按 0 估值；勾选“牛铃不计算收益”后，牛铃与牛铃袋产物按 0 估值。单个普通宝箱收益会扣除单箱分摊的门票和普通开箱钥匙成本；单个精炼宝箱收益只扣除精炼开箱钥匙成本。每日期望收益按单箱收益乘每日宝箱数量汇总后，再扣除每日药品/饮料成本；每车期望收益等于每日期望收益除以每日轮次。\n\n限制：通关耗时和队伍人数需要手动填写/选择，当前不会自动读取战斗耗时和队伍组成。结果是当前参数和市场价格下的确定性期望，不预测价格变化。完全缺价的物品按 0 估值并提示。\n\n批量模拟：点击顶部的“批量模拟”页签进入批量模拟，点击“单图模拟”回到单图模拟。批量第一行选项与单图模拟从“使用工匠茶”开始的选项一致，对列表内全部地图生效；第二行双击地下城卡片把地图加入列表，右侧展示市场数据时间；列表每行单独设置难度、队伍人数、单次耗时和每日药品/饮料成本，期望数量按“普通宝箱 / 精炼宝箱”分两行展示；“制作钥匙”与“购买钥匙”各分“左买/右卖”“右买/左卖”两列，单元格上行是每日总成本、下行是每日期望收益。序号列可拖动排序，列表默认展示四个地下城。勾选自定义模式后，“购买钥匙”区域直接改为按所选钥匙来源和买卖档位计算的自定义结果。单图和批量各自的参数都会随调整自动保存到本地（共用同一个存储键、两个模式分别保存），结果始终按当前市场数据重新计算，不会读取已保存的计算结果；恢复默认清空当前模式的已存配置并回到默认参数（批量恢复为四个默认地图）。',
+    en: 'Usage: Select a dungeon, tier, party size, and clear time. Every day uses a fixed 24-hour calculation. Daily food/drink cost is optional and entered in millions. Artisan Tea and Guzzling Pouch affect crafted-key costs only; Guzzling Pouch applies only when its checkbox is enabled and uses the selected enhancement level.\n\nExpectation: Daily runs = 1440 ÷ clear time, kept at full precision for calculation. Normal Chests use the official formula 5 ÷ Party Size × (1 + 29.5% Combat Drop Quantity); at Party Size 5 that is 1.295 per run. T0 has no Refinement Chest; T1 uses Normal Chests × 0.33 per run; T2 uses the Normal Chest expectation per run. Entry Ticket quantity equals expected Normal Chest quantity, and displayed quantities use at most two decimals and hide trailing zeros.\n\nCosts: Crafted Keys and Purchased Keys are shown by default. Crafted-key costs use official recipes and are affected by Artisan Tea and Guzzling Pouch; purchased-key costs use finished Entry Ticket and Chest Key market prices. The Material Costs section shows purchase sides only, and Expected Output shows sale sides only. Custom Mode selects the key source, buy side, and sell side; the left columns keep the selected source range, while the right column shows the custom combination.\n\nProfit: Chest contents recursively use official drop rates and average quantities; duplicate items are combined and nested chests are expanded. The Loot tab lists the official chest drop entries directly (nested chests are not expanded), split into Normal and Refined Chest sections; each row shows drop rate / drop quantity, expected quantity (hover for the formula), and pretax value at quoted market prices. Daily Normal/Refinement Chest Output is valued at quoted market prices before tax (no tax deducted). Deduct Market Tax is enabled by default and sale revenue deducts the market tax (regular items {0}%, Cowbells and Cowbell Bags {1}%); when disabled, all items use quoted prices directly with no tax deducted. When Exclude Back Equipment Profit is enabled, all back-equipment output is valued at 0; when Exclude Cowbell Profit is enabled, Cowbell and Cowbell Bag output is valued at 0. Each Normal Chest Profit deducts allocated Entry Ticket and Normal Chest Key costs; each Refinement Chest Profit deducts its Refinement Chest Key cost. Daily Expected Profit multiplies per-chest profit by daily chest quantities, then deducts daily food/drink cost; Expected Profit per Run divides it by Daily Runs.\n\nLimits: Clear time is entered manually and party size is selected manually; they are not read from combat automatically. Results are deterministic expectations at current parameters and market prices and do not predict price changes. Items with no valid price are valued at 0 and reported.\n\nBatch simulation: click the Batch Simulation tab on top to switch modes; click Single Map to return. Its first option row mirrors the Single Map options starting from Use Artisan Tea and applies to every map in the list. Double-click a dungeon card in the second row to add a map; the market data time sits on the right. Each list row has its own tier, party size, clear time, and daily food/drink cost, and expected quantity lists Normal and Refined chests on two lines. Craft Keys and Buy Keys each split into Ask Buy/Bid Sell and Bid Buy/Ask Sell columns; every cell shows the daily total cost on the first line and the daily expected profit on the second line. Drag the Sequence cell to reorder rows, and the list defaults to all four dungeons. With Custom Mode enabled, the Buy Keys area directly shows the custom result for the selected key source and trade sides. Parameters of both modes are saved locally automatically as you adjust them (one shared storage key with separate sections for Single Map and Batch), and results are always recalculated from the current market data; saved results are never reused. Restore Defaults removes the stored config of the currently active mode and returns to default parameters (Batch restores the four default dungeons).'
   },
   dungeon: {zh: '地下城', en: 'Dungeon'},
   dungeonNameChimericalDen: {zh: '奇幻洞穴', en: 'Chimerical Den'},
@@ -512,6 +512,7 @@ export const DUNGEON_CALCULATOR_MESSAGES = {
     en: 'Expected = {0} {1} × {2} × ({3}+{4})÷2'
   },
   expectedQuantityResult: {zh: '= {0}', en: '= {0}'},
+  simTabSingle: {zh: '单图模拟', en: 'Single Map'},
   simTabBatch: {zh: '批量模拟', en: 'Batch Simulation'},
   leftBuyRightSell: {zh: '左买/右卖', en: 'Ask Buy/Bid Sell'},
   rightBuyLeftSell: {zh: '右买/左卖', en: 'Bid Buy/Ask Sell'},
@@ -688,6 +689,273 @@ export const COMBAT_SIM_IMPORT_MESSAGES = {
   combatSimAiwwb: {zh: '战斗模拟 aiwwb', en: 'Combat Sim aiwwb'}
 };
 
+// market-history-messages
+export const MARKET_HISTORY_MESSAGES = {
+  marketHistory: {zh: '市场交易记录', en: 'Market History'},
+  marketHistoryEntry: {zh: '交易记录', en: 'History'},
+  marketHistoryTitle: {zh: '市场交易记录', en: 'Market History'},
+  marketHistoryTabRecords: {zh: '记录', en: 'Records'},
+  marketHistoryTabStats: {zh: '统计', en: 'Stats'},
+  marketHistoryTabManage: {zh: '管理', en: 'Manage'},
+  marketHistoryTabHelp: {zh: '帮助', en: 'Help'},
+  marketHistoryHelpBridgeTitle: {
+    zh: '食用工具 → 交易记录',
+    en: 'Edible Tools → Market History'
+  },
+  marketHistoryHelpBridgeStep1: {
+    zh: '给食用工具加上桥接脚本：在油猴里打开食用工具的脚本编辑页，在脚本头（// ==UserScript== 块内）加一行 @require，保存后刷新游戏页面。找不到编辑页时，先选中食用工具脚本再点「编辑」。',
+    en: 'Add the bridge script to Edible Tools: open the Edible Tools script in Tampermonkey, add one @require line inside the // ==UserScript== block, save and reload the game page.'
+  },
+  marketHistoryHelpBridgeCopy: {zh: '复制这一行', en: 'Copy this line'},
+  marketHistoryHelpBridgeCopied: {
+    zh: '已复制，粘贴到食用工具的脚本头即可',
+    en: 'Copied — paste it into the Edible Tools script header'
+  },
+  marketHistoryHelpBridgePinned: {
+    zh: '上面的地址固定在提交 4851b02（桥接脚本 v1.2.0），内容不会随仓库更新而变；食用工具自身更新脚本后，需要重新加这一行。',
+    en: 'The URL is pinned to commit 4851b02 (bridge v1.2.0) and will not change; re-add the line after Edible Tools updates its own script.'
+  },
+  marketHistoryHelpBridgeStep2: {
+    zh: '在食用工具里导出：打开食用工具设置面板 → 银河奶牛数据库 → 市场数据，点「导出到 MST 交易记录」，得到 MWI_Market_History_from_Edible_Tools_<时间>.json。',
+    en: 'Export from Edible Tools: Settings → Milky Way Idle Database → Market Data, click "Export to MST" to get MWI_Market_History_from_Edible_Tools_<time>.json.'
+  },
+  marketHistoryHelpBridgeStep3: {
+    zh: '导入到交易记录：切到「管理」页签，把文件内容粘贴到「导入交易记录」或选择文件，先「预览合并结果」再「执行导入」（默认合并模式）。',
+    en: 'Import into Market History: open the Manage tab, paste the file into "Import records" or pick the file, then click "Preview" and "Apply import" (merge mode is the default).'
+  },
+  marketHistoryHelpBridgeResult: {
+    zh: '导入的记录会带「来源：食用工具」备注；食用工具不记录领取，所以「收入/支出」按成交当时的税率推算并在悬浮提示里标注——出售扣税后是收入，购买不扣税、显示支出金额；没有官方订单 id 的「立即购买 / 立即出售」兜底记录无法导入，会计入报告的「跳过」。',
+    en: 'Imported records carry a "Source: Edible Tools" note. Edible Tools does not track collections, so "Income / Expense" is estimated with the tax rate at the time and marked in the tooltip — sells are taxed (income), buys are not (expense). Instant buy/sell fallback records without an official order id cannot be imported and are counted as skipped.'
+  },
+  marketHistoryHelpExportTitle: {
+    zh: '交易记录 → 食用工具',
+    en: 'Market History → Edible Tools'
+  },
+  marketHistoryHelpExportStep1: {
+    zh: '先按上面的方式给食用工具加上桥接脚本。',
+    en: 'First add the bridge script to Edible Tools as described above.'
+  },
+  marketHistoryHelpExportStep2: {
+    zh: '在交易记录里导出：「管理」页签 → 「导出交易记录」，格式选 JSON，点「导出文件」。',
+    en: 'Export here: Manage tab → "Export records", choose JSON and click "Export file".'
+  },
+  marketHistoryHelpExportStep3: {
+    zh: '在食用工具的「市场数据」页点「导入到食用工具」，选择该 JSON；弹出的 prompt 里输入 1 合并或 2 覆盖。合并按状态与更新时间合并同一订单、新订单追加；覆盖先清空食用工具现有的全部订单（含其它角色）再写入，会有二次确认且不可撤销。',
+    en: 'In Edible Tools\' Market Data page click "Import into Edible Tools" and pick the JSON; type 1 (merge) or 2 (overwrite) in the prompt. Merge combines the same order by status and updated time and appends new ones; overwrite clears every existing Edible Tools order (other characters included) first — it asks for confirmation and cannot be undone.'
+  },
+  marketHistoryHelpExportResult: {
+    zh: '适合把记录迁到食用工具继续查看，或与食用工具自己的数据合并；没有官方订单 id 的兜底记录会被跳过并在提示里报数。',
+    en: 'Useful for moving records into Edible Tools or merging with its own data; fallback records without an official order id are skipped and reported.'
+  },
+  marketHistoryHelpTransferTitle: {
+    zh: '多台设备之间迁移',
+    en: 'Moving between devices'
+  },
+  marketHistoryHelpTransferBody: {
+    zh: '导出的文件在 MST 与食用工具之间通用（都是 {app:"MST", type:"market-history"} 格式）：同一个文件可以在交易记录里「导入」，也可以在另一台设备的食用工具里「导入到食用工具」。两台设备都用交易记录时，直接导出、导入即可，不需要桥接脚本。',
+    en: 'One exported file works for both MST and Edible Tools (both use the {app:"MST", type:"market-history"} format): import it in Market History, or click "Import into Edible Tools" on another device. If both devices use Market History, plain export/import is enough — no bridge needed.'
+  },
+  marketHistoryHelpNotesTitle: {zh: '注意事项', en: 'Notes'},
+  marketHistoryHelpNoteScope: {
+    zh: '桥接脚本只读取食用工具的市场订单数据，不碰开箱、公会、战斗等其他数据。',
+    en: "The bridge only reads Edible Tools' market orders; chest, guild and combat data are untouched."
+  },
+  marketHistoryHelpNoteOfficial: {
+    zh: '只有交易记录自己观测到的官方到账才是权威值；来自食用工具的「收入/支出」是推算值（出售按税率扣税，购买不扣税）。',
+    en: 'Only collections observed by Market History itself are authoritative; "Income / Expense" from Edible Tools is estimated (sells are taxed, buys are not).'
+  },
+  marketHistoryHelpNoteEnvironment: {
+    zh: '食用工具的存储不分正式服 / 测试服，导出时按当时所在页面判定环境，跨环境使用请分开导出。',
+    en: 'Edible Tools does not separate live and test servers; the environment is taken from the page you export on, so export separately per environment.'
+  },
+  marketHistoryHelpNoteBackup: {
+    zh: '任何覆盖式操作都不可撤销，动手前先导出一份留底。',
+    en: 'Overwrite operations cannot be undone — export a backup first.'
+  },
+  marketHistoryFilterKeyword: {zh: '搜索物品名称或 HRID', en: 'Search item name or HRID'},
+  marketHistoryFilterCategoryAll: {zh: '全部分类', en: 'All categories'},
+  marketHistoryFilterStatus: {zh: '状态', en: 'Status'},
+  marketHistoryFilterPrice: {zh: '单价', en: 'Price'},
+  marketHistoryFilterQuantity: {zh: '数量', en: 'Quantity'},
+  marketHistoryFilterClear: {zh: '清除', en: 'Clear'},
+  marketHistoryCategoryResources: {zh: '资源', en: 'Resources'},
+  marketHistoryCategoryConsumables: {zh: '消耗品', en: 'Consumables'},
+  marketHistoryCategoryBooks: {zh: '技能书', en: 'Books'},
+  marketHistoryCategoryLabyrinth: {zh: '迷宫', en: 'Labyrinth'},
+  marketHistoryCategoryDungeonKeys: {zh: '地下城钥匙', en: 'Dungeon Keys'},
+  marketHistoryCategoryEquipment: {zh: '装备', en: 'Equipment'},
+  marketHistoryCategoryAccessories: {zh: '饰品', en: 'Accessories'},
+  marketHistoryCategoryTools: {zh: '工具', en: 'Tools'},
+  marketHistoryTimeAll: {zh: '创建时间', en: 'Created'},
+  marketHistoryTimeToday: {zh: '今天', en: 'Today'},
+  marketHistoryTime7d: {zh: '近 7 天', en: 'Last 7 days'},
+  marketHistoryTime30d: {zh: '近 30 天', en: 'Last 30 days'},
+  marketHistoryTimeCustom: {zh: '自定义', en: 'Custom'},
+  marketHistorySortHint: {zh: '点击切换升序/降序', en: 'Click to toggle ascending/descending'},
+  marketHistoryMoreFilters: {zh: '更多', en: 'More'},
+  marketHistoryFilterAny: {zh: '全部', en: 'Any'},
+  marketHistoryFilterTypeAll: {zh: '全部类型', en: 'All types'},
+  marketHistoryFilterAnyHint: {zh: '不勾选表示不限', en: 'Unchecked means any'},
+  marketHistoryFilterMin: {zh: '最低', en: 'Min'},
+  marketHistoryFilterMax: {zh: '最高', en: 'Max'},
+  marketHistoryColumnIndex: {zh: '序号', en: '#'},
+  marketHistorySelectAllPage: {zh: '全选本页', en: 'Select page'},
+  marketHistoryPagerCount: {zh: '共 {0} 条', en: '{0} total'},
+  marketHistoryPageJump: {zh: '第', en: 'Go to'},
+  marketHistoryPageJumpUnit: {zh: '页', en: 'page'},
+  marketHistoryPageSizeOption: {zh: '{0} 条', en: '{0} rows'},
+  marketHistoryTooMany: {
+    zh: '记录已达 {0} 条，建议导出备份后删除部分历史，避免占用过多油猴存储。',
+    en: '{0} records stored. Export a backup and remove old entries to keep storage usage low.'
+  },
+  marketHistoryActionDelete: {zh: '批量删除', en: 'Batch delete'},
+  marketHistoryActionDeleteOne: {zh: '删除', en: 'Delete'},
+  marketHistoryEmpty: {zh: '暂无记录，市场交易后自动记录', en: 'No records yet. Trades are recorded automatically.'},
+  marketHistoryEmptyFiltered: {zh: '没有符合条件的记录', en: 'No records match the filters'},
+  marketHistoryStatusActive: {zh: '有效', en: 'Active'},
+  marketHistoryStatusPartial: {zh: '部分成交', en: 'Partially filled'},
+  marketHistoryStatusFilled: {zh: '已完成', en: 'Filled'},
+  marketHistoryStatusCancelled: {zh: '已取消', en: 'Cancelled'},
+  marketHistoryStatusExpired: {zh: '已过期', en: 'Expired'},
+  marketHistoryStatusPartialCancelled: {zh: '部分成交后取消', en: 'Cancelled (partially filled)'},
+  marketHistoryStatusPartialExpired: {zh: '部分成交后过期', en: 'Expired (partially filled)'},
+  marketHistoryStatusUnobserved: {zh: '结束（未知）', en: 'Ended (unknown)'},
+  marketHistoryTypeSellListing: {zh: '出售挂牌', en: 'Sell listing'},
+  marketHistoryTypeBuyListing: {zh: '购买挂牌', en: 'Buy Listing'},
+  marketHistoryTypeSellInstant: {zh: '立即出售', en: 'Instant sell'},
+  marketHistoryTypeBuyInstant: {zh: '立即购买', en: 'Instant buy'},
+  marketHistoryColumnStatus: {zh: '状态', en: 'Status'},
+  marketHistoryColumnType: {zh: '类型', en: 'Type'},
+  marketHistoryColumnItem: {zh: '物品', en: 'Item'},
+  marketHistoryColumnProgress: {zh: '已成交/总数', en: 'Filled / total'},
+  marketHistoryColumnPrice: {zh: '单价', en: 'Unit price'},
+  marketHistoryColumnNominal: {zh: '金额', en: 'Amount'},
+  marketHistoryColumnCollected: {zh: '收入/支出', en: 'Income / Expense'},
+  marketHistoryColumnCreatedAt: {zh: '创建时间', en: 'Created'},
+  marketHistoryColumnFilledAt: {zh: '完成时间', en: 'Filled'},
+  marketHistoryColumnActions: {zh: '操作', en: 'Action'},
+  marketHistoryTotalsPage: {zh: '本页合计', en: 'This page'},
+  marketHistoryTotalsFiltered: {zh: '筛选总计', en: 'Filtered total'},
+  marketHistoryTotalsCount: {zh: '条数', en: 'Records'},
+  marketHistoryTotalsFilled: {zh: '成交数量', en: 'Filled quantity'},
+  marketHistoryTotalsSell: {zh: '出售金额', en: 'Sell amount'},
+  marketHistoryTotalsBuy: {zh: '购买金额', en: 'Buy amount'},
+  marketHistoryTotalsIncome: {zh: '收入金额', en: 'Income'},
+  marketHistoryTotalsExpense: {zh: '支出金额', en: 'Expense'},
+  marketHistoryTotalsPending: {zh: '待领取', en: 'Pending'},
+  marketHistoryPagePrev: {zh: '上一页', en: 'Prev'},
+  marketHistoryPageNext: {zh: '下一页', en: 'Next'},
+  marketHistoryStatsTimeField: {zh: '创建时间', en: 'Created'},
+  marketHistoryStatsTime90d: {zh: '近 90 天', en: 'Last 90 days'},
+  marketHistoryStatsSide: {zh: '方向', en: 'Direction'},
+  marketHistoryStatsSideSell: {zh: '出售', en: 'Sells'},
+  marketHistoryStatsSideBuy: {zh: '购买', en: 'Buys'},
+  marketHistoryStatsCategory: {zh: '分类', en: 'Category'},
+  marketHistoryStatsNet: {zh: '净收支', en: 'Net'},
+  marketHistoryStatsTrendTitle: {zh: '收支趋势', en: 'Income & expense'},
+  marketHistoryStatsRankTitle: {zh: '物品排行', en: 'Top items'},
+  marketHistoryStatsRankAmount: {zh: '金额', en: 'Amount'},
+  marketHistoryStatsRankQuantity: {zh: '数量', en: 'Quantity'},
+  marketHistoryStatsRankCount: {zh: '笔数', en: 'Trades'},
+  marketHistoryStatsShareTitle: {zh: '分类构成', en: 'By category'},
+  marketHistoryStatsComposeTitle: {zh: '记录构成', en: 'By status / type'},
+  marketHistoryStatsTableTitle: {zh: '按物品汇总', en: 'By item'},
+  marketHistoryStatsBucketAuto: {zh: '自动', en: 'Auto'},
+  marketHistoryStatsBucketDay: {zh: '日', en: 'Day'},
+  marketHistoryStatsBucketWeek: {zh: '周', en: 'Week'},
+  marketHistoryStatsBucketMonth: {zh: '月', en: 'Month'},
+  marketHistoryStatsBucketForced: {zh: '数据跨度较大，已按{0}聚合', en: 'Long span; aggregated by {0}'},
+  marketHistoryStatsNoData: {zh: '当前筛选没有可统计的数据', en: 'No data for the current filters'},
+  marketHistoryStatsOthers: {zh: '其它', en: 'Others'},
+  marketHistoryStatsWeightedPrice: {zh: '加权均价', en: 'Weighted price'},
+  marketHistoryCreatedAt: {zh: '创建时间', en: 'Created'},
+  marketHistoryInferredTime: {zh: '推断时间', en: 'inferred'},
+  marketHistoryFirstFillAt: {zh: '首次成交', en: 'First fill'},
+  marketHistoryFilledAt: {zh: '全部成交', en: 'Filled'},
+  marketHistoryCancelRequestedAt: {zh: '取消请求', en: 'Cancel requested'},
+  marketHistoryCancelledAt: {zh: '取消时间', en: 'Cancelled'},
+  marketHistoryExpiredAt: {zh: '过期时间', en: 'Expired'},
+  marketHistoryExpiresAt: {zh: '过期时间（官方）', en: 'Expires (official)'},
+  marketHistoryTaxTaken: {zh: '税费', en: 'Tax taken'},
+  marketHistoryClaimRequestedAt: {zh: '领取请求', en: 'Collect requested'},
+  marketHistoryClaimedAt: {zh: '领取时间', en: 'Collected at'},
+  marketHistoryImportNote: {zh: '导入备注', en: 'Import note'},
+  marketHistoryCollectedEstimated: {
+    zh: '该记录缺少官方到账数据，按已成交数量 × 单价 ×（1 − {0}% 税率）推算',
+    en: 'Missing official collected data; estimated as filled quantity × price × (1 − {0}% tax)'
+  },
+  marketHistoryCollectedEstimatedBuy: {
+    zh: '该记录缺少官方到账数据，按已成交数量 × 单价推算（购买不扣税）',
+    en: 'Missing official collected data; estimated as filled quantity × price (buys are not taxed)'
+  },
+  marketHistoryPending: {zh: '待领取', en: 'Pending'},
+  marketHistoryRawValue: {zh: '原值', en: 'Raw'},
+  marketHistoryCoin: {zh: '金币', en: 'coins'},
+  marketHistoryInstantFallback: {
+    zh: '未收到官方条目，按委托信息记录（实际成交价可能更优，差额会退还）',
+    en: 'No official entry received; recorded from the request (the actual price may be better, with a refund).'
+  },
+  marketHistoryUnobservedNote: {
+    zh: '页面关闭期间结束，未观测到结束原因（成交/取消/过期）',
+    en: 'Ended while the page was closed; the exact cause was not observed.'
+  },
+  marketHistoryDeleteDone: {zh: '已删除 {0} 条记录', en: '{0} records deleted'},
+  marketHistoryDeleteConfirmClickOne: {zh: '确认删除', en: 'Confirm'},
+  marketHistoryDeleteConfirmClick: {zh: '确认删除 {0} 条', en: 'Confirm deleting {0}'},
+  marketHistoryExportTitle: {zh: '导出交易记录', en: 'Export records'},
+  marketHistoryExportScopeCurrent: {zh: '当前角色', en: 'Current character'},
+  marketHistoryExportScopeAll: {zh: '全部角色', en: 'All characters'},
+  marketHistoryExportFormatJson: {zh: 'JSON（可用于导入合并）', en: 'JSON (importable)'},
+  marketHistoryExportFormatCsv: {zh: 'CSV（仅当前筛选结果，不可导入）', en: 'CSV (filtered, view only)'},
+  marketHistoryExportHint: {zh: '当前角色 {0} 条，全部角色 {1} 条', en: 'Current character: {0}, all characters: {1}'},
+  marketHistoryExportApply: {zh: '导出文件', en: 'Export file'},
+  marketHistoryExportPrivacy: {
+    zh: '导出文件包含角色名与交易明细，请勿公开分享。',
+    en: 'The file contains your data; do not share it publicly.'
+  },
+  marketHistoryExportFileName: {zh: 'MWI市场交易记录_{0}', en: 'MWI_Market_History_{0}'},
+  marketHistoryCsvFileName: {zh: 'MWI市场交易记录', en: 'MWI_Market_History'},
+  marketHistoryExportDone: {zh: '导出完成', en: 'Export finished'},
+  marketHistoryImportTitle: {zh: '导入交易记录', en: 'Import records'},
+  marketHistoryImportPaste: {zh: '粘贴导出的 JSON 内容，或选择文件', en: 'Paste exported JSON or choose a file'},
+  marketHistoryImportModeMerge: {
+    zh: '合并（推荐）：按订单 id 合并字段，补齐其他设备的记录',
+    en: 'Merge (recommended): merge by order id'
+  },
+  marketHistoryImportModeOverwrite: {
+    zh: '覆盖：替换文件中涉及的角色记录',
+    en: 'Overwrite: replace records of the imported characters'
+  },
+  marketHistoryImportPreview: {zh: '预览合并结果', en: 'Preview'},
+  marketHistoryImportApply: {zh: '执行导入', en: 'Apply import'},
+  marketHistoryImportHint: {
+    zh: '同一订单在不同设备上创建、完成时，合并后得到一条完整记录。',
+    en: 'Orders created and filled on different devices merge into one record.'
+  },
+  marketHistoryImportReport: {
+    zh: '新增 {0} 条 · 更新 {1} 条 · 内容去重 {2} 条 · 冲突 {3} 条 · 跳过 {4} 条',
+    en: 'Added {0} · updated {1} · deduped {2} · conflicts {3} · skipped {4}'
+  },
+  marketHistoryImportOverwriteConfirm: {
+    zh: '我确认用文件内容覆盖导入文件中涉及的角色记录',
+    en: 'I understand overwrite replaces the buckets contained in the file'
+  },
+  marketHistoryImportDone: {zh: '导入完成', en: 'Import finished'},
+  marketHistoryImportErrorFormat: {
+    zh: '文件格式不正确，请选择本功能导出的 JSON 文件',
+    en: 'Invalid file format'
+  },
+  marketHistoryImportErrorVersion: {
+    zh: '文件版本高于当前脚本支持的版本，请先更新脚本',
+    en: 'The file was exported by a newer version; update the script first.'
+  },
+  marketHistoryImportErrorEmpty: {zh: '文件中没有有效的交易记录', en: 'No valid records in the file'},
+  marketHistorySaveFailed: {
+    zh: '交易记录保存失败，请检查油猴存储空间',
+    en: 'Failed to save market records. Check userscript storage.'
+  }
+};
+
 // messages
 export const I18N_MESSAGE_GROUPS = {
   common: COMMON_MESSAGES,
@@ -706,5 +974,6 @@ export const I18N_MESSAGE_GROUPS = {
   combatSimImport: COMBAT_SIM_IMPORT_MESSAGES,
   subscribeNotification: SUBSCRIBE_NOTIFICATION_MESSAGES,
   changelog: CHANGELOG_MESSAGES,
+  marketHistory: MARKET_HISTORY_MESSAGES,
   updateChecker: UPDATE_CHECKER_MESSAGES
 };

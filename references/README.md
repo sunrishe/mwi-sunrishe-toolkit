@@ -5,7 +5,7 @@
 ## 目录说明
 
 - `game-data/init_character_data.json`：游戏网站返回的当前用户数据，对应 WebSocket 的 `init_character_data`（2026-08-15 更新）。
-- `game-data/init_client_data.json`：游戏网站返回的基础数据，对应 WebSocket 的 `init_client_data`（2026-08-15 更新）。
+- `game-data/init_client_data.json`：游戏网站返回的基础数据，对应 WebSocket 的 `init_client_data`（游戏版本 `v1.20260927.0`，2026-10-11 更新）。
 - `game-data/marketplace.json`：官方 `game_data/marketplace.json` 市场数据样例，含左一/最近成交/右一价（`a`/`p`/`b`）与成交量（`v`），供市场口径核对。
 - `game-source/www.milkywayidle.com_v1.20260927.0/`：从游戏网站下载下来的前端源码（当前版本）。核对官方行为一律使用本版本；旧版本 `v1.20260814.0`、`v1.20260715.0` 已废弃并移除，不要引用，需要时从 git 历史取用或重新下载。
 - `legacy-scripts/eds/`：MST 融合前的 EDS 原始脚本，用于兼容逻辑和历史版本核对。
