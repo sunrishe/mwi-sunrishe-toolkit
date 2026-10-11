@@ -157,6 +157,11 @@
   cursor: help;
   gap: 0.1rem;
 }
+/* 只有一个评分时（战斗/生活布局只剩一个评分，或战力打造分单行）贴下边摆放：
+   评分块仍占两行的高度，单行贴着下沿，与两行时下面那行的位置对齐。 */
+.mst-card-build-score:has(.mst-card-build-score-row[hidden]) {
+  justify-content: flex-end;
+}
 /* 评分块可点击：计算完成后打开评分明细浮层，指针与悬浮提示引导点击。 */
 .mst-card-build-score-clickable {
   cursor: pointer;

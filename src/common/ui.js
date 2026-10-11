@@ -1,6 +1,7 @@
 // template-renderer
 export const TemplateRenderer = {
   _html: null,
+  _svg: null,
   _render: null,
   _Hole: null,
   _unsafe: null,
@@ -17,6 +18,7 @@ export const TemplateRenderer = {
     }
     this.ready = Promise.resolve(module).then((module) => {
       this._html = module.html;
+      this._svg = module.svg;
       this._render = module.render;
       this._Hole = module.Hole;
       this._unsafe = module.unsafe;
@@ -28,6 +30,12 @@ export const TemplateRenderer = {
   html(strings, ...values) {
     if (!this._html) throw new Error('uhtml is not ready');
     return this._html(strings, ...values);
+  },
+
+  // SVG 片段必须用 svg 标记：html 标记生成的元素带 HTML 命名空间，插进 <svg> 里不会显示。
+  svg(strings, ...values) {
+    if (!this._svg) throw new Error('uhtml is not ready');
+    return this._svg(strings, ...values);
   },
 
   raw(markup) {

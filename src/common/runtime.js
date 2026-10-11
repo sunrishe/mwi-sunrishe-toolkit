@@ -36,6 +36,14 @@ export function createGameUiAdapter() {
       labyrinthEntryScreen: '[class*="LabyrinthPanel_entryScreen__"]',
       labyrinthButtonsContainer: '[class*="LabyrinthPanel_buttonsContainer__"]',
       marketplaceNavButtons: '[class*="MarketplacePanel_marketNavButtonContainer__"]',
+      // 市场主标签栏（「商品列表 / 我的挂牌」所在行，display: flex，与标签同排）。
+      marketplaceTabs: '[class*="MarketplacePanel_tabsComponentContainer__"]',
+      // 主标签按钮所在的 MUI flex 行；优先匹配用户实测的 MarketplacePanel 直接子级，
+      // 再兼容当前游戏源码中的 TabsComponent 嵌套层级。
+      marketplaceTabBar: '[class*="MarketplacePanel_marketplacePanel__"] > .MuiTabs-flexContainer',
+      marketplaceTabBarNested: '[class*="MarketplacePanel_tabsComponentContainer__"] .MuiTabs-flexContainer',
+      marketplaceTabBarLegacy:
+        '[class*="MarketplacePanel_tabsComponentContainer__"] [class*="TabsComponent_tabsContainer__"]',
       equipmentPanel: '[class*="EquipmentPanel_equipmentPanel__"]',
       equipmentButtonContainer: '[class*="EquipmentPanel_buttonContainer__"]',
       selectedLoadout: '[class*="LoadoutsPanel_selectedLoadout__"]',

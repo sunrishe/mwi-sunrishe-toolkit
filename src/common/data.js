@@ -15,7 +15,9 @@ export const STORAGE_KEYS = {
   SIM_NEW_BATTLE: 'MST_SIM_newBattle',
   SIM_PROFILES: 'MST_SIM_profiles',
   // 订阅通知：只持久化订阅与渠道配置；id 基线、计时器、发送队列等运行时状态一律只存内存。
-  SUBSCRIBE_NOTIFICATION: 'MST_SUBSCRIBE_config'
+  SUBSCRIBE_NOTIFICATION: 'MST_SUBSCRIBE_config',
+  // 市场交易记录：GM 存储（按环境 + 角色分桶），记录用户自己的挂牌与直购/直售历史。
+  MARKET_HISTORY: 'MST_MARKET_history'
 };
 
 function isClientData(data) {

@@ -1,0 +1,1081 @@
+/* 市场交易记录（模块私有样式）。
+   控件配色对齐订阅通知 / 地下城收益等弹窗：midnight-700 底、dark-mode 前景。
+   布局：工具栏两行（主筛选 + 操作），低频筛选收进「更多筛选」按需展开；
+   记录表固定列宽（table-layout: fixed）避免交互时列宽抖动，数字列右对齐。 */
+
+.mst-market-history-dialog .swal2-html-container {
+  max-height: calc(100dvh - 7rem);
+  overflow: hidden;
+}
+
+.mst-market-history-root {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  height: calc(100dvh - 11rem);
+  min-height: 18rem;
+  text-align: left;
+}
+
+.mst-market-history {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  flex: 0 0 auto;
+}
+
+.mst-market-history-content {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
+  gap: 0.5rem;
+}
+
+.mst-market-history-tabs {
+  display: flex;
+  gap: 0.35rem;
+  border-bottom: 2px solid var(--color-divider, #454771);
+  padding-bottom: 0.15rem;
+}
+
+.mst-market-history-tab {
+  border: 0;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -0.15rem;
+  padding: 0.3rem 0.75rem;
+  background: transparent;
+  color: var(--color-text-dark-mode, #e7e7e7);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+  opacity: 0.7;
+}
+
+.mst-market-history-tab-active {
+  border-bottom-color: var(--color-space-400, #7184d8);
+  opacity: 1;
+}
+
+/* 工具栏去掉外层盒，用底部分隔线与表格区分，避免「框中框」的碎片感。 */
+.mst-market-history-toolbar {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  border-bottom: 1px solid var(--color-midnight-100, #454771);
+  padding-bottom: 0.5rem;
+}
+
+.mst-market-history-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.4rem 0.6rem;
+}
+
+.mst-market-history-input,
+.mst-market-history-select,
+.mst-market-history-textarea {
+  box-sizing: border-box;
+  height: var(--button-height-normal, 1.875rem);
+  border: 1px solid var(--color-midnight-100, #454771);
+  border-radius: var(--radius-sm, 0.25rem);
+  padding: 0.2rem 0.45rem;
+  outline: 0;
+  background: var(--color-midnight-700, #20212f);
+  color: var(--color-text-dark-mode, #e7e7e7);
+  font: inherit;
+  color-scheme: dark;
+}
+
+.mst-market-history-select option {
+  background: var(--color-midnight-700, #20212f);
+  color: var(--color-text-dark-mode, #e7e7e7);
+}
+
+/* 搜索框限宽：原先 flex 拉满整行，挤压其它筛选控件。 */
+.mst-market-history-keyword {
+  flex: 1 1 10rem;
+  min-width: 7rem;
+  max-width: 16rem;
+}
+
+.mst-market-history-date {
+  width: 9rem;
+}
+
+.mst-market-history-number {
+  width: 5.5rem;
+}
+
+.mst-market-history-textarea {
+  height: 6rem;
+  resize: vertical;
+  font-family: inherit;
+}
+
+.mst-market-history-button {
+  height: var(--button-height-normal, 1.875rem);
+  border: 1px solid var(--color-midnight-100, #454771);
+  border-radius: var(--radius-sm, 0.25rem);
+  padding: 0.2rem 0.7rem;
+  background: var(--color-midnight-400, #323450);
+  color: var(--color-text-dark-mode, #e7e7e7);
+  font: inherit;
+  cursor: pointer;
+}
+
+.mst-market-history-button:hover:not(:disabled) {
+  border-color: var(--color-space-200, #bbc5f1);
+  background: var(--color-midnight-300, #393b5c);
+}
+
+.mst-market-history-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+/* 清除筛选：描边（幽灵）按钮，与普通实底按钮区分。 */
+.mst-market-history-button-ghost {
+  background: transparent;
+  color: rgba(231, 231, 231, 0.78);
+}
+
+.mst-market-history-button-ghost:hover:not(:disabled) {
+  color: var(--color-text-dark-mode, #e7e7e7);
+}
+
+/* 批量删除：常显危险配色。 */
+.mst-market-history-button-danger {
+  border-color: rgba(217, 83, 79, 0.75);
+  background: rgba(217, 83, 79, 0.16);
+  color: #ffb3b0;
+}
+
+.mst-market-history-button-danger:hover:not(:disabled) {
+  border-color: var(--color-red-400, #d9534f);
+  background: rgba(217, 83, 79, 0.3);
+  color: #ffd7d5;
+}
+
+/* 「更多筛选」开关：展开或含生效条件时用主题色提示。 */
+.mst-market-history-more-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+}
+
+.mst-market-history-more-active {
+  border-color: var(--color-space-400, #7184d8);
+  color: var(--color-space-200, #bbc5f1);
+}
+
+.mst-market-history-caret {
+  font-size: 0.7rem;
+  opacity: 0.8;
+}
+
+/* 状态下拉：按钮外观与输入框一致，展开面板里用复选框多选。
+   面板显隐只切换容器类（不重绘工具栏），避免点击外部时把点击目标重建掉。 */
+.mst-market-history-multiselect {
+  position: relative;
+  display: inline-flex;
+}
+
+.mst-market-history-select-button {
+  box-sizing: border-box;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  height: var(--button-height-normal, 1.875rem);
+  border: 1px solid var(--color-midnight-100, #454771);
+  border-radius: var(--radius-sm, 0.25rem);
+  padding: 0.2rem 0.45rem;
+  background: var(--color-midnight-700, #20212f);
+  color: var(--color-text-dark-mode, #e7e7e7);
+  font: inherit;
+  cursor: pointer;
+}
+
+.mst-market-history-select-button:hover {
+  border-color: var(--color-space-200, #bbc5f1);
+}
+
+.mst-market-history-select-label {
+  opacity: 0.65;
+}
+
+.mst-market-history-select-value {
+  max-width: 7rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mst-market-history-popover {
+  display: none;
+  position: absolute;
+  top: calc(100% + 0.25rem);
+  left: 0;
+  z-index: 6;
+  min-width: 12rem;
+  max-height: 17rem;
+  overflow: auto;
+  border: 1px solid var(--color-midnight-100, #454771);
+  border-radius: var(--radius-sm, 0.25rem);
+  padding: 0.3rem;
+  background: var(--color-midnight-700, #20212f);
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.45);
+}
+
+.mst-market-history-multiselect-open .mst-market-history-popover {
+  display: block;
+}
+
+.mst-market-history-popover-item {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.28rem 0.35rem;
+  border-radius: var(--radius-sm, 0.25rem);
+  font-size: 0.85rem;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.mst-market-history-popover-item:hover {
+  background: var(--color-midnight-500, #2c2e45);
+}
+
+.mst-market-history-popover-hint {
+  padding: 0.3rem 0.35rem 0.15rem;
+  font-size: 0.75rem;
+  opacity: 0.6;
+}
+
+.mst-market-history-inline {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  font-size: 0.85rem;
+  opacity: 0.9;
+}
+
+.mst-market-history-checkbox {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.9rem;
+  cursor: pointer;
+}
+
+/* 统计页签：独立筛选栏 + 数值卡 + 图表卡片；图表是手绘 SVG，配色沿用收支方向色。 */
+.mst-market-history-stats-filters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem 0.9rem;
+}
+
+/* 弹窗最大宽度 76rem，按 26rem 起排正好是 2×2（趋势 / 排行 / 分类 / 记录构成），
+   窄屏自动落到单列。 */
+.mst-market-history-chart-grid {
+  display: grid;
+  gap: 0.6rem;
+  grid-template-columns: repeat(auto-fit, minmax(26rem, 1fr));
+}
+
+.mst-market-history-chart-card {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  min-width: 0;
+  border: 1px solid var(--color-midnight-100, #454771);
+  border-radius: var(--radius-sm, 0.25rem);
+  padding: 0.5rem 0.6rem;
+  background: var(--color-midnight-600, #27283b);
+}
+
+.mst-market-history-chart-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.3rem 0.6rem;
+}
+
+.mst-market-history-chart-title {
+  margin: 0;
+  font-size: 0.9rem;
+  font-weight: 600;
+}
+
+.mst-market-history-chart-controls {
+  display: flex;
+  gap: 0.15rem;
+}
+
+.mst-market-history-chart-toggle {
+  border: 1px solid var(--color-midnight-100, #454771);
+  border-radius: var(--radius-sm, 0.25rem);
+  padding: 0.1rem 0.45rem;
+  background: transparent;
+  color: inherit;
+  font-size: 0.75rem;
+  opacity: 0.7;
+  cursor: pointer;
+}
+
+.mst-market-history-chart-toggle:hover {
+  opacity: 1;
+}
+
+.mst-market-history-chart-toggle-active {
+  background: var(--color-midnight-700, #20212f);
+  border-color: var(--color-midnight-50, #5c5e8a);
+  font-weight: 600;
+  opacity: 1;
+}
+
+.mst-market-history-chart-note {
+  font-size: 0.75rem;
+  opacity: 0.7;
+}
+
+.mst-market-history-chart-svg {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+.mst-market-history-chart-grid-line {
+  stroke: currentColor;
+  stroke-width: 1;
+  opacity: 0.15;
+}
+
+.mst-market-history-chart-zero {
+  stroke: currentColor;
+  stroke-width: 1;
+  stroke-dasharray: 3 3;
+  opacity: 0.45;
+}
+
+.mst-market-history-chart-label {
+  fill: currentColor;
+  font-size: 10px;
+  opacity: 0.65;
+}
+
+.mst-market-history-chart-bar-income {
+  fill: var(--color-jade-300, #86d7b1);
+}
+
+.mst-market-history-chart-bar-expense {
+  fill: var(--color-scarlet-300, #ef8f98);
+}
+
+.mst-market-history-chart-net {
+  fill: none;
+  stroke: var(--color-sky-300, #88b3f7);
+  stroke-width: 1.5;
+}
+
+.mst-market-history-chart-dot {
+  fill: var(--color-sky-300, #88b3f7);
+}
+
+.mst-market-history-chart-empty {
+  padding: 1.4rem 0;
+  text-align: center;
+  font-size: 0.85rem;
+  opacity: 0.7;
+}
+
+.mst-market-history-chart-body {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.6rem;
+}
+
+.mst-market-history-chart-doughnut {
+  flex: none;
+  width: 9.5rem;
+  height: 9.5rem;
+}
+
+.mst-market-history-chart-center-value {
+  fill: currentColor;
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.mst-market-history-chart-center-caption {
+  fill: currentColor;
+  font-size: 10px;
+  opacity: 0.7;
+}
+
+.mst-market-history-chart-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.2rem 0.9rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: 0.78rem;
+}
+
+.mst-market-history-chart-body .mst-market-history-chart-legend {
+  flex: 1 1 9rem;
+  flex-direction: column;
+  flex-wrap: nowrap;
+  min-width: 0;
+}
+
+.mst-market-history-chart-legend-item {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  min-width: 0;
+}
+
+.mst-market-history-chart-swatch {
+  flex: none;
+  width: 0.6rem;
+  height: 0.6rem;
+  border-radius: 2px;
+  background: currentColor;
+}
+
+.mst-market-history-chart-swatch-income {
+  background: var(--color-jade-300, #86d7b1);
+}
+
+.mst-market-history-chart-swatch-expense {
+  background: var(--color-scarlet-300, #ef8f98);
+}
+
+.mst-market-history-chart-swatch-net {
+  background: var(--color-sky-300, #88b3f7);
+}
+
+.mst-market-history-chart-legend-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mst-market-history-chart-legend-value {
+  margin-left: auto;
+  font-variant-numeric: tabular-nums;
+  opacity: 0.9;
+}
+
+.mst-market-history-rank {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.mst-market-history-rank-row {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.8rem;
+}
+
+.mst-market-history-rank-item {
+  display: flex;
+  flex: 0 0 9rem;
+  align-items: center;
+  gap: 0.25rem;
+  min-width: 0;
+}
+
+.mst-market-history-rank-item span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mst-market-history-rank-item svg {
+  flex: none;
+  width: 1.1rem;
+  height: 1.1rem;
+}
+
+.mst-market-history-rank-track {
+  display: flex;
+  flex: 1 1 auto;
+  height: 0.7rem;
+  min-width: 3rem;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.07);
+  overflow: hidden;
+}
+
+.mst-market-history-rank-sell {
+  height: 100%;
+  background: var(--color-jade-300, #86d7b1);
+}
+
+.mst-market-history-rank-buy {
+  height: 100%;
+  background: var(--color-scarlet-300, #ef8f98);
+}
+
+.mst-market-history-rank-value {
+  flex: 0 0 3.8rem;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.mst-market-history-stats-table-wrap {
+  max-height: 22rem;
+  overflow: auto;
+}
+
+/* 统计表头在独立滚动区里吸顶，方便对照图表看明细。 */
+.mst-market-history-stats-table thead th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: var(--color-midnight-600, #27283b);
+}
+
+.mst-market-history-warning,
+.mst-market-history-error {
+  border-radius: var(--radius-sm, 0.25rem);
+  padding: 0.3rem 0.5rem;
+  font-size: 0.85rem;
+}
+
+.mst-market-history-warning {
+  border: 1px solid var(--color-orange-400, #d08a2c);
+  background: rgba(208, 138, 44, 0.12);
+}
+
+.mst-market-history-error {
+  border: 1px solid var(--color-red-400, #d9534f);
+  background: rgba(217, 83, 79, 0.12);
+}
+
+.mst-market-history-table-wrap {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+  border: 1px solid var(--color-midnight-100, #454771);
+  border-radius: var(--radius-sm, 0.25rem);
+}
+
+.mst-market-history-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.85rem;
+}
+
+/* 显式声明表格布局：游戏全局样式或其它脚本可能给通用 class/元素规则设置 flex，
+   这里把表格结构固定回 table 语义，避免行被当成 flex 行换行。 */
+.mst-market-history-table {
+  display: table;
+  table-layout: auto;
+}
+
+/* 记录表用固定列宽（宽度写在表头，table-layout 取第一行）：行内内容变化
+   （勾选态、确认删除等）不会重算列宽，表格不抖动；超长内容省略号截断。 */
+.mst-market-history-table-records {
+  table-layout: fixed;
+}
+
+.mst-market-history-table-records tbody td {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.mst-market-history-table thead {
+  display: table-header-group;
+}
+
+.mst-market-history-table tbody {
+  display: table-row-group;
+}
+
+.mst-market-history-table tr {
+  display: table-row;
+}
+
+.mst-market-history-table th,
+.mst-market-history-table td {
+  display: table-cell;
+}
+
+.mst-market-history-table th,
+.mst-market-history-table td {
+  border-bottom: 1px solid var(--color-midnight-100, #454771);
+  padding: 0.25rem 0.45rem;
+  text-align: left;
+  white-space: nowrap;
+  vertical-align: middle;
+}
+
+.mst-market-history-table thead th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: var(--color-midnight-500, #2c2e45);
+  font-weight: 600;
+}
+
+/* 数字列右对齐：用更高特异性的选择器，覆盖通用单元格的 text-align: left。 */
+/* 收入/支出按方向着色：收入（卖出）用正向色、支出（买入）用负向色，与装备对比的涨跌配色一致。 */
+.mst-market-history-table td.mst-market-history-number-cell.mst-market-history-income-cell {
+  color: var(--color-jade-300, #86d7b1);
+}
+
+.mst-market-history-table td.mst-market-history-number-cell.mst-market-history-expense-cell {
+  color: var(--color-scarlet-300, #ef8f98);
+}
+
+.mst-market-history-table th.mst-market-history-number-head,
+.mst-market-history-table td.mst-market-history-number-cell {
+  text-align: right;
+}
+
+.mst-market-history-table td.mst-market-history-number-cell {
+  font-variant-numeric: tabular-nums;
+}
+
+/* 勾选列：复选框与单元格同高居中，不参与省略号。 */
+.mst-market-history-select-head,
+.mst-market-history-select-cell {
+  padding: 0.25rem 0.2rem;
+  text-align: center;
+}
+
+.mst-market-history-row-check,
+.mst-market-history-select-all {
+  width: 0.95rem;
+  height: 0.95rem;
+  margin: 0;
+  cursor: pointer;
+  accent-color: var(--color-space-400, #7184d8);
+}
+
+/* 行悬停高亮，宽表横向追踪更容易；勾选的行常亮。 */
+.mst-market-history-record-row:hover td {
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.mst-market-history-record-row-selected td {
+  background: rgba(113, 132, 216, 0.16);
+}
+
+/* 行内删除：沿用全局 .mst-row-remove 的方形 × 按钮外观（同战斗升级计算器），
+   在本表里缩到与行高匹配的尺寸；两次点击确认时填充警示色。 */
+/* 行内删除：与战斗升级计算器列表一致——即 `.mst-upgrade-calculator button` +
+   `.mst-combat-row-actions button` + 全局 `.mst-row-remove` 的合成效果，
+   本模块自持一份同样的规则，避免依赖计算器容器的类名。 */
+.mst-market-history-table .mst-market-history-row-remove {
+  box-sizing: border-box;
+  width: 1.45rem;
+  min-height: 1.55rem !important;
+  padding: 0 !important;
+  border: 1px solid #9a5d66;
+  border-radius: var(--radius-sm, 0.25rem);
+  background: var(--color-midnight-400, #323450);
+  color: #f4c4ca !important;
+  font-size: 1.1rem !important;
+  line-height: 1 !important;
+}
+
+.mst-market-history-table .mst-market-history-row-remove:hover {
+  background: var(--color-midnight-300, #393b5c);
+}
+
+.mst-market-history-table .mst-market-history-row-remove-armed {
+  border-color: var(--color-red-400, #d9534f) !important;
+  background: rgba(217, 83, 79, 0.45) !important;
+  color: #ffffff !important;
+}
+
+.mst-market-history-item {
+  /* 用块级 flex：inline-flex 的基线对齐会在单元格里多留一行高度。 */
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  max-width: 100%;
+  min-width: 0;
+}
+
+.mst-market-history-item svg {
+  width: 1.5rem;
+  height: 1.5rem;
+  flex: 0 0 auto;
+}
+
+.mst-market-history-item span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* 零值 / 空值弱化，避免与真实数值抢注意力。 */
+.mst-market-history-muted {
+  opacity: 0.4;
+}
+
+.mst-market-history-pending {
+  margin-left: 0.3rem;
+  font-size: 0.75rem;
+  opacity: 0.75;
+}
+
+.mst-market-history-status {
+  display: inline-block;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  vertical-align: middle;
+  border-radius: 999px;
+  padding: 0.1rem 0.5rem;
+  font-size: 0.78rem;
+  white-space: nowrap;
+}
+
+.mst-market-history-status-active {
+  background: rgba(113, 132, 216, 0.38);
+}
+
+.mst-market-history-status-partial {
+  background: rgba(113, 132, 216, 0.5);
+}
+
+.mst-market-history-status-filled {
+  background: rgba(76, 175, 80, 0.42);
+}
+
+.mst-market-history-status-cancelled,
+.mst-market-history-status-partialCancelled {
+  background: rgba(217, 83, 79, 0.4);
+}
+
+.mst-market-history-status-expired,
+.mst-market-history-status-partialExpired {
+  background: rgba(208, 138, 44, 0.4);
+}
+
+.mst-market-history-status-unobserved {
+  background: rgba(150, 150, 150, 0.35);
+}
+
+.mst-market-history-record-row-noted td:first-child {
+  border-left: 2px solid var(--color-orange-400, #d08a2c);
+}
+
+.mst-market-history-empty {
+  padding: 2rem 1rem;
+  text-align: center;
+  opacity: 0.75;
+}
+
+/* 底栏：上方是合计（本页合计 / 筛选总计，宽度允许时同行、放不下时换行），
+   下方一行是总条数与右侧的跳页、每页条数、留白和翻页控件。 */
+.mst-market-history-footer {
+  display: flex;
+  flex: 0 0 auto;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.mst-market-history-footer-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem 1rem;
+}
+
+.mst-market-history-pager-count {
+  font-size: 0.82rem;
+  opacity: 0.85;
+  white-space: nowrap;
+}
+
+.mst-market-history-pagination {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+  margin-left: auto;
+}
+
+/* 翻页按钮组：与跳页 / 每页条数紧挨着排列，不额外留白。 */
+.mst-market-history-page-group {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+}
+
+.mst-market-history-page-jump-input {
+  width: 3.75rem;
+  text-align: center;
+}
+
+.mst-market-history-page {
+  min-width: 1.875rem;
+  height: var(--button-height-normal, 1.875rem);
+  border: 1px solid var(--color-midnight-100, #454771);
+  border-radius: var(--radius-sm, 0.25rem);
+  background: var(--color-midnight-700, #20212f);
+  color: var(--color-text-dark-mode, #e7e7e7);
+  font: inherit;
+  font-size: 0.8rem;
+  cursor: pointer;
+}
+
+.mst-market-history-page:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+.mst-market-history-page-active {
+  border-color: var(--color-space-400, #7184d8);
+  background: var(--color-space-600, #3f4d9e);
+}
+
+.mst-market-history-page-ellipsis {
+  padding: 0 0.15rem;
+  opacity: 0.6;
+}
+
+.mst-market-history-summary {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.15rem 1.25rem;
+  font-size: 0.82rem;
+}
+
+.mst-market-history-summary-group {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.1rem 0.75rem;
+}
+
+.mst-market-history-summary-title {
+  font-weight: 600;
+  opacity: 0.85;
+}
+
+.mst-market-history-summary-item {
+  white-space: nowrap;
+}
+
+.mst-market-history-summary-label {
+  margin-right: 0.25rem;
+  opacity: 0.6;
+}
+
+.mst-market-history-summary-value {
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.mst-market-history-stats {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+}
+
+.mst-market-history-stats-grid {
+  display: grid;
+  gap: 0.4rem;
+  grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr));
+}
+
+.mst-market-history-stat {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  border: 1px solid var(--color-midnight-100, #454771);
+  border-radius: var(--radius-sm, 0.25rem);
+  padding: 0.4rem 0.5rem;
+  background: var(--color-midnight-600, #27283b);
+}
+
+.mst-market-history-stat-label {
+  font-size: 0.78rem;
+  opacity: 0.8;
+}
+
+.mst-market-history-stat-value {
+  font-size: 1rem;
+  font-weight: 600;
+}
+
+.mst-market-history-stat-positive {
+  color: var(--color-jade-300, #86d7b1);
+}
+
+.mst-market-history-stat-negative {
+  color: var(--color-scarlet-300, #ef8f98);
+}
+
+.mst-market-history-aux-body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  text-align: left;
+}
+
+/* 管理页签：导入 / 导出各成一个卡片区。 */
+.mst-market-history-manage {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+  gap: 0.8rem;
+}
+
+.mst-market-history-manage-section {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  border: 1px solid var(--color-midnight-100, #454771);
+  border-radius: var(--radius-sm, 0.25rem);
+  padding: 0.6rem 0.7rem;
+  background: var(--color-midnight-600, #27283b);
+}
+
+.mst-market-history-aux-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.6rem;
+}
+
+.mst-market-history-aux-title {
+  font-weight: 600;
+}
+
+.mst-market-history-aux-group {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem 0.9rem;
+}
+
+.mst-market-history-aux-hint {
+  font-size: 0.85rem;
+  opacity: 0.85;
+}
+
+.mst-market-history-aux-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.4rem 0.75rem;
+}
+
+.mst-market-history-aux-note {
+  font-size: 0.78rem;
+  opacity: 0.7;
+}
+
+.mst-market-history-file {
+  font-size: 0.85rem;
+}
+
+/* 帮助页签：步骤清单 + 可复制的 @require 行 + 注意事项。 */
+.mst-market-history-help {
+  gap: 0.8rem;
+}
+
+.mst-market-history-help-steps,
+.mst-market-history-help-notes {
+  margin: 0;
+  padding-left: 1.1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.mst-market-history-help-step,
+.mst-market-history-help-note {
+  font-size: 0.85rem;
+  line-height: 1.5;
+  opacity: 0.92;
+}
+
+.mst-market-history-help-code-row {
+  display: flex;
+  align-items: flex-start;
+  flex-wrap: wrap;
+  gap: 0.4rem 0.6rem;
+  margin: 0.35rem 0 0.25rem;
+}
+
+.mst-market-history-help-code {
+  flex: 1 1 20rem;
+  min-width: 0;
+  padding: 0.35rem 0.5rem;
+  border: 1px solid var(--color-midnight-100, #454771);
+  border-radius: var(--radius-sm, 0.25rem);
+  background: var(--color-midnight-700, #1e1f2e);
+  color: var(--color-text-dark-mode, #e7e7e7);
+  font-family: var(--font-family-monospace, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace);
+  font-size: 0.78rem;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+  user-select: all;
+}
+
+/* 入口按钮：作为 MUI 主标签 flex 行的直接子项，与「商品列表 / 我的挂牌」并排。 */
+.mst-market-history-entry {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: stretch;
+}
+
+/* 对齐游戏 TabsComponent 对 MuiButtonBase-root / MuiTab-root 的样式；
+   MuiTabs 正常渲染时游戏规则优先，这里同时覆盖旧层级回退场景。 */
+.mst-market-history-entry .mst-market-history-entry-button {
+  box-sizing: border-box;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 5rem;
+  min-height: 2rem;
+  border: 0;
+  border-radius: 4px 4px 0 0;
+  padding: var(--spacing-xs-plus, 0.375rem);
+  background: var(--color-midnight-500, #2c2e45);
+  color: var(--color-text-dark-mode, #e7e7e7);
+  font: inherit;
+  font-size: var(--font-size-base, 0.875rem);
+  font-weight: var(--font-weight-medium, 500);
+  line-height: var(--line-height-normal, 1.375);
+  text-transform: none;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.mst-market-history-entry .mst-market-history-entry-button:hover {
+  background: var(--color-midnight-300, #454771);
+}
+
+.mst-market-history-entry .mst-market-history-entry-button:focus-visible {
+  outline: 2px solid var(--color-space-400, #7184d8);
+  outline-offset: -2px;
+}
+
+.mst-market-history-entry-label,
+.mst-market-history-entry .mst-market-history-entry-button svg,
+.mst-market-history-entry .mst-market-history-entry-button svg path {
+  color: inherit;
+  fill: currentColor;
+}

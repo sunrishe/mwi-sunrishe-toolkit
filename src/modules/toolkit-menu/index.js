@@ -10,6 +10,7 @@ export class ToolkitMenuFeature {
       equipmentComparison,
       dungeonCalculator,
       subscribeNotification,
+      marketHistory,
       changelog,
       updateChecker
     }
@@ -22,6 +23,7 @@ export class ToolkitMenuFeature {
     this.equipmentComparison = equipmentComparison;
     this.dungeonCalculator = dungeonCalculator;
     this.subscribeNotification = subscribeNotification;
+    this.marketHistory = marketHistory;
     this.changelog = changelog;
     this.updateChecker = updateChecker;
     this.dropdownCleanup = null;
@@ -48,16 +50,16 @@ export class ToolkitMenuFeature {
         key: 'subscribeNotification',
         icon: 'action_queue',
         handler: () => this.subscribeNotification.openSettings()
-      }, {
+      }, {key: 'marketHistory', icon: 'marketplace', handler: () => this.marketHistory.open()}, {
         key: 'abilityUpgradeCalculator',
         icon: 'skills',
         handler: () => this.abilityCalculator.open()
-      }, {key: 'houseUpgradeCalculator', icon: 'house', handler: () => this.appController.openCalculator()}, {
+      }, {key: 'houseUpgradeCalculator', icon: 'house', handler: () => this.appController.openCalculator()},
+      {
         key: 'combatUpgradeCalculator',
         icon: 'experience',
         handler: () => this.combatCalculator.open()
-      },
-      {
+      }, {
         key: 'equipmentComparison',
         icon: 'loadout',
         handler: () => this.equipmentComparison.open()
@@ -65,7 +67,8 @@ export class ToolkitMenuFeature {
         key: 'combatSimAiwwb',
         icon: 'combat',
         handler: () => this.openCombatSimulator()
-      }, {key: 'changelog', icon: 'patch_notes', handler: () => this.changelog.open()}, {
+      }, {key: 'changelog', icon: 'patch_notes', handler: () => this.changelog.open()},
+      {
         key: 'checkUpdate',
         icon: 'news',
         variant: hasUpdate ? 'update' : '',
@@ -74,8 +77,7 @@ export class ToolkitMenuFeature {
           : i18n.t('checkUpdate'),
         handler: () =>
           this.updateChecker.hasUpdate() ? this.updateChecker.openInstallUrl() : this.updateChecker.openDialog()
-      },
-      {
+      }, {
         key: 'switchCharacter',
         icon: 'switch_character',
         handler: () => {

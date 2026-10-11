@@ -9,6 +9,7 @@
 - 只改当前任务必须涉及的内容，不顺手重构无关区域。
 - 不直接修改 `dist/`、`node_modules/` 和归档历史脚本；构建产物由命令生成。
 - 参考资料位于 `references/`，只用于核对和测试，运行时代码不得依赖本地参考文件。
+- 游戏只有**正式服**与**测试服**两个环境：`hostname` 以 `test.` 开头为测试服，其余游戏域名为正式服；`milkywayidlecn.com` 是正式服的中国官方镜像入口，与 `milkywayidle.com` 同属正式服，不得写成「国服」或独立服务器。环境判定统一用 `CONFIG.isTestServer`，细节见 `docs/业务功能要求.md` §站点隔离 与 `docs/工程结构与开发规范.md` 六、代码规范。
 
 ## 开发流程
 
@@ -40,6 +41,7 @@
 - 一般代码改动至少执行相关 lint、测试或构建；涉及多个文件、多个模块、公共能力、依赖或构建流程时执行完整 `yarn run check`。
 - 使用 Playwright MCP 前必须先阅读 `docs/analysis/Playwright MCP 使用规范.md`。本项目所称 Playwright MCP，指在 MCP 服务列表中按“Playwright”关键字找到的官方 Playwright MCP 服务器及其 `browser_*` 工具，识别依据是服务提供 Playwright 的 `browser_*` 工具，而不是工具名前缀（前缀由客户端决定，不得按 `mcp__playwright__` 前缀查找）。Browser plugin / Browser skill 内置的 Playwright API、Node REPL 浏览器控制和 `playwright-cli` 均不得替代，也不得在交付说明中记为“Playwright MCP 已通过”。
 - 改动范围较大，或涉及 UI、DOM、CSS、交互流程、站点兼容时，除 `yarn run check` 外，必须使用 Playwright MCP 服务打开实际目标页面，验证核心流程、页面显示和控制台错误；本地预览页、静态 Mock 和测试夹具只能补充验证，不能代替登录后的实际目标页面，受登录状态限制时必须把实际页面标记为未覆盖。
+- 只调整观感、不改变交互流程与 DOM 结构的样式微调（页签顺序、间距、配色、字号、排版位置等）不需要浏览器验证：执行相关测试与 `yarn run check` 即可交付，并在交付说明里写明未做浏览器验证。
 - 浏览器验证无法执行时不得默认视为通过，必须明确记录阻塞原因和未覆盖风险。
 
 ## 文件归位
@@ -47,6 +49,7 @@
 - 新源码只按三层归位：顶层装配进 `src/app/`，跨模块公共能力进 `src/common/`，用户功能进 `src/modules/功能名/`。
 - 业务模块默认以一个 `index.js` 为主体，不按 `state/view/events/controller` 机械细拆；仅纯计算、Worker、导出、稳定大数据等真实边界单独成文件。
 - i18n 文案放入 `src/common/messages.js`；全局 CSS 放入 `src/common/styles/`，模块私有 CSS 放在模块目录，并通过构建打进单文件脚本。
+- 配合第三方脚本使用的桥接交付物放入 `integrations/模块名/`（用 `@require` 引入对方脚本，不参与 MST 构建）。
 - 文档按职责归位：用户说明 `docs/usage.md`、更新日志 `docs/changelog.md`、当前待办与状态 `docs/待办与状态.md`、历史版本记录 `docs/archive/`、长期业务要求 `docs/业务功能要求.md`、专项分析 `docs/analysis/`；测试放入 `tests/`，外部数据、旧脚本和第三方素材放入 `references/`。
 - 各文档的写入要求和更新时机见 `docs/工程结构与开发规范.md` 三、文件归位 与 八、文档维护。
 

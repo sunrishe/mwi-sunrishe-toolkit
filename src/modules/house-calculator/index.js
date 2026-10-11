@@ -546,7 +546,7 @@ const houseCalculatorRoomController = {
     const {CONFIG, utils} = HouseCalculatorUI.ctx;
     const batchToLevel = utils.clampLevel(
       container.querySelector('#mst-hccp-batch-to-level').value,
-      2,
+      CONFIG.MIN_FROM_LEVEL + 1,
       CONFIG.MAX_TO_LEVEL
     );
     container.querySelectorAll('.mst-hccp-level-input[data-type="to"]').forEach((toSelect) => {
@@ -641,7 +641,7 @@ const houseCalculatorView = {
       '    <select id="mst-hccp-batch-to-level" class="mst-hccp-level-input mst-hccp-batch-level-input" title="' +
         utils.escapeHtml(i18n.t('batchTarget')) +
         '">' +
-        utils.createLevelOptions(2, CONFIG.MAX_TO_LEVEL, CONFIG.MAX_TO_LEVEL) +
+        utils.createLevelOptions(CONFIG.MIN_FROM_LEVEL + 1, CONFIG.MAX_TO_LEVEL, CONFIG.MAX_TO_LEVEL) +
         '</select>', '</div>', '  <button id="mst-hccp-refresh-levels">' + utils.escapeHtml(i18n.t('refreshLevels')) + '</button>', '</div>', '</div>',
       '<div id="mst-hccp-rooms-container">' +
         this.renderRooms(ui) +

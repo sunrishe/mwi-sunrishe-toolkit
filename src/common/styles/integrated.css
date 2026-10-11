@@ -1735,6 +1735,40 @@
 .mst-dungeon-table-wrap[hidden] {
   display: none;
 }
+/* 单图/批量页签复刻市场交易记录的「记录 / 统计 / 管理」页签观感：无底色的文字 + 2px 下划线指示条，
+   整行底部一条分隔线；与下方结果区复刻宿主 MUI 的 .mst-dungeon-tabs 是两套样式。
+   选择器带 .mst-dungeon-sim-tabs 前缀抬高特异性，避免被上方 .mst-upgrade-calculator button 通用样式压制。 */
+.mst-dungeon-sim-tabs {
+  display: flex;
+  gap: 0.35rem;
+  border-bottom: 2px solid var(--color-divider, #454771);
+  padding-bottom: 0.15rem;
+}
+.mst-dungeon-sim-tabs .mst-dungeon-sim-tab {
+  min-height: 0;
+  margin-bottom: -0.15rem;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  border-radius: 0;
+  padding: 0.3rem 0.75rem;
+  background: transparent;
+  color: var(--color-text-dark-mode, #e7e7e7);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+  opacity: 0.7;
+}
+/* 通用按钮的 hover 会填底色并换边框色，页签保持无底色，只留文字。 */
+.mst-dungeon-sim-tabs .mst-dungeon-sim-tab:hover {
+  border-color: transparent;
+  background: transparent;
+}
+.mst-dungeon-sim-tabs .mst-dungeon-sim-tab-active,
+.mst-dungeon-sim-tabs .mst-dungeon-sim-tab-active:hover {
+  border-bottom-color: var(--color-space-400, #7184d8);
+  background: transparent;
+  opacity: 1;
+}
 /* 页签复刻宿主站 MUI Tab（MuiTab-textColorPrimary / .Mui-selected）实测观感：
    32px 高、顶部圆角实色块——未选中 midnight-500 底、选中 space-600 主色底，文字统一浅色不大写；
    底部 2px 指示条与宿主 MuiTabs-indicator 一致用 MUI primary 蓝。

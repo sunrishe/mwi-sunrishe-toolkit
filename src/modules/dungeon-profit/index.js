@@ -11,6 +11,16 @@ const DUNGEON_NAME_MESSAGE_KEYS = Object.freeze({
 const marketTaxPercent = Math.round(MARKET_TAX_RATE * 100);
 const cowbellTaxPercent = Math.round(COWBELL_TAX_RATE * 100);
 
+// 单图/批量页签：数组顺序即页签顺序，第一项是打开计算器时默认选中的页签（页签不记忆）。
+const SIM_TABS = Object.freeze([
+  [
+    true, 'simTabBatch'
+  ], [
+    false, 'simTabSingle'
+  ]
+]);
+const DEFAULT_SIM_BATCH = SIM_TABS[0][0];
+
 // dungeon-profit-form-view
 const dungeonProfitFormView = {
   renderCalculator(feature) {
@@ -60,26 +70,29 @@ const dungeonProfitFormView = {
     );
     // 自定义控件始终保留在模板中，仅用 hidden 切换，避免 uhtml 因节点数量变化抛出 InvalidNodeTypeError。
     // 单图/批量两个视图容器常驻模板并用 hidden 切换；批量视图内容由字符串模板单独渲染，
-    // 避免把逐行输入的表格交给 uhtml 增量更新。批量开关是与选项一致的复选框，默认不勾选（单图模拟）。
+    // 避免把逐行输入的表格交给 uhtml 增量更新。模式切换是顶部页签（样式同市场交易记录），
+    // 页签顺序与默认页签都由 SIM_TABS 给出：打开时停在第一个页签。
+    const simTabs = SIM_TABS.map(
+      ([
+        batch, labelKey
+      ]) =>
+        TemplateRenderer.html`<button
+      type="button"
+      class=${'mst-dungeon-sim-tab' + (Boolean(feature.batchEnabled) === batch ? ' mst-dungeon-sim-tab-active' : '')}
+      @click=${() => {
+        if (Boolean(feature.batchEnabled) === batch) return;
+        feature.batchEnabled = batch;
+        feature.applyDialogWidth();
+        feature.render();
+      }}
+    >${i18n.t(labelKey)}</button>`
+    );
     TemplateRenderer.render(
       () => TemplateRenderer.html`
   <div class="mst-upgrade-calculator mst-dungeon-calculator">
+    <div class="mst-dungeon-sim-tabs">${simTabs}</div>
     <div class="mst-dungeon-single-view" .hidden=${Boolean(feature.batchEnabled)}>
     <div class="mst-dungeon-toolbar">
-      <div class="mst-dungeon-field mst-dungeon-toggle-field">
-        <label class="mst-dungeon-auto-buff">
-          <input
-            type="checkbox"
-            .checked=${Boolean(feature.batchEnabled)}
-            @change=${(event) => {
-              feature.batchEnabled = event.target.checked;
-              feature.applyDialogWidth();
-              feature.render();
-            }}
-          >
-          <span>${i18n.t('simTabBatch')}</span>
-        </label>
-      </div>
       <label class="mst-dungeon-field">
         <span>${i18n.t('dungeon')}</span>
         <select
@@ -289,7 +302,7 @@ const dungeonProfitFormView = {
     // 结果表单独渲染，避免表单重绘时复用已经脱离 DOM 的表格节点，造成自定义列停止更新。
     const resultRoot = feature.root.querySelector('.mst-dungeon-results');
     if (resultRoot) TemplateRenderer.render(() => feature.renderResult(result), resultRoot);
-    // 批量视图只在勾选时渲染；行内输入走局部刷新，不触发整棵模板重绘。
+    // 批量视图只在批量页签时渲染；行内输入走局部刷新，不触发整棵模板重绘。
     if (feature.batchEnabled) {
       const batchRoot = feature.root.querySelector('.mst-dungeon-batch-view');
       if (batchRoot) feature.renderBatchView(batchRoot);
@@ -341,17 +354,6 @@ const dungeonProfitBatchView = {
     </div>`;
   },
 
-  getBatchToggleHtml(feature) {
-    const {i18n} = DungeonProfitCalculatorFeature.ctx;
-    return `
-    <div class="mst-dungeon-field mst-dungeon-toggle-field">
-      <label class="mst-dungeon-auto-buff">
-        <input type="checkbox" data-batch-toggle${feature.batchEnabled ? ' checked' : ''}>
-        <span>${escapeHtmlText(i18n.t('simTabBatch'))}</span>
-      </label>
-    </div>`;
-  },
-
   getOptionsHtml(feature) {
     const {i18n} = DungeonProfitCalculatorFeature.ctx;
     const state = feature.state;
@@ -370,7 +372,6 @@ const dungeonProfitBatchView = {
         `<option value="${level}"${String(level) === String(state.guzzlingLevel) ? ' selected' : ''}>+${level}</option>`
     ).join('');
     return `
-    ${this.getBatchToggleHtml(feature)}
     ${checkboxField('useArtisanTea', 'artisanTea')}
     <label class="mst-dungeon-field">
       <span>${escapeHtmlText(i18n.t('guzzlingLevel'))}</span>
@@ -692,17 +693,10 @@ const dungeonProfitBatchView = {
       },
       listenerOptions
     );
-    // 批量/单图共用一个批量复选框：出现在批量选项行第一项，单图操作区第一项由 uhtml 模板直接处理。
+    // 单图/批量切换由顶部页签负责，这里只处理批量选项行与行内字段。
     popup.addEventListener(
       'change',
       (event) => {
-        const batchToggle = event.target.closest('[data-batch-toggle]');
-        if (batchToggle) {
-          feature.batchEnabled = batchToggle.checked;
-          feature.applyDialogWidth();
-          feature.render();
-          return;
-        }
         const control = event.target.closest('[data-batch-option]');
         if (control) {
           this.syncOptionControl(feature, control);
@@ -850,7 +844,7 @@ const dungeonProfitBatchView = {
   },
 
   // 配置自动保存：同一 localStorage key 下分 single/batch 两个小节，只存输入参数，结果每次重新计算。
-  // 批量模拟勾选状态作为共享开关存在同一存储的顶层字段，重开计算器（含重新加载游戏网站）后恢复。
+  // 当前页签不保存：打开计算器一律停在第一个页签，这里顺带清掉旧版本留下的 batchEnabled 字段。
   // 用户每次调整（选项、行参数、列表增删与排序）后随渲染自动写回；恢复默认会暂停一次自动保存，
   // 保证“清除存储 + 回到默认参数”的语义不被随后的默认态渲染写回覆盖。
   autosave(feature) {
@@ -859,7 +853,7 @@ const dungeonProfitBatchView = {
       return;
     }
     const store = this.readConfigStore();
-    store.batchEnabled = Boolean(feature.batchEnabled);
+    delete store.batchEnabled;
     if (feature.batchEnabled) {
       store.batch = {
         options: Object.fromEntries(
@@ -903,11 +897,10 @@ const dungeonProfitBatchView = {
     Notifier.toast(i18n.t('configRestored'), 'success');
   },
 
-  // 打开弹窗时应用已保存配置：先恢复批量勾选状态，再单图字段，再批量快照（选项 + 行），
-  // 两者都缺失时批量默认四地图。
+  // 打开弹窗时应用已保存配置：先单图字段，再批量快照（选项 + 行），两者都缺失时批量默认四地图。
+  // 页签不参与恢复，打开时一律停在第一个页签。
   loadSavedConfigs(feature) {
     const store = this.readConfigStore();
-    if (typeof store.batchEnabled === 'boolean') feature.batchEnabled = store.batchEnabled;
     const single = store.single;
     if (single && typeof single === 'object') {
       this.SINGLE_CONFIG_FIELDS.forEach((key) => {
@@ -1475,8 +1468,8 @@ export class DungeonProfitCalculatorFeature {
     this.root = null;
     this.helpController = null;
     this.state = null;
-    // 批量开关是复选框，默认不勾选进入单图模拟；批量列表在弹窗关闭后保留，重新打开时按保存配置或默认四地图恢复。
-    this.batchEnabled = false;
+    // 页签默认停在第一个页签（批量模拟）；批量列表在弹窗关闭后保留，重新打开时按保存配置或默认四地图恢复。
+    this.batchEnabled = DEFAULT_SIM_BATCH;
     this.batchRows = [];
     this.batchNextRowId = 0;
     this.batchInitialized = false;
