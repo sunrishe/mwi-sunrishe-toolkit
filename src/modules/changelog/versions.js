@@ -3,6 +3,15 @@
 // 版本说明只写用户可感知的变化，更新版本时先改 docs/changelog.md，再同步这里并补英文。
 export const CHANGELOG_VERSIONS = [
   {
+    version: '2.20.1',
+    date: '2026-10-12',
+    notes: [
+      {
+        zh: '修复：市场交易记录里按挂牌价成交的订单被打上星号、收入被算高的问题（官方按每件向上取整收税，之前把这项取整当成了成交价与挂牌价不一致）；现在只有官方税费确实证明成交价与挂牌价不同的订单才显示星号。',
+        en: 'Fix: orders filled at their listing price were marked with an asterisk and their income was inflated (the game rounds tax up per item, which was mistaken for a price difference); now the asterisk only appears when the official tax truly proves the fill price differed from the listing price.'
+      }
+    ]
+  }, {
     version: '2.20.0',
     date: '2026-10-12',
     notes: [
@@ -87,7 +96,8 @@ export const CHANGELOG_VERSIONS = [
         en: 'Equipment Comparison: the simulation reflects only the selected equipment and no longer includes fixed bonuses such as character achievements; searching and switching equipment is faster.'
       }
     ]
-  }, {
+  },
+  {
     version: '2.17.1',
     date: '2026-09-23',
     notes: [
@@ -96,8 +106,7 @@ export const CHANGELOG_VERSIONS = [
         en: 'Compatibility: the Toolkit now only forwards the game connection instead of modifying it, removing conflicts with other scripts that rewrite the game connection (such as the Oi momomo guild trial helper and MWI combat tools) while keeping its own data sync working.'
       }
     ]
-  },
-  {
+  }, {
     version: '2.17.0',
     date: '2026-09-23',
     notes: [
@@ -170,7 +179,8 @@ export const CHANGELOG_VERSIONS = [
         en: 'The Dungeon Profit "Drops" tab now matches the game\'s tab style.'
       }
     ]
-  }, {
+  },
+  {
     version: '2.13.0',
     date: '2026-08-21',
     notes: [
@@ -185,8 +195,7 @@ export const CHANGELOG_VERSIONS = [
         en: 'Fixed MWITools header buttons being squeezed toward the center when both scripts are installed.'
       }
     ]
-  },
-  {
+  }, {
     version: '2.12.0',
     date: '2026-08-19',
     notes: [
@@ -228,7 +237,8 @@ export const CHANGELOG_VERSIONS = [
         en: 'Fixed the market data source: prices are now always read from the current entry domain (release and test are separate environments, and the cn domain is a mirror entry of the release server), so pages with or without www or on the test domain all work without a fixed domain redirect.'
       }
     ]
-  }, {
+  },
+  {
     version: '2.10.1',
     date: '2026-08-17',
     notes: [
@@ -256,8 +266,7 @@ export const CHANGELOG_VERSIONS = [
         en: 'Equipment Comparison profession names in Chinese now match the official game names: 重盾 and 长枪.'
       }
     ]
-  },
-  {
+  }, {
     version: '2.9.3',
     date: '2026-08-15',
     notes: [
@@ -296,7 +305,8 @@ export const CHANGELOG_VERSIONS = [
         en: 'Fixed the Toolkit entry layout in the header; local debug scripts now include a file version and a web version; Dungeon Profit adds "Exclude cape value" and fixes a small deviation from rounding quantities too early; Combat Upgrade adds "Use current combat XP"; Equipment Comparison fixes two-handed weapon setups double-counting the off-hand and overstating the damage gain.'
       }
     ]
-  }, {
+  },
+  {
     version: '2.7.26',
     date: '2026-08-03',
     notes: [
@@ -305,8 +315,7 @@ export const CHANGELOG_VERSIONS = [
         en: 'Improved script loading and browser compatibility, fixing game connection, native navigation, loadout reading, game name language, and userscript API issues in Firefox; in Equipment Comparison, selecting a baseline item now also selects the same item for comparison.'
       }
     ]
-  },
-  {
+  }, {
     version: '2.7.22',
     date: '2026-08-02',
     notes: [
@@ -369,7 +378,8 @@ export const CHANGELOG_VERSIONS = [
         en: 'Added support for the new profit site `hyhfish.github.io/milkonomy`.'
       }
     ]
-  }, {
+  },
+  {
     // 未在 GreasyFork 发布过，无发布记录可查，不标注日期。
     version: '1.1.3',
     date: '',
@@ -383,8 +393,7 @@ export const CHANGELOG_VERSIONS = [
         en: 'Avoid injecting game UI styles on non-game sites.'
       }
     ]
-  },
-  {
+  }, {
     version: '1.0.2',
     date: '2026-04-15',
     legacy: true,

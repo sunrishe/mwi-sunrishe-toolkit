@@ -736,9 +736,13 @@ test('市场交易记录：直购兜底记录超过匹配窗口仍未关联官�
   assert.equal(store.getDisplayStatus(records[0]), 'unconfirmed');
 });
 
-test('市场交易记录：区间价记录按官方税费倒算真实成交额，未确认的立即成交可单独筛选', () => {
+test('市场交易记录：官方税费与挂牌价不符才标星，未确认的立即成交可单独筛选', () => {
   const store = loadStore();
-  // 区间价（浮动价）挂单：挂牌价随行情移动，各次成交按当时的价格——官方税费才是硬证据。
+  // 官方按**单件**收税、每件向上取整：税费 = ceil(单价 × 税率) × 已成交数量。倒算回去得到的是
+  // 「单件税费档位」，只能把成交价限定在宽度为一档的区间里（4% 档 25 金币、5% 档 20、2% 档 50），
+  // 区间内任何价格产生的官方税费完全相同——所以「倒算值与挂牌价不同」不能说明价格移动过。
+  // 单价 12 的糖按 4% 收 1 金币/件（倒算成 1 ÷ 0.04 = 25，看着像差一倍），实际成交价就是 12：
+  // 此前按「倒算值不同就打星」判定时，所有单价不是档位整数倍的记录都被误标、收入被算高。
   const sugar = store.normalizeRecord({
     key: 'listing:9101',
     side: 'sell',
@@ -751,12 +755,71 @@ test('市场交易记录：区间价记录按官方税费倒算真实成交额�
     filledAt: NOW,
     taxTaken: 52553
   });
-  // 4% 档：毛额 = 52553 ÷ 0.04 = 1,313,825，税后 1,261,272（挂牌价口径只有 605,410）。
-  assert.equal(store.taxDerivedAmountOf(sugar).gross, 1313825);
-  assert.equal(store.taxDerivedAmountOf(sugar).net, Math.floor(1313825 * 0.96));
-  assert.equal(store.taxDerivedAmountOf(sugar).differs, true, '与挂牌价口径不同 → 界面打标');
-  assert.equal(sugar.collectedCoinCount, Math.floor(1313825 * 0.96), '收入按税费倒算补齐');
-  // 成交跨税率调整日：税费混了两个档位，倒算放弃、退回挂牌价公式。
+  assert.equal(store.taxDerivedAmountOf(sugar), null, '税费与挂牌价自洽 → 不打星');
+  assert.equal(sugar.collectedCoinCount, 52553 * 12 - 52553, '按挂牌价成交的到账：数量 × 单价 − 官方税');
+  // 单价 187 在 4% 档对应的区间是 (175, 200]（ceil(187 × 0.04) = 8 金币/件），同样自洽。
+  const tickOff = store.normalizeRecord({
+    key: 'listing:9106',
+    side: 'sell',
+    itemHrid: '/items/redwood_log',
+    price: 187,
+    orderQuantity: 100,
+    filledQuantity: 100,
+    status: 'filled',
+    createdAt: NOW - 1000,
+    filledAt: NOW,
+    taxTaken: 800
+  });
+  assert.equal(store.taxDerivedAmountOf(tickOff), null, '单价不是档位整数倍也不打星');
+  assert.equal(tickOff.collectedCoinCount, 18700 - 800);
+  // 单件税费不是整数：各次成交的单价不同（这里 5 件 40 金币/件、5 件 45 金币/件）→ 成交价不止一个，
+  // 确有差异；界面标星，收入取证据下限（证据允许的最小成交额），不按上限虚增。
+  const mixed = store.normalizeRecord({
+    key: 'listing:9105',
+    side: 'sell',
+    itemHrid: '/items/iron_sword',
+    price: 1000,
+    orderQuantity: 10,
+    filledQuantity: 10,
+    status: 'filled',
+    createdAt: NOW - 1000,
+    filledAt: NOW,
+    taxTaken: 425
+  });
+  assert.equal(store.taxDerivedAmountOf(mixed).grossLow, 10376);
+  assert.equal(store.taxDerivedAmountOf(mixed).grossHigh, 10625);
+  assert.equal(mixed.collectedCoinCount, 10376 - 425, '收入取证据下限');
+  // 单件税费是整数但挂牌价落在证据区间之外：成交价确实偏离挂牌价（这里是成交价更低），同样标星。
+  const below = store.normalizeRecord({
+    key: 'listing:9107',
+    side: 'sell',
+    itemHrid: '/items/iron_sword',
+    price: 1000,
+    orderQuantity: 10,
+    filledQuantity: 10,
+    status: 'filled',
+    createdAt: NOW - 1000,
+    filledAt: NOW,
+    taxTaken: 350
+  });
+  assert.equal(store.taxDerivedAmountOf(below).grossLow, 8501);
+  assert.equal(store.taxDerivedAmountOf(below).grossHigh, 8750);
+  assert.equal(below.collectedCoinCount, 8501 - 350);
+  // 反方向：挂牌价低于区间下限（800 ≤ (35 − 1) ÷ 0.04 = 850）→ 成交价高出挂牌价，也标星。
+  const above = store.normalizeRecord({
+    key: 'listing:9108',
+    side: 'sell',
+    itemHrid: '/items/iron_sword',
+    price: 800,
+    orderQuantity: 10,
+    filledQuantity: 10,
+    status: 'filled',
+    createdAt: NOW - 1000,
+    filledAt: NOW,
+    taxTaken: 350
+  });
+  assert.equal(store.taxDerivedAmountOf(above)?.grossLow, 8501);
+  // 成交跨税率调整日：税费混了两个档位，不做判定、退回挂牌价口径。
   const crossing = store.normalizeRecord({
     key: 'listing:9102',
     side: 'sell',
@@ -769,9 +832,9 @@ test('市场交易记录：区间价记录按官方税费倒算真实成交额�
     filledAt: Date.parse('2026-10-01T00:00:00+08:00'),
     taxTaken: 40000
   });
-  assert.equal(store.taxDerivedAmountOf(crossing), null, '跨税率调整日不倒算');
-  assert.equal(crossing.collectedCoinCount, 9600, '退回挂牌价公式（1000 × 10 × 0.96）');
-  // 购买不扣税：官方税费恒为 0，也不参与倒算。
+  assert.equal(store.taxDerivedAmountOf(crossing), null, '跨税率调整日不做税费判定');
+  assert.equal(crossing.collectedCoinCount, 9600, '退回挂牌价口径（1000 × 10 − 400 税）');
+  // 购买不扣税：官方税费恒为 0，也不参与判定。
   const buy = store.normalizeRecord({
     key: 'listing:9103',
     side: 'buy',
@@ -786,7 +849,7 @@ test('市场交易记录：区间价记录按官方税费倒算真实成交额�
   });
   assert.equal(store.taxDerivedAmountOf(buy), null);
   assert.equal(buy.collectedCoinCount, 5000, '购买按数量 × 单价');
-  // 牛铃袋始终 18% 一档：跨日期也照常倒算。
+  // 牛铃袋始终 18% 一档：跨日期也照常判定（1000 × 9/50 = 180 金币/件，区间 (994.4, 1000] 含 1000）。
   const cowbell = store.normalizeRecord({
     key: 'listing:9104',
     side: 'sell',
@@ -799,7 +862,8 @@ test('市场交易记录：区间价记录按官方税费倒算真实成交额�
     filledAt: Date.parse('2026-10-01T00:00:00+08:00'),
     taxTaken: 1800
   });
-  assert.equal(cowbell.collectedCoinCount, 8200, '1800 ÷ 0.18 = 10000，税后 8200');
+  assert.equal(cowbell.collectedCoinCount, 8200, '10000 − 1800 税');
+  assert.equal(store.taxDerivedAmountOf(cowbell), null, '牛铃袋按 18% 档位同样自洽');
 
   // 立即成交的兜底记录：展示状态为「未确认」，可按状态筛选；关联到官方条目后回到已完成。
   const records = [];
@@ -1810,13 +1874,13 @@ test('市场交易记录：多占位符文案的调用参数齐全', () => {
   // 每页条数选项文案为「N 条」（1 个占位符），调用传入一条实参。
   const sizeText = messagesSourceFile.match(/marketHistoryPageSizeOption:\s*\{[^}]*zh:\s*'([^']+)'/)?.[1] || '';
   assert.equal(sizeText, '{0} 条');
-  // 区间价标注文案有 3 个占位符（毛额 / 税后 / 税率）：列表标记与收入悬浮两处调用都要传满。
+  // 税费证据文案有 3 个占位符（成交额下限 / 上限 / 税率）：列表标记与收入悬浮两处调用都要传满。
   const taxText = messagesSourceFile.match(/marketHistoryTaxDerived:\s*\{[\s\S]*?zh:\s*'([^']+)'/)?.[1] || '';
   assert.equal((taxText.match(/\{\d\}/g) || []).length, 3);
   assert.ok(
     (
       moduleSourceFile.match(
-        /marketHistoryTaxDerived',\s*this\.rawValueText\(derived\.gross\),\s*this\.rawValueText\(derived\.net\),\s*String\(Math\.round\(derived\.rate \* 100\)\)/g
+        /marketHistoryTaxDerived',\s*this\.rawValueText\(derived\.grossLow\),\s*this\.rawValueText\(derived\.grossHigh\),\s*String\(Math\.round\(derived\.rate \* 100\)\)/g
       ) || []
     ).length >= 2,
     '金额列标记与收入/支出悬浮都要传满三个实参'
@@ -1913,6 +1977,11 @@ test('市场交易记录：模块装配、入口与消息订阅链路完整', ()
   assert.match(messagesSourceFile, /marketHistoryTaxDerived:/);
   assert.match(storeSourceFile, /export function isUnconfirmedInstant/);
   assert.match(storeSourceFile, /export function taxDerivedAmountOf/);
+  // 税费判定必须走官方口径「逐件向上取整」的档位模型（taxEvidenceOf），不能用浮点比例倒算：
+  // 倒算值与挂牌价的差可能只是税费取整，之前据此打星会把正常成交全部误标、收入算高。
+  assert.match(storeSourceFile, /export function taxEvidenceOf/);
+  assert.match(storeSourceFile, /Math\.ceil\(\(price \* num\) \/ den\)/);
+  assert.doesNotMatch(storeSourceFile, /differs/);
   assert.match(storeSourceFile, /if \(isUnconfirmedInstant\(record\)\) return 'unconfirmed';/);
   assert.match(moduleSourceFile, /mst-market-history-price-mark/);
   assert.match(moduleCssSourceFile, /\.mst-market-history-price-mark\s*\{/);
