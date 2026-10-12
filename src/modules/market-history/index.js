@@ -1003,10 +1003,10 @@ export class MarketHistoryFeature {
           : `${Number(record.collectedItemCount) || 0}`)
     );
     lines.push(i18n.t('marketHistoryRawValue') + '：' + this.rawValueText(collected));
-    // 区间价（浮动价）记录：挂牌价随行情移动，与各次成交当时的价格不同——金额来自官方税费
-    // 倒算，悬浮给出倒算的毛额与税后额，列表里的「金额」列按挂牌价计算、只作参考。
+    // 官方税费与挂牌价不符的记录（价格随行情移动、或以更优价成交）：金额来自官方税费允许的
+    // 区间下限，悬浮给出区间与税率，列表里的「金额」列按挂牌价计算、只作参考。
     const derived = taxDerivedAmountOf(record);
-    if (record.collectedEstimated && !derived?.differs) {
+    if (record.collectedEstimated && !derived) {
       // 购买不扣税，不写「（1 − 0% 税率）」；区间价记录的倒算口径由下面一行说明。
       const rate = Number(record.collectedTaxRate) || 0;
       lines.push(
@@ -1020,12 +1020,12 @@ export class MarketHistoryFeature {
         i18n.t('marketHistoryTaxTaken') + '：' + this.formatMoney(record.taxTaken) + ' ' + i18n.t('marketHistoryCoin')
       );
     }
-    if (derived?.differs) {
+    if (derived) {
       lines.push(
         i18n.t(
           'marketHistoryTaxDerived',
-          this.rawValueText(derived.gross),
-          this.rawValueText(derived.net),
+          this.rawValueText(derived.grossLow),
+          this.rawValueText(derived.grossHigh),
           String(Math.round(derived.rate * 100))
         )
       );
@@ -1693,16 +1693,16 @@ export class MarketHistoryFeature {
     const statusLabel = i18n.t(this.statusLabelKey(status));
     const itemLabel = this.itemLabel(record);
     const endTime = record.filledAt || record.cancelledAt || record.expiredAt;
-    // 区间价（浮动价）记录：挂牌价与各次成交当时的价不同，「金额」列（单价 × 数量）与真实成交额
-    // 有出入——给一个星号标记并在悬浮里给出官方税费倒算的成交额（收入/支出用的是倒算值）。
+    // 官方税费与挂牌价不符的记录（价格随行情移动、或以更优价成交）：「金额」列（单价 × 数量）
+    // 与真实成交额有出入——给一个星号标记，悬浮里给出官方税费允许的成交额区间。
     const derived = taxDerivedAmountOf(record);
-    const amountMark = derived?.differs
+    const amountMark = derived
       ? TemplateRenderer.html`<span
             class="mst-market-history-price-mark"
             title=${i18n.t(
               'marketHistoryTaxDerived',
-              this.rawValueText(derived.gross),
-              this.rawValueText(derived.net),
+              this.rawValueText(derived.grossLow),
+              this.rawValueText(derived.grossHigh),
               String(Math.round(derived.rate * 100))
             )}
           >*</span>`

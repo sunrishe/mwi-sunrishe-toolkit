@@ -882,8 +882,8 @@ export const MARKET_HISTORY_MESSAGES = {
   marketHistoryClaimedAt: {zh: '领取时间', en: 'Collected at'},
   marketHistoryImportNote: {zh: '导入备注', en: 'Import note'},
   marketHistoryCollectedEstimated: {
-    zh: '该记录缺少官方到账数据，按已成交数量 × 单价 ×（1 − {0}% 税率）推算',
-    en: 'Missing official collected data; estimated as filled quantity × price × (1 − {0}% tax)'
+    zh: '该记录缺少官方到账数据，按已成交数量 × 单价、并用官方收税方式（每件 {0}% 向上取整）推算',
+    en: 'Missing official collected data; estimated from filled quantity × price with the official per-item tax ({0}%, rounded up per item)'
   },
   marketHistoryCollectedEstimatedBuy: {
     zh: '该记录缺少官方到账数据，按已成交数量 × 单价推算（购买不扣税）',
@@ -892,8 +892,8 @@ export const MARKET_HISTORY_MESSAGES = {
   marketHistoryRawValue: {zh: '原值', en: 'Raw'},
   marketHistoryCoin: {zh: '金币', en: 'coins'},
   marketHistoryTaxDerived: {
-    zh: '单价随行情移动（区间价）：按官方税费倒算的真实成交额 {0}、税后 {1}（{2}% 税率）；「金额」列按挂牌价计算，只作参考',
-    en: 'Price moved with the market range: gross {0}, net {1} derived from the official tax ({2}% tax); the Amount column uses the listing price for reference only'
+    zh: '成交价与挂牌价不一致（价格随行情移动或以更优价成交）：官方税费对应的成交额在 {0} 与 {1} 之间（{2}% 税率）；「金额」列按挂牌价计算，只作参考',
+    en: 'Fill price differs from the listing price (the price moved with the market, or the fill was at a better price): the official tax implies a gross between {0} and {1} ({2}% tax); the Amount column uses the listing price and is for reference only'
   },
   marketHistoryInstantFallback: {
     zh: '未收到官方条目，按委托信息记录：是否成交与成交价无法与官方核对（实际成交价可能更优，差额会退还）',

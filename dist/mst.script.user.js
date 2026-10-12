@@ -3,7 +3,7 @@
 // @name:zh-CN         MWI Sunrishe 工具箱
 // @name:en            MWI Sunrishe Toolkit
 // @namespace          http://tampermonkey.net/
-// @version            2.20.0
+// @version            2.20.1
 // @description        MWI Sunrishe 综合工具箱：提供角色/队伍名片、技能/房屋/战斗升级规划、装备提升计算器、地下城收益、配装同步和市场伴侣增强。
 // @description:zh-CN  MWI Sunrishe 综合工具箱：提供角色/队伍名片、技能/房屋/战斗升级规划、装备提升计算器、地下城收益、配装同步和市场伴侣增强。
 // @description:en     MST toolkit for character/party cards, ability/house/combat upgrade planning, equipment comparison, dungeon profit, loadout sync, and Market Mate enhancements.
@@ -55,7 +55,7 @@
   'use strict';
 
   // 构建脚本会静态替换这个占位符，业务代码不直接读取 Node 环境变量。
-  const PACKAGE_VERSION = "2.20.0";
+  const PACKAGE_VERSION = "2.20.1";
 
   const BUILD_FLAGS = Object.freeze({
     // 目前只有语言切换按钮需要区分 dev/prod：正式包不展示该调试入口。
@@ -2694,8 +2694,8 @@
     marketHistoryClaimedAt: {zh: '领取时间', en: 'Collected at'},
     marketHistoryImportNote: {zh: '导入备注', en: 'Import note'},
     marketHistoryCollectedEstimated: {
-      zh: '该记录缺少官方到账数据，按已成交数量 × 单价 ×（1 − {0}% 税率）推算',
-      en: 'Missing official collected data; estimated as filled quantity × price × (1 − {0}% tax)'
+      zh: '该记录缺少官方到账数据，按已成交数量 × 单价、并用官方收税方式（每件 {0}% 向上取整）推算',
+      en: 'Missing official collected data; estimated from filled quantity × price with the official per-item tax ({0}%, rounded up per item)'
     },
     marketHistoryCollectedEstimatedBuy: {
       zh: '该记录缺少官方到账数据，按已成交数量 × 单价推算（购买不扣税）',
@@ -2704,8 +2704,8 @@
     marketHistoryRawValue: {zh: '原值', en: 'Raw'},
     marketHistoryCoin: {zh: '金币', en: 'coins'},
     marketHistoryTaxDerived: {
-      zh: '单价随行情移动（区间价）：按官方税费倒算的真实成交额 {0}、税后 {1}（{2}% 税率）；「金额」列按挂牌价计算，只作参考',
-      en: 'Price moved with the market range: gross {0}, net {1} derived from the official tax ({2}% tax); the Amount column uses the listing price for reference only'
+      zh: '成交价与挂牌价不一致（价格随行情移动或以更优价成交）：官方税费对应的成交额在 {0} 与 {1} 之间（{2}% 税率）；「金额」列按挂牌价计算，只作参考',
+      en: 'Fill price differs from the listing price (the price moved with the market, or the fill was at a better price): the official tax implies a gross between {0} and {1} ({2}% tax); the Amount column uses the listing price and is for reference only'
     },
     marketHistoryInstantFallback: {
       zh: '未收到官方条目，按委托信息记录：是否成交与成交价无法与官方核对（实际成交价可能更优，差额会退还）',
@@ -7275,6 +7275,15 @@
   // 版本说明只写用户可感知的变化，更新版本时先改 docs/changelog.md，再同步这里并补英文。
   const CHANGELOG_VERSIONS = [
     {
+      version: '2.20.1',
+      date: '2026-10-12',
+      notes: [
+        {
+          zh: '修复：市场交易记录里按挂牌价成交的订单被打上星号、收入被算高的问题（官方按每件向上取整收税，之前把这项取整当成了成交价与挂牌价不一致）；现在只有官方税费确实证明成交价与挂牌价不同的订单才显示星号。',
+          en: 'Fix: orders filled at their listing price were marked with an asterisk and their income was inflated (the game rounds tax up per item, which was mistaken for a price difference); now the asterisk only appears when the official tax truly proves the fill price differed from the listing price.'
+        }
+      ]
+    }, {
       version: '2.20.0',
       date: '2026-10-12',
       notes: [
@@ -7359,7 +7368,8 @@
           en: 'Equipment Comparison: the simulation reflects only the selected equipment and no longer includes fixed bonuses such as character achievements; searching and switching equipment is faster.'
         }
       ]
-    }, {
+    },
+    {
       version: '2.17.1',
       date: '2026-09-23',
       notes: [
@@ -7368,8 +7378,7 @@
           en: 'Compatibility: the Toolkit now only forwards the game connection instead of modifying it, removing conflicts with other scripts that rewrite the game connection (such as the Oi momomo guild trial helper and MWI combat tools) while keeping its own data sync working.'
         }
       ]
-    },
-    {
+    }, {
       version: '2.17.0',
       date: '2026-09-23',
       notes: [
@@ -7442,7 +7451,8 @@
           en: 'The Dungeon Profit "Drops" tab now matches the game\'s tab style.'
         }
       ]
-    }, {
+    },
+    {
       version: '2.13.0',
       date: '2026-08-21',
       notes: [
@@ -7457,8 +7467,7 @@
           en: 'Fixed MWITools header buttons being squeezed toward the center when both scripts are installed.'
         }
       ]
-    },
-    {
+    }, {
       version: '2.12.0',
       date: '2026-08-19',
       notes: [
@@ -7500,7 +7509,8 @@
           en: 'Fixed the market data source: prices are now always read from the current entry domain (release and test are separate environments, and the cn domain is a mirror entry of the release server), so pages with or without www or on the test domain all work without a fixed domain redirect.'
         }
       ]
-    }, {
+    },
+    {
       version: '2.10.1',
       date: '2026-08-17',
       notes: [
@@ -7528,8 +7538,7 @@
           en: 'Equipment Comparison profession names in Chinese now match the official game names: 重盾 and 长枪.'
         }
       ]
-    },
-    {
+    }, {
       version: '2.9.3',
       date: '2026-08-15',
       notes: [
@@ -7568,7 +7577,8 @@
           en: 'Fixed the Toolkit entry layout in the header; local debug scripts now include a file version and a web version; Dungeon Profit adds "Exclude cape value" and fixes a small deviation from rounding quantities too early; Combat Upgrade adds "Use current combat XP"; Equipment Comparison fixes two-handed weapon setups double-counting the off-hand and overstating the damage gain.'
         }
       ]
-    }, {
+    },
+    {
       version: '2.7.26',
       date: '2026-08-03',
       notes: [
@@ -7577,8 +7587,7 @@
           en: 'Improved script loading and browser compatibility, fixing game connection, native navigation, loadout reading, game name language, and userscript API issues in Firefox; in Equipment Comparison, selecting a baseline item now also selects the same item for comparison.'
         }
       ]
-    },
-    {
+    }, {
       version: '2.7.22',
       date: '2026-08-02',
       notes: [
@@ -7641,7 +7650,8 @@
           en: 'Added support for the new profit site `hyhfish.github.io/milkonomy`.'
         }
       ]
-    }, {
+    },
+    {
       // 未在 GreasyFork 发布过，无发布记录可查，不标注日期。
       version: '1.1.3',
       date: '',
@@ -7655,8 +7665,7 @@
           en: 'Avoid injecting game UI styles on non-game sites.'
         }
       ]
-    },
-    {
+    }, {
       version: '1.0.2',
       date: '2026-04-15',
       legacy: true,
@@ -26076,83 +26085,122 @@
   // 出售按成交当时的历史税率扣税：普通物品 2026-08-14 前 2%、08-14 起 5%、09-28 起 4%，
   // 牛铃袋始终 18%；推算结果标 collectedEstimated 并在悬浮提示里说明。
   // 当前普通税率的单一来源见 src/common/constants.js 的 MARKET_TAX_RATE，这里按历史档位列出。
+  // fraction 是税率的精确分数（[分子, 分母]），供「税费 → 成交价区间」的整数判定使用，
+  // 不靠浮点比较（8 ÷ 0.04 这类除法会把区间边界算偏）。
   const TAX_HISTORY = [
     {
       before: Date.parse('2026-08-14T00:00:00+08:00'),
-      rate: 0.02
-    }, {before: Date.parse('2026-09-28T00:00:00+08:00'), rate: 0.05}, {before: Infinity, rate: 0.04}
+      rate: 0.02,
+      fraction: [
+        1, 50
+      ]
+    }, {before: Date.parse('2026-09-28T00:00:00+08:00'), rate: 0.05, fraction: [
+        1, 20
+      ]}, {before: Infinity, rate: 0.04, fraction: [
+        1, 25
+      ]}
   ];
   const COWBELL_BAG_HRID = '/items/bag_of_10_cowbells';
   const COWBELL_BAG_TAX_RATE = 0.18;
+  const COWBELL_BAG_TAX_FRACTION = [
+    9, 50
+  ];
 
-  function collectedTaxRateOf(record, at = 0) {
-    if (record?.itemHrid === COWBELL_BAG_HRID) return COWBELL_BAG_TAX_RATE;
-    const tier = TAX_HISTORY.find((entry) => at < entry.before);
-    return tier ? tier.rate : TAX_HISTORY[TAX_HISTORY.length - 1].rate;
+  function taxTierOf(record, at = 0) {
+    if (record?.itemHrid === COWBELL_BAG_HRID) {
+      return {rate: COWBELL_BAG_TAX_RATE, fraction: COWBELL_BAG_TAX_FRACTION};
+    }
+    const tier = TAX_HISTORY.find((entry) => at < entry.before) || TAX_HISTORY[TAX_HISTORY.length - 1];
+    return {rate: tier.rate, fraction: tier.fraction};
   }
 
-  // 官方税费倒算真实成交额（只用于出售侧；购买不扣税，官方税费恒为 0）：`taxTaken` 是官方按
-  // **各次成交的实际价**累计的税费，除以成交时的税率就是真实成交额——比「挂牌价 × 数量」准，
-  // 因为区间价（浮动价）挂单的挂牌价会随行情移动，与各次成交当时的价格并不相同（实测最多差
-  // 66.67%：糖 12 → 20、茶叶 102 → 120）。
-  // 成交必然发生在创建之后、结束之前，这两个时间都是官方值或可靠观测：这段时间跨过税率调整日
-  // 时税费里混了两个档位，除以单一税率会偏，直接放弃（退回挂牌价公式）；时间缺失时同样放弃。
-  function taxDerivedGrossOf(record, rate) {
-    if (!record || record.side !== 'sell' || !(rate > 0)) return null;
+  // 官方按**单件**收税、每件向上取整：税费 = ceil(单价 × 税率) × 已成交数量，不是「总额 × 税率」的
+  // 浮点值。2026-10-12 用 672 条导出里全部 385 条可倒算的出售记录核对，这个口径逐条吻合（按总额
+  // 取整只能对上 303 条、按单件四舍五入 352 条）：单价 12 的糖按 5% 收 1 金币/件就是这么来的。
+  function unitTaxOf(price, [
+      num, den
+    ]) {
+    return Math.ceil((price * num) / den);
+  }
+
+  // 税费证据：由官方税费反推的「单件税费档位」只能把成交价限定在一个区间里——单件税费为 k 时
+  // 成交价落在 ((k − 1) ÷ 税率, k ÷ 税率]，区间内任何价格产生的官方税费完全相同，区间宽度就是
+  // 一个税费档位（4% 档 25 金币、5% 档 20、2% 档 50、牛铃袋 18% 档 5.56）。
+  // 所以「倒算值与挂牌价不同」**不能**说明价格移动过（此前就是这么判定的，结果单价不是档位整数倍
+  // 的记录全部误标、收入被算高）；只有下面两种情况才算税费与挂牌价不符：
+  // - 单件税费 k 不是整数：各次成交的单件税费不同 → 成交价不止一个，不可能每次都按挂牌价成交；
+  // - k 是整数但挂牌价落在区间之外：成交价确实高于区间上限或低于区间下限。
+  // 购买（不扣税）与证据不全（没有税费、缺时间、成交跨税率调整日）返回 null。
+  function taxEvidenceOf(record) {
+    if (!record || record.side !== 'sell') return null;
+    const filled = toCount(record.filledQuantity);
+    const price = toMoney(record.price);
     const tax = toCount(record.taxTaken);
-    if (!tax) return null;
+    if (!filled || !price || !tax) return null;
     const from = toTimestamp(record.createdAt);
     const to = toTimestamp(record.filledAt) || toTimestamp(record.firstFillAt) || toTimestamp(record.updatedAt);
     if (!from || !to) return null;
-    if (record.itemHrid === COWBELL_BAG_HRID) return Math.round(tax / rate); // 牛铃袋始终一档
-    const crossing = TAX_HISTORY.some(
-      (entry) => Number.isFinite(entry.before) && from < entry.before && entry.before <= to
-    );
-    if (crossing) return null;
-    return Math.round(tax / rate);
+    // 成交必然发生在创建之后、结束之前（两个时间都是官方值或可靠观测）：这段时间跨过税率调整日时
+    // 税费里混了两个档位，除以单一税率会偏，放弃判定；牛铃袋始终 18% 一档，不受日期影响。
+    if (
+      record.itemHrid !== COWBELL_BAG_HRID &&
+      TAX_HISTORY.some((entry) => Number.isFinite(entry.before) && from < entry.before && entry.before <= to)
+    ) {
+      return null;
+    }
+    const at = toTimestamp(record.filledAt) || toTimestamp(record.firstFillAt) || toTimestamp(record.createdAt);
+    const {rate, fraction} = taxTierOf(record, at);
+    if (!(rate > 0)) return null;
+    const [
+      num, den
+    ] = fraction;
+    const unitTax = tax / filled;
+    const singleUnitTax = Number.isInteger(unitTax);
+    // 区间判定与边界都用整数交叉相乘（price × 分子 与 档位 × 分母），避免浮点除法把边界算偏。
+    const contradicts = singleUnitTax ? !(price * num > (unitTax - 1) * den && price * num <= unitTax * den) : true;
+    // 证据允许的成交额（毛额）区间：((税费 − 数量) ÷ 税率, 税费 ÷ 税率]。
+    const grossLow = Math.floor(((tax - filled) * den) / num) + 1;
+    const grossHigh = Math.floor((tax * den) / num);
+    const nominal = price * filled;
+    // 应得额（税后）：与挂牌价自洽时就是「按挂牌价成交」的到账额——税是官方值、逐件向上取整，
+    // 结果精确；确有差异时取证据下限，宁可少算也不虚增（官方到账更完整时本来就不会被覆盖）。
+    const expected = Math.max(0, contradicts ? grossLow - tax : nominal - tax);
+    return {rate, unitTax, singleUnitTax, contradicts, grossLow, grossHigh, nominal, expected};
   }
 
-  // 应得额（一律按公式算）：出售 = 已成交数量 × 单价 ×（1 − 成交时间税率），购买 = 已成交数量 × 单价
-  // （不扣税）。数量或单价缺失（为 0）时返回 null——算不出应得额的记录不推算，避免写出假金额。
-  // 出售侧有官方税费时优先用**税费倒算的真实成交额**（见上），区间价挂单因此不会再按移动的
-  // 挂牌价低估收入；没有税费证据（购买、旧数据、跨税率档）时退回挂牌价公式。
+  // 应得额（一律按公式算，只作为「官方金额不足时补齐」的目标，不覆盖更高的官方值）：
+  // - 出售有税费证据：见 taxEvidenceOf（自洽 → 按挂牌价成交的到账额；确有差异 → 证据下限）；
+  // - 出售没有税费证据（旧数据、跨税率调整日）：按官方口径估算——到账 = 单价 × 数量 − 逐件向上取整
+  //   的税，与官方收税方式一致（按浮点比例估税会把小额物品算高：官方对 12 金币的糖按 1 金币/件收）；
+  // - 购买不扣税：数量 × 单价。
+  // 数量或单价缺失（为 0）时返回 null——算不出应得额的记录不推算，避免写出假金额。
   // 「已完成订单的金额补齐」与数据修复的「金额偏差过大」共用这一个公式。
   function expectedCollectedOf(record) {
     const filled = toCount(record?.filledQuantity);
     const nominal = toMoney(record?.price) * filled;
     if (!filled || !nominal) return null;
-    const at = record.filledAt || record.firstFillAt || record.createdAt || 0;
     // 只有出售侧扣市场税；购买侧付多少就是多少。
-    const rate = record.side === 'sell' ? collectedTaxRateOf(record, at) : 0;
-    const derived = taxDerivedGrossOf(record, rate);
-    const gross = derived == null ? nominal : derived;
-    return {expected: Math.max(0, Math.floor(gross * (1 - rate))), rate};
+    if (record.side !== 'sell') return {expected: nominal, rate: 0};
+    const evidence = taxEvidenceOf(record);
+    if (evidence) return {expected: evidence.expected, rate: evidence.rate};
+    const at = record.filledAt || record.firstFillAt || record.createdAt || 0;
+    const {rate, fraction} = taxTierOf(record, at);
+    const tax = unitTaxOf(toMoney(record.price), fraction) * filled;
+    return {expected: Math.max(0, nominal - tax), rate};
   }
 
-  // 对外（界面标注）用：这笔记录能否按官方税费倒算真实成交额，以及倒算值是否与挂牌价口径
-  // 不一致（单价随行情移动时才会不一致，「金额」列因此只作参考）。
+  // 对外（界面标注）用：只有官方税费**与挂牌价不符**时才返回证据允许的成交额区间与税率，此时
+  // 「金额」列（挂牌价 × 已成交数量）只作参考；与挂牌价自洽的记录（税费无法证明价格移动过）
+  // 不标注、金额也按挂牌价口径。
   function taxDerivedAmountOf(record) {
-    if (!record || record.side !== 'sell') return null;
-    const filled = toCount(record.filledQuantity);
-    const nominal = toMoney(record.price) * filled;
-    if (!filled || !nominal) return null;
-    const at = record.filledAt || record.firstFillAt || record.createdAt || 0;
-    const rate = collectedTaxRateOf(record, at);
-    const gross = taxDerivedGrossOf(record, rate);
-    if (gross == null) return null;
-    const net = Math.max(0, Math.floor(gross * (1 - rate)));
-    return {
-      gross,
-      net,
-      rate,
-      differs: net !== Math.max(0, Math.floor(nominal * (1 - rate)))
-    };
+    const evidence = taxEvidenceOf(record);
+    if (!evidence || !evidence.contradicts) return null;
+    return {grossLow: evidence.grossLow, grossHigh: evidence.grossHigh, rate: evidence.rate};
   }
 
   // 已完成订单的金额补齐（一律记在 collectedCoinCount，不写物品件数）：官方金额（成交时按
   // 可领取值增量累计的部分）不足应得额时——例如快照补齐的订单只带回剩余可领取值、已领取
-  // 部分无从得知——按成交当时的税率推算补齐：出售 = 已成交数量 × 单价 ×（1 − 税率），
-  // 购买 = 已成交数量 × 单价（不扣税）。
+  // 部分无从得知——按 expectedCollectedOf 的口径补齐（出售扣官方口径的税、购买不扣）。
   // - 只对**已终结**的订单（已完成 / 已取消 / 已过期 / 结束未观测）补齐：进行中的订单官方数据
   //   还会继续来，不推算，避免与后续的增量重复；
   // - **只补不足、不覆盖官方值**：官方累计达到或超过应得额时原样保留（成交价受价格带调整或
@@ -27316,9 +27364,9 @@
     });
   }
 
-  // 金额偏差：已终结的订单里，累计到账与应得额不一致的按公式重算
-  // （出售 = 数量 × 单价 ×（1 − 成交时间税率），购买 = 数量 × 单价）——旧版本公式、跨版本合并
-  // 或手工数据留下的错误金额（实测样本：同一笔成交被累计两次时金额正好是应得额的整数倍）。
+  // 金额偏差：已终结的订单里，累计到账与应得额不一致的按 expectedCollectedOf 的口径重算
+  // （出售扣官方口径的税、购买不扣）——旧版本公式、跨版本合并或手工数据留下的错误金额
+  // （实测样本：同一笔成交被累计两次时金额正好是应得额的整数倍）。
   // - **购买侧**：口径就是「数量 × 单价」，只要有出入就是错的，全部重算；
   // - **出售侧**：官方到账可能受价格带调整、以更优价成交影响，只处理「差超过一半或 1000 金币」
   //   的明显错误，阈值以内的差异保留；
@@ -28579,10 +28627,10 @@
             : `${Number(record.collectedItemCount) || 0}`)
       );
       lines.push(i18n.t('marketHistoryRawValue') + '：' + this.rawValueText(collected));
-      // 区间价（浮动价）记录：挂牌价随行情移动，与各次成交当时的价格不同——金额来自官方税费
-      // 倒算，悬浮给出倒算的毛额与税后额，列表里的「金额」列按挂牌价计算、只作参考。
+      // 官方税费与挂牌价不符的记录（价格随行情移动、或以更优价成交）：金额来自官方税费允许的
+      // 区间下限，悬浮给出区间与税率，列表里的「金额」列按挂牌价计算、只作参考。
       const derived = taxDerivedAmountOf(record);
-      if (record.collectedEstimated && !derived?.differs) {
+      if (record.collectedEstimated && !derived) {
         // 购买不扣税，不写「（1 − 0% 税率）」；区间价记录的倒算口径由下面一行说明。
         const rate = Number(record.collectedTaxRate) || 0;
         lines.push(
@@ -28596,12 +28644,12 @@
           i18n.t('marketHistoryTaxTaken') + '：' + this.formatMoney(record.taxTaken) + ' ' + i18n.t('marketHistoryCoin')
         );
       }
-      if (derived?.differs) {
+      if (derived) {
         lines.push(
           i18n.t(
             'marketHistoryTaxDerived',
-            this.rawValueText(derived.gross),
-            this.rawValueText(derived.net),
+            this.rawValueText(derived.grossLow),
+            this.rawValueText(derived.grossHigh),
             String(Math.round(derived.rate * 100))
           )
         );
@@ -29269,16 +29317,16 @@
       const statusLabel = i18n.t(this.statusLabelKey(status));
       const itemLabel = this.itemLabel(record);
       const endTime = record.filledAt || record.cancelledAt || record.expiredAt;
-      // 区间价（浮动价）记录：挂牌价与各次成交当时的价不同，「金额」列（单价 × 数量）与真实成交额
-      // 有出入——给一个星号标记并在悬浮里给出官方税费倒算的成交额（收入/支出用的是倒算值）。
+      // 官方税费与挂牌价不符的记录（价格随行情移动、或以更优价成交）：「金额」列（单价 × 数量）
+      // 与真实成交额有出入——给一个星号标记，悬浮里给出官方税费允许的成交额区间。
       const derived = taxDerivedAmountOf(record);
-      const amountMark = derived?.differs
+      const amountMark = derived
         ? TemplateRenderer.html`<span
             class="mst-market-history-price-mark"
             title=${i18n.t(
               'marketHistoryTaxDerived',
-              this.rawValueText(derived.gross),
-              this.rawValueText(derived.net),
+              this.rawValueText(derived.grossLow),
+              this.rawValueText(derived.grossHigh),
               String(Math.round(derived.rate * 100))
             )}
           >*</span>`
