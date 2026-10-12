@@ -36,8 +36,8 @@ const TERMINAL_EVENT_FIELDS = {
 };
 
 export const HISTORY_STATUS_KEYS = [
-  'active', 'partial', 'filled', 'cancelled', 'expired',
-  'partialCancelled', 'partialExpired', 'unobserved'
+  'active', 'partial', 'filled', 'unconfirmed', 'cancelled',
+  'expired', 'partialCancelled', 'partialExpired', 'unobserved'
 ];
 
 export const HISTORY_TYPE_KEYS = [
@@ -72,6 +72,10 @@ const RECORD_FIELDS = {
   taxTaken: 0,
   unclaimedItemCount: 0,
   unclaimedCoinCount: 0,
+  // 待领取（官方未领取值）只是临时中间状态：成交完成（收到「可领取」的条目）即计入
+  // 收入/支出，领取只记确认明细、不再影响金额。这两个字段保留为与官方对账的增量基准，
+  // 不参与展示；`unclaimedCounted` 表示当前基准已并入累计到账（旧数据首次读取时迁移）。
+  unclaimedCounted: true,
   collectedCoinCount: 0,
   collectedItemCount: 0,
   // 到账推算：官方到账/领取数据缺失时按历史税率推算金额，并记录所用税率。
@@ -101,7 +105,7 @@ function toMoney(value) {
 }
 
 // 官方时间戳是 ISO 字符串（纳秒精度，Date.parse 会截断到毫秒），无效值按空处理。
-function parseIsoTimestamp(value) {
+export function parseIsoTimestamp(value) {
   if (value == null || value === '') return null;
   if (typeof value === 'number') return toTimestamp(value);
   const stamp = Date.parse(String(value));
@@ -157,32 +161,101 @@ export function collectedTaxRateOf(record, at = 0) {
   return tier ? tier.rate : TAX_HISTORY[TAX_HISTORY.length - 1].rate;
 }
 
-// 缺少官方到账数据时推算这笔交易的金额（一律记在 collectedCoinCount，不写物品件数）：
-// 出售按成交当时的市场税率扣税（数量 × 单价 ×（1 − 税率）），购买不扣税（数量 × 单价）。
-// 每次归一化都重新推算：公式调整后已存数据会自动纠正；
-// 重新推算前先清掉旧推算值，保证它不会被当成官方数据（`collectedEstimated` 只由这里写）。
+// 官方税费倒算真实成交额（只用于出售侧；购买不扣税，官方税费恒为 0）：`taxTaken` 是官方按
+// **各次成交的实际价**累计的税费，除以成交时的税率就是真实成交额——比「挂牌价 × 数量」准，
+// 因为区间价（浮动价）挂单的挂牌价会随行情移动，与各次成交当时的价格并不相同（实测最多差
+// 66.67%：糖 12 → 20、茶叶 102 → 120）。
+// 成交必然发生在创建之后、结束之前，这两个时间都是官方值或可靠观测：这段时间跨过税率调整日
+// 时税费里混了两个档位，除以单一税率会偏，直接放弃（退回挂牌价公式）；时间缺失时同样放弃。
+function taxDerivedGrossOf(record, rate) {
+  if (!record || record.side !== 'sell' || !(rate > 0)) return null;
+  const tax = toCount(record.taxTaken);
+  if (!tax) return null;
+  const from = toTimestamp(record.createdAt);
+  const to = toTimestamp(record.filledAt) || toTimestamp(record.firstFillAt) || toTimestamp(record.updatedAt);
+  if (!from || !to) return null;
+  if (record.itemHrid === COWBELL_BAG_HRID) return Math.round(tax / rate); // 牛铃袋始终一档
+  const crossing = TAX_HISTORY.some(
+    (entry) => Number.isFinite(entry.before) && from < entry.before && entry.before <= to
+  );
+  if (crossing) return null;
+  return Math.round(tax / rate);
+}
+
+// 应得额（一律按公式算）：出售 = 已成交数量 × 单价 ×（1 − 成交时间税率），购买 = 已成交数量 × 单价
+// （不扣税）。数量或单价缺失（为 0）时返回 null——算不出应得额的记录不推算，避免写出假金额。
+// 出售侧有官方税费时优先用**税费倒算的真实成交额**（见上），区间价挂单因此不会再按移动的
+// 挂牌价低估收入；没有税费证据（购买、旧数据、跨税率档）时退回挂牌价公式。
+// 「已完成订单的金额补齐」与数据修复的「金额偏差过大」共用这一个公式。
+function expectedCollectedOf(record) {
+  const filled = toCount(record?.filledQuantity);
+  const nominal = toMoney(record?.price) * filled;
+  if (!filled || !nominal) return null;
+  const at = record.filledAt || record.firstFillAt || record.createdAt || 0;
+  // 只有出售侧扣市场税；购买侧付多少就是多少。
+  const rate = record.side === 'sell' ? collectedTaxRateOf(record, at) : 0;
+  const derived = taxDerivedGrossOf(record, rate);
+  const gross = derived == null ? nominal : derived;
+  return {expected: Math.max(0, Math.floor(gross * (1 - rate))), rate};
+}
+
+// 对外（界面标注）用：这笔记录能否按官方税费倒算真实成交额，以及倒算值是否与挂牌价口径
+// 不一致（单价随行情移动时才会不一致，「金额」列因此只作参考）。
+export function taxDerivedAmountOf(record) {
+  if (!record || record.side !== 'sell') return null;
+  const filled = toCount(record.filledQuantity);
+  const nominal = toMoney(record.price) * filled;
+  if (!filled || !nominal) return null;
+  const at = record.filledAt || record.firstFillAt || record.createdAt || 0;
+  const rate = collectedTaxRateOf(record, at);
+  const gross = taxDerivedGrossOf(record, rate);
+  if (gross == null) return null;
+  const net = Math.max(0, Math.floor(gross * (1 - rate)));
+  return {
+    gross,
+    net,
+    rate,
+    differs: net !== Math.max(0, Math.floor(nominal * (1 - rate)))
+  };
+}
+
+// 已完成订单的金额补齐（一律记在 collectedCoinCount，不写物品件数）：官方金额（成交时按
+// 可领取值增量累计的部分）不足应得额时——例如快照补齐的订单只带回剩余可领取值、已领取
+// 部分无从得知——按成交当时的税率推算补齐：出售 = 已成交数量 × 单价 ×（1 − 税率），
+// 购买 = 已成交数量 × 单价（不扣税）。
+// - 只对**已终结**的订单（已完成 / 已取消 / 已过期 / 结束未观测）补齐：进行中的订单官方数据
+//   还会继续来，不推算，避免与后续的增量重复；
+// - **只补不足、不覆盖官方值**：官方累计达到或超过应得额时原样保留（成交价受价格带调整或
+//   以更优价成交时，官方到账与按挂牌价的推算值本来就可能有差异）；
+// - 完全没有官方证据的纯推算记录重新按最新公式计算（公式调整后可自动纠正），带官方线索的
+//   记录只补差额（`collectedEstimated` 标记金额含推算成分，悬浮提示里说明）。
 export function estimateCollected(record) {
   if (!record) return record;
-  const base = record.collectedEstimated
-    ? {...record, collectedCoinCount: 0, collectedItemCount: 0, collectedEstimated: false, collectedTaxRate: 0}
-    : record;
-  const filled = toCount(base.filledQuantity);
-  const official =
-    toCount(base.collectedCoinCount) > 0 ||
-    toCount(base.collectedItemCount) > 0 ||
-    toCount(base.unclaimedCoinCount) > 0 ||
-    toCount(base.unclaimedItemCount) > 0 ||
-    (Array.isArray(base.claims) && base.claims.length > 0);
-  if (official) return base;
-  if (!filled) return base;
-  const nominal = toMoney(base.price) * filled;
-  if (!nominal) return base;
-  const at = base.filledAt || base.firstFillAt || base.createdAt || 0;
-  // 只有出售侧扣市场税；购买侧付多少就是多少。
-  const rate = base.side === 'sell' ? collectedTaxRateOf(base, at) : 0;
+  const terminal = TERMINAL_STATUSES.has(record.status) || record.endedUnobserved;
+  if (!terminal) return record;
+  const computed = expectedCollectedOf(record);
+  if (!computed) return record;
+  const {expected, rate} = computed;
+  const hasOfficialEvidence =
+    toCount(record.unclaimedCoinCount) > 0 ||
+    toCount(record.unclaimedItemCount) > 0 ||
+    (Array.isArray(record.claims) && record.claims.length > 0);
+  if (record.collectedEstimated && !hasOfficialEvidence) {
+    // 纯推算记录（金额只来自推算）：按最新公式重算，公式调整后能自动纠正；
+    // 推算只写金额、不写物品件数（旧版曾把购买侧件数记进金额）。
+    return {
+      ...record,
+      collectedCoinCount: expected,
+      collectedItemCount: 0,
+      collectedEstimated: expected > 0,
+      collectedTaxRate: expected > 0 ? rate : 0
+    };
+  }
+  // 带官方线索（或已有官方入账）：只补不足，不覆盖官方值。
+  if (toCount(record.collectedCoinCount) >= expected) return record;
   return {
-    ...base,
-    collectedCoinCount: Math.max(0, Math.floor(nominal * (1 - rate))),
+    ...record,
+    collectedCoinCount: expected,
     collectedEstimated: true,
     collectedTaxRate: rate
   };
@@ -219,7 +292,9 @@ export function normalizeRecord(raw) {
     toCount(source.filledQuantity),
     record.orderQuantity || toCount(source.filledQuantity)
   );
-  record.status = TERMINAL_STATUSES.has(source.status) ? source.status : LISTING_STATUSES.ACTIVE;
+  // 状态统一解析：兼容官方 hrid（`/market_listing_status/*`）与内部短值——直接带 hrid 的
+  // 记录（导入的数据、手工构造的测试数据）不再被当成「有效」。
+  record.status = normalizeListingStatus(source.status);
   record.createdAt = toTimestamp(source.createdAt) || 0;
   record.updatedAt = toTimestamp(source.updatedAt) || record.createdAt;
   record.firstFillAt = toTimestamp(source.firstFillAt);
@@ -231,10 +306,17 @@ export function normalizeRecord(raw) {
   record.claimedAt = toTimestamp(source.claimedAt);
   record.expiresAt = toTimestamp(source.expiresAt);
   record.taxTaken = toCount(source.taxTaken);
-  record.unclaimedItemCount = toCount(source.unclaimedItemCount);
-  record.unclaimedCoinCount = toCount(source.unclaimedCoinCount);
-  record.collectedCoinCount = toCount(source.collectedCoinCount);
-  record.collectedItemCount = toCount(source.collectedItemCount);
+  // 待领取口径（v2.20.0）：成交完成即计入收入/支出，待领取只作与官方对账的增量基准。
+  // 旧数据（缺 unclaimedCounted 标记，v2.19.0 及更早）首次读取时把「官方仍未领取」的部分
+  // 并入累计到账——那些订单在成交时就已完成；迁移后标记随记录持久化，重复读取不重复累计。
+  const pendingItemCount = toCount(source.unclaimedItemCount);
+  const pendingCoinCount = toCount(source.unclaimedCoinCount);
+  const pendingAlreadyCounted = source.unclaimedCounted === true;
+  record.unclaimedItemCount = pendingItemCount;
+  record.unclaimedCoinCount = pendingCoinCount;
+  record.unclaimedCounted = true;
+  record.collectedCoinCount = toCount(source.collectedCoinCount) + (pendingAlreadyCounted ? 0 : pendingCoinCount);
+  record.collectedItemCount = toCount(source.collectedItemCount) + (pendingAlreadyCounted ? 0 : pendingItemCount);
   record.collectedEstimated = Boolean(source.collectedEstimated);
   record.collectedTaxRate = Number(source.collectedTaxRate) > 0 ? Number(source.collectedTaxRate) : 0;
   record.claims = (Array.isArray(source.claims) ? source.claims : [])
@@ -468,7 +550,15 @@ export function listingToFields(listing) {
 }
 
 // 状态推进：在既有记录上应用一次官方条目观测，返回新记录（不改原对象）。
-export function applyListingObservation(record, fields, now, {origin = 'update', inferredTime = false} = {}) {
+// environment / characterId：当前会话的环境与角色，只在新建记录时使用——登录快照会补齐
+// 「订单创建时脚本没收到消息、只在快照里出现」的订单（可能一个都没成交，也可能已全部成交
+// 待领取），这些记录必须落在正确环境里，不能写死 live（否则测试服记录会串到正式服桶）。
+export function applyListingObservation(
+  record,
+  fields,
+  now,
+  {origin = 'update', inferredTime = false, environment = '', characterId = ''} = {}
+) {
   const previous = record ? normalizeRecord(record) : null;
   const base =
     previous ||
@@ -476,8 +566,8 @@ export function applyListingObservation(record, fields, now, {origin = 'update',
       key: buildListingKey(fields.listingId),
       listingId: fields.listingId,
       itemHrid: fields.itemHrid,
-      environment: 'live',
-      characterId: '',
+      environment: environment === 'test' ? 'test' : 'live',
+      characterId: String(characterId || ''),
       origin,
       inferredTime,
       createdAt: now,
@@ -516,7 +606,8 @@ export function applyListingObservation(record, fields, now, {origin = 'update',
   if (fields.status === LISTING_STATUSES.FILLED) next.filledAt = pickEarlier(base.filledAt, now);
   if (fields.status === LISTING_STATUSES.CANCELLED) next.cancelledAt = pickEarlier(base.cancelledAt, now);
   if (fields.status === LISTING_STATUSES.EXPIRED) next.expiredAt = pickEarlier(base.expiredAt, now);
-  if (TERMINAL_STATUSES.has(fields.status)) next.endedUnobserved = false;
+  // 观测到条目本身（含仍然是有效状态）就说明这单还在，解除此前按快照推断的「结束（原因未观测）」。
+  next.endedUnobserved = false;
   // 实际到账：观测到待领取数量减少（领取动作）时按减少量累计；实时链路不按税率估算。
   // 官方待领取数据首次出现时作废此前的推算值（推算值只服务于导入的历史数据）。
   const officialPending = toCount(fields.unclaimedCoinCount) > 0 || toCount(fields.unclaimedItemCount) > 0;
@@ -529,18 +620,39 @@ export function applyListingObservation(record, fields, now, {origin = 'update',
   }
   const baseCollectedCoin = discardingEstimate ? 0 : toCount(base.collectedCoinCount);
   const baseCollectedItem = discardingEstimate ? 0 : toCount(base.collectedItemCount);
-  const coinDrop = toCount(base.unclaimedCoinCount) - fields.unclaimedCoinCount;
-  const itemDrop = toCount(base.unclaimedItemCount) - fields.unclaimedItemCount;
-  if (coinDrop > 0 || itemDrop > 0) {
-    next.collectedCoinCount = baseCollectedCoin + Math.max(0, coinDrop);
-    next.collectedItemCount = baseCollectedItem + Math.max(0, itemDrop);
-    next.claims = mergeClaims(base.claims, [
-      {at: now, coinCount: Math.max(0, coinDrop), itemCount: Math.max(0, itemDrop)}
+  // 推算值作废时对账基准一并归零：官方未领取值要重新入账，否则「基准已经等于官方值」时
+  // 增量算出来是 0，官方金额会被丢掉（终态记录有「金额补齐」兜底，进行中的记录不会补）。
+  const baseUnclaimedCoin = discardingEstimate ? 0 : toCount(base.unclaimedCoinCount);
+  const baseUnclaimedItem = discardingEstimate ? 0 : toCount(base.unclaimedItemCount);
+  // 领取明细是真实发生过的记录，推算作废只归零累计金额，不清明细。
+  const baseClaims = Array.isArray(base.claims) ? base.claims.slice() : [];
+  const baseClaimedAt = toTimestamp(base.claimedAt);
+  // 待领取口径（v2.20.0）：官方未领取值的**增加**是新成交（收到可领取的条目即视为订单
+  // 完成），立即并入累计到账；**减少**只是玩家把已计入的钱取到手，不改金额，只补一条
+  // 领取确认（时间与本次取走的金额）。待领取字段本身保留为增量基准，不参与展示。
+  const coinGain = fields.unclaimedCoinCount - baseUnclaimedCoin;
+  const itemGain = fields.unclaimedItemCount - baseUnclaimedItem;
+  // 正向增量只在「确实有新成交」时入账：官方未领取值是一条领取后归零的临时值，重复投递、
+  // 乱序到达或跨标签页旧口径合并都可能让同一个旧值再次出现，照着差额入账就会把同一笔成交
+  // 记两次（实测样本：同一笔成交被累计两次，金额正好是应得额的两倍）。判定依据是成交进度
+  // ——有新成交时进度必然增加；还没有任何入账（首次拿到官方凭据、推算金额刚被作废、直购
+  // 这类「请求即完成」的订单）也不受限。
+  const accrualOpen = nextFilled > previousFilled || !(baseCollectedCoin > 0 || baseCollectedItem > 0);
+  next.collectedCoinCount = baseCollectedCoin + (accrualOpen ? Math.max(0, coinGain) : 0);
+  next.collectedItemCount = baseCollectedItem + (accrualOpen ? Math.max(0, itemGain) : 0);
+  if (coinGain < 0 || itemGain < 0) {
+    next.claims = mergeClaims(baseClaims, [
+      {at: now, coinCount: Math.max(0, -coinGain), itemCount: Math.max(0, -itemGain)}
     ]);
     next.claimedAt = now;
+  } else {
+    next.claims = baseClaims;
+    next.claimedAt = baseClaimedAt;
   }
-  next.unclaimedCoinCount = fields.unclaimedCoinCount;
-  next.unclaimedItemCount = fields.unclaimedItemCount;
+  // 被拦下的重复值同时不写回基准：否则下一次真实成交会拿被污染的旧值做差，金额少记或错记。
+  next.unclaimedCoinCount = coinGain > 0 && !accrualOpen ? baseUnclaimedCoin : fields.unclaimedCoinCount;
+  next.unclaimedItemCount = itemGain > 0 && !accrualOpen ? baseUnclaimedItem : fields.unclaimedItemCount;
+  next.unclaimedCounted = true;
   if (previous) next.origin = previous.origin;
   return normalizeRecord(next);
 }
@@ -556,7 +668,11 @@ export function applyListingBatch(records, listings, now, options = {}) {
     const existing = records.find((item) => item.key === key) || null;
     const next = applyListingObservation(existing, fields, now, options);
     if (!next) return;
-    upsertRecord(records, next);
+    // 同一数据流上的连续观测：applyListingObservation 已基于既有记录完整推进（进度取大、
+    // 到账累计、终态时间取早都已在内部完成），直接替换即可。若再走一次字段级合并，
+    // 会把「撤销按请求补记」的结果抹掉——合并规则里累计到账取大、领取明细只增不减。
+    if (existing) records[records.indexOf(existing)] = next;
+    else records.push(next);
     if (existing) updated.push(next.key);
     else created.push(next.key);
   });
@@ -566,24 +682,32 @@ export function applyListingBatch(records, listings, now, options = {}) {
 // 快照对账：快照里没有的本机记录按规则收尾。
 // - 有效/部分成交记录消失且期间没有观测到终态 → 结束（原因未观测）；
 // - 已成交/已取消/已过期但仍带未领取数量 → 视为已被领取，补记实际到账。
-export function reconcileWithSnapshot(records, listings, now) {
+// 只有官方确实下发 myMarketListings（数组，可为空）时才对账：字段缺失时不能把
+// 「没有快照」当成「所有条目都不在了」，否则会把本机记录误标为已领取/未观测结束。
+// snapshotAt：快照自身的取数时间（官方 currentTimestamp，缺省按处理时刻）。快照之后才观测到
+// 的记录不能拿它判断——那种记录不在快照里只是因为快照没赶上（脚本晚于登录事件初始化、
+// 用 DataHub 兜底补对账时处理时刻晚于快照本身），当成「条目已不在」会把还在进行的订单
+// 误标结束、把刚成交的钱误记成已领取。
+export function reconcileWithSnapshot(records, listings, now, {snapshotAt = now} = {}) {
+  if (!Array.isArray(listings)) return {unobserved: [], settled: []};
   const snapshotIds = new Set(
     listings.map((listing) => (listing && listing.id != null ? String(listing.id) : '')).filter(Boolean)
   );
+  const stamp = toTimestamp(snapshotAt) || toTimestamp(now) || 0;
   const unobserved = [];
   const settled = [];
   records.forEach((record) => {
     if (record.listingId == null || snapshotIds.has(String(record.listingId))) return;
+    if (stamp && toTimestamp(record.updatedAt) > stamp) return;
     const pendingCoin = toCount(record.unclaimedCoinCount);
     const pendingItem = toCount(record.unclaimedItemCount);
     if (pendingCoin || pendingItem) {
-      record.collectedCoinCount = toCount(record.collectedCoinCount) + pendingCoin;
-      record.collectedItemCount = toCount(record.collectedItemCount) + pendingItem;
+      // 条目已从快照消失：这部分已被领取（离线期间或在其他设备上）。金额在成交时
+      // 就已计入到账，这里只补一条领取确认（时间与金额），不重复累计；待领取基准
+      // 保留原值，避免之后又收到该条目时把旧值当成新成交。
       record.claims = mergeClaims(record.claims, [
         {at: now, coinCount: pendingCoin, itemCount: pendingItem}
       ]);
-      record.unclaimedCoinCount = 0;
-      record.unclaimedItemCount = 0;
       record.claimedAt = record.claimedAt || now;
       record.updatedAt = now;
       settled.push(record.key);
@@ -706,6 +830,8 @@ export function applyOutgoingMessage(records, message, now, context = {}) {
     const id = message.claimMarketListingData?.marketListingId;
     const record = records.find((item) => item.listingId != null && String(item.listingId) === String(id));
     if (!record) return {changed: false};
+    // 金额已在每次成交（收到可领取条目）时计入，这里只记领取请求时间；
+    // 领取确认（时间与金额明细）由随后的官方归零观测或登录快照对账补上。
     record.claimRequestedAt = now;
     record.updatedAt = now;
     return {changed: true};
@@ -725,11 +851,16 @@ export function applyOutgoingMessage(records, message, now, context = {}) {
 }
 
 // display-helpers
-export function isTerminal(record) {
-  return TERMINAL_STATUSES.has(record.status);
+// 直购/直售的兜底记录：只按出站请求记下、官方条目始终没有出现（一旦按内容关联到官方条目，
+// `listingId` 会被写成官方 id，就不再是未确认）。官方确实存在不下发条目的情况（§4.5），
+// 所以这类记录既可能是真实成交、也可能是失败请求（服务端只回了错误提示），无法自行判断，
+// 界面按「未确认」展示、可按状态筛出来人工处理。
+export function isUnconfirmedInstant(record) {
+  return Boolean(record) && record.kind === 'instant' && record.listingId == null;
 }
 
 export function getDisplayStatus(record) {
+  if (isUnconfirmedInstant(record)) return 'unconfirmed';
   if (record.endedUnobserved) return 'unobserved';
   if (record.status === LISTING_STATUSES.ACTIVE) {
     return toCount(record.filledQuantity) > 0 ? 'partial' : 'active';
@@ -751,10 +882,6 @@ export function getRecordAmount(record) {
   return toMoney(record.price) * toCount(record.filledQuantity);
 }
 
-export function getPendingCount(record) {
-  return record.side === 'sell' ? toCount(record.unclaimedCoinCount) : toCount(record.unclaimedItemCount);
-}
-
 // 「收入/支出」列取值：出售是收入（税后金币，官方数据优先、缺失时按历史税率推算），
 // 购买是支出（付了多少：数量 × 单价，不扣税）。
 export function getCollectedCount(record) {
@@ -767,6 +894,33 @@ export function getSortTimestamp(record, field) {
     return record.filledAt || record.cancelledAt || record.expiredAt || record.updatedAt || record.createdAt;
   if (field === 'updatedAt') return record.updatedAt || record.createdAt;
   return record.createdAt;
+}
+
+// 物品挂牌页速览（挂牌按钮上方的最近两次成交）：取该物品该强化等级下、出售 / 收购各自**最近两条
+// 成交价**（按创建时间从新到旧，第一次 = 最近的一条、第二次 = 紧挨着的一条）。两条过滤——
+// ① 已成交数量为 0 的不算（取消 / 进行中的空单不是成交，避免把上一次真实成交顶掉）；
+// ② **取消的订单不算**（用户口径：取消的单不参与，哪怕取消前成交过一部分）。
+// 返回 `{sell, buy}` 两个数组（各自按时间从新到旧，没有记录时为空数组）。
+export function findRecentTradedRecords(records, itemHrid, enhancementLevel, limit = 2) {
+  const level = Math.max(0, toCount(enhancementLevel));
+  const count = Math.max(1, toCount(limit) || 2);
+  const recent = {sell: [], buy: []};
+  (Array.isArray(records) ? records : []).forEach((record) => {
+    if (!record || record.itemHrid !== itemHrid) return;
+    if (record.side !== 'sell' && record.side !== 'buy') return;
+    if (toCount(record.enhancementLevel) !== level) return;
+    if (!toCount(record.filledQuantity)) return;
+    if (record.status === LISTING_STATUSES.CANCELLED) return;
+    recent[record.side].push(record);
+  });
+  [
+    'sell', 'buy'
+  ].forEach((side) => {
+    recent[side] = recent[side]
+      .sort((a, b) => (toTimestamp(b.createdAt) || 0) - (toTimestamp(a.createdAt) || 0))
+      .slice(0, count);
+  });
+  return recent;
 }
 
 // query（筛选 / 排序 / 分页）
@@ -864,31 +1018,23 @@ export function paginate(records, page, pageSize) {
 export function summarize(records) {
   const summary = {
     count: records.length,
-    orderQuantity: 0,
     filledQuantity: 0,
     nominalSell: 0,
     nominalBuy: 0,
     collectedCoin: 0,
-    pendingCoin: 0,
-    collectedItem: 0,
-    pendingItem: 0,
     net: 0,
     countsByStatus: {},
     countsByType: {}
   };
   records.forEach((record) => {
-    summary.orderQuantity += toCount(record.orderQuantity);
     summary.filledQuantity += toCount(record.filledQuantity);
     const amount = getRecordAmount(record);
     if (record.side === 'sell') {
       summary.nominalSell += amount;
       summary.collectedCoin += toCount(record.collectedCoinCount);
-      summary.pendingCoin += toCount(record.unclaimedCoinCount);
     } else {
       // 购买不扣税，支出金额就是名义金额（单价 × 已成交数量）。
       summary.nominalBuy += amount;
-      summary.collectedItem += toCount(record.collectedItemCount);
-      summary.pendingItem += toCount(record.unclaimedItemCount);
     }
     const status = getDisplayStatus(record);
     summary.countsByStatus[status] = (summary.countsByStatus[status] || 0) + 1;
@@ -900,8 +1046,8 @@ export function summarize(records) {
   return summary;
 }
 
-// 分组合计的公共累加器：按 keyOf 分组，逐条累计条数、成交数量、金额与出售/购买两侧口径。
-// 出售侧金额记 sellAmount、收入记 income（collectedCoin 为同值旧名），购买侧金额记 expense/buyAmount。
+// 分组合计的公共累加器：按 keyOf 分组，逐条累计条数、成交数量与出售/购买两侧口径。
+// 出售侧金额记 sellAmount、收入记 income；购买侧金额记 buyAmount、支出记 expense。
 function accumulateGroups(records, keyOf, createGroup) {
   const groups = new Map();
   records.forEach((record) => {
@@ -914,15 +1060,10 @@ function accumulateGroups(records, keyOf, createGroup) {
     group.count += 1;
     group.filledQuantity += filled;
     group.amount += amount;
-    group.nominal += amount;
-    group.pendingCoin += toCount(record.unclaimedCoinCount);
-    group.pendingItem += toCount(record.unclaimedItemCount);
-    group.collectedItem += toCount(record.collectedItemCount);
     if (record.side === 'sell') {
       group.sellCount += 1;
       group.sellAmount += amount;
       group.sellFilledQuantity += filled;
-      group.collectedCoin += toCount(record.collectedCoinCount);
       group.income += toCount(record.collectedCoinCount);
     } else {
       group.buyCount += 1;
@@ -939,10 +1080,6 @@ function createGroupAccumulator() {
     count: 0,
     filledQuantity: 0,
     amount: 0,
-    nominal: 0,
-    collectedCoin: 0,
-    pendingCoin: 0,
-    collectedItem: 0,
     income: 0,
     expense: 0,
     sellAmount: 0,
@@ -1093,6 +1230,344 @@ export function buildStatsTimeSeries(records, {bucket = 'auto'} = {}) {
     entry.net = entry.income - entry.expense;
   });
   return {bucket: effective, requestedBucket: bucket, expectedBucket, from, to, buckets};
+}
+
+// repair（「管理」页签的「数据修复」）
+// 扫描并修复结构上不一致的记录；全部是纯函数——不改动入参数组与记录对象，只返回修复后的
+// 新数组与各类型的改动条数。扫描与修复共用同一套判定函数，保证界面显示的条数就是修复时
+// 实际改动的条数；每类修复都是幂等的（修完再扫为 0）。
+export const REPAIR_TYPE_KEYS = [
+  'duplicateListings', 'statusQuantity', 'unobservedEnded', 'collectedFields', 'amountRecalc',
+  'settleEvidence', 'unknownKey'
+];
+// 「金额偏差过大」的判定阈值：与应得额的差超过「一半」或 1000 金币（取较大者）才算明显错误。
+// 阈值以内的差异保留——成交价受价格带调整、以更优价成交等影响，官方值与按挂牌价的公式值
+// 本来就可能不一致。
+export const REPAIR_AMOUNT_DEVIATION_RATIO = 0.5;
+export const REPAIR_AMOUNT_DEVIATION_SLACK = 1000;
+// 本机记录的键一定是官方 id 键或直购兜底键，其余键（早期测试、手工数据）无法与官方订单对应。
+const KNOWN_RECORD_KEY_PREFIXES = [
+  'listing:', 'instant:'
+];
+
+export function createRepairReport() {
+  const report = {};
+  REPAIR_TYPE_KEYS.forEach((type) => {
+    report[type] = 0;
+  });
+  return report;
+}
+
+function sumClaims(record, field) {
+  return (Array.isArray(record.claims) ? record.claims : []).reduce((sum, claim) => sum + toCount(claim[field]), 0);
+}
+
+function isKnownRecordKey(record) {
+  const key = String(record?.key || '');
+  return KNOWN_RECORD_KEY_PREFIXES.some((prefix) => key.startsWith(prefix));
+}
+
+// 同一订单 id 在一个角色桶里只应有一条记录：跨设备导入（内容去重窗口之外）与早期版本都可能
+// 留下重复。合并规则与跨设备合并一致：终态优先、进度与到账取大、时间取早、领取明细合并。
+function groupDuplicateListings(records) {
+  const groups = new Map();
+  records.forEach((record) => {
+    if (record.listingId == null) return;
+    const id = String(record.listingId);
+    const group = groups.get(id);
+    if (group) group.push(record);
+    else
+      groups.set(id, [
+        record
+      ]);
+  });
+  return groups;
+}
+
+function mergeDuplicateListingGroup(group) {
+  const listingId = String(group[0].listingId);
+  let merged = group[0];
+  group.slice(1).forEach((record) => {
+    merged = mergeRecords(merged, record);
+  });
+  // 主键统一用官方 id 键（实时链路关联直购记录时也是这么建的）；直购记录保留直购语义。
+  merged = {
+    ...merged,
+    key: buildListingKey(listingId),
+    listingId,
+    kind: group.some((record) => record.kind === 'instant') ? 'instant' : merged.kind
+  };
+  return normalizeRecord(merged) || merged;
+}
+
+// 官方状态是权威：已完成即全部成交（数量按订单数量补齐）。只处理真正的矛盾——
+// 已完成但成交数量不足；进度已满却仍是进行中（按已完成收尾）。
+function repairStatusQuantity(record) {
+  const orderQuantity = toCount(record.orderQuantity);
+  if (!orderQuantity) return null;
+  const filledQuantity = toCount(record.filledQuantity);
+  if (record.status === LISTING_STATUSES.FILLED) {
+    if (filledQuantity === orderQuantity) return null;
+    const at = record.filledAt || record.firstFillAt || record.updatedAt || record.createdAt || 0;
+    return normalizeRecord({
+      ...record,
+      filledQuantity: orderQuantity,
+      firstFillAt: record.firstFillAt || at || null,
+      filledAt: record.filledAt || at || null
+    });
+  }
+  if (record.status === LISTING_STATUSES.ACTIVE && filledQuantity >= orderQuantity) {
+    const at = record.firstFillAt || record.updatedAt || record.createdAt || 0;
+    return normalizeRecord({
+      ...record,
+      status: LISTING_STATUSES.FILLED,
+      filledAt: record.filledAt || at || null
+    });
+  }
+  return null;
+}
+
+// 出售只会有金币到账、购买只会有物品到账：方向不符的累计值是旧版本写法或合并留下的残值，
+// 清除后归一化会按当前口径重新整理。另有几种字段级矛盾一起处理：
+// - 出售侧的推算金额必须带税率（悬浮提示按税率说明推算口径），缺失或与成交时间档位不符时重算；
+// - 出售侧被官方凭据完全解释的金额（累计到账 = 结清明细 + 剩余未领取，且不低于应得额）不该
+//   还挂着推算标记，否则悬浮会按税率说明推算口径；
+// - 购买侧不扣税，税率字段只能是 0。
+// 会写金额字段的分支（出售的推算标记 / 购买的金币残值）在「金额偏差」命中的记录上让位给
+// 金额重算（两类互斥，避免同一条记录两边都改、报告与实际改动条数对不上）。
+function repairCollectedFields(record) {
+  const next = {...record};
+  const recalculating = largeAmountDeviationOf(record);
+  let changed = false;
+  if (record.side === 'sell') {
+    if (toCount(record.collectedItemCount) > 0) {
+      next.collectedItemCount = 0;
+      changed = true;
+    }
+    if (record.collectedEstimated && !recalculating) {
+      const computed = expectedCollectedOf(record);
+      const explanations = sumClaims(record, 'coinCount') + toCount(record.unclaimedCoinCount);
+      const explainedByOfficial =
+        toCount(record.collectedCoinCount) > 0 &&
+        explanations === toCount(record.collectedCoinCount) &&
+        (!computed || toCount(record.collectedCoinCount) >= computed.expected);
+      if (explainedByOfficial) {
+        next.collectedEstimated = false;
+        next.collectedTaxRate = 0;
+        changed = true;
+      } else if (
+        computed &&
+        toCount(record.collectedCoinCount) > 0 &&
+        Number(record.collectedTaxRate) !== computed.rate
+      ) {
+        next.collectedTaxRate = computed.rate;
+        changed = true;
+      }
+    }
+  } else {
+    if (Number(record.collectedTaxRate) > 0) {
+      next.collectedTaxRate = 0;
+      changed = true;
+    }
+    if (!record.collectedEstimated && toCount(record.collectedCoinCount) > 0 && !recalculating) {
+      next.collectedCoinCount = 0;
+      next.collectedTaxRate = 0;
+      changed = true;
+    }
+  }
+  if (!changed) return null;
+  return normalizeRecord(next);
+}
+
+// 进行中但已不在当前挂单列表里：官方快照里没有这单，说明它早就结束（卖完被领走、取消或过期），
+// 只是本机没收到终态消息——按与登录快照对账一致的口径标记「结束（原因未观测）」，时间标推断，
+// 金额随后按 §7.7 的规则补齐。判定只用「快照之后没有再观测过」的记录：快照之后观测过的记录
+// （含快照之后新建的）快照给不出结论，留给下次登录的快照对账；进度已满的记录交给
+// 「状态与成交进度」按已完成收尾，这里不参与。
+function repairUnobservedEnded(record, {now = 0, snapshot = null} = {}) {
+  if (!snapshot || !snapshot.ids) return null;
+  if (record.endedUnobserved || record.status !== LISTING_STATUSES.ACTIVE || record.listingId == null) return null;
+  if (snapshot.ids.has(String(record.listingId))) return null;
+  if (!(toTimestamp(record.updatedAt) <= toTimestamp(snapshot.at))) return null;
+  const orderQuantity = toCount(record.orderQuantity);
+  if (orderQuantity && toCount(record.filledQuantity) >= orderQuantity) return null;
+  return normalizeRecord({
+    ...record,
+    endedUnobserved: true,
+    inferredTime: true,
+    updatedAt: now
+  });
+}
+
+// 金额偏差：已终结的订单里，累计到账与应得额不一致的按公式重算
+// （出售 = 数量 × 单价 ×（1 − 成交时间税率），购买 = 数量 × 单价）——旧版本公式、跨版本合并
+// 或手工数据留下的错误金额（实测样本：同一笔成交被累计两次时金额正好是应得额的整数倍）。
+// - **购买侧**：口径就是「数量 × 单价」，只要有出入就是错的，全部重算；
+// - **出售侧**：官方到账可能受价格带调整、以更优价成交影响，只处理「差超过一半或 1000 金币」
+//   的明显错误，阈值以内的差异保留；
+// - 只处理算得出应得额的记录（数量与单价都有值），算不出的不猜测。
+function largeAmountDeviationOf(record) {
+  const terminal = TERMINAL_STATUSES.has(record.status) || record.endedUnobserved;
+  if (!terminal) return null;
+  const computed = expectedCollectedOf(record);
+  if (!computed) return null;
+  const collected = toCount(record.collectedCoinCount);
+  const slack =
+    record.side === 'sell'
+      ? Math.max(REPAIR_AMOUNT_DEVIATION_SLACK, Math.floor(computed.expected * REPAIR_AMOUNT_DEVIATION_RATIO))
+      : 0;
+  if (Math.abs(collected - computed.expected) <= slack) return null;
+  return computed;
+}
+
+function repairAmountRecalc(record) {
+  const computed = largeAmountDeviationOf(record);
+  if (!computed) return null;
+  return normalizeRecord({
+    ...record,
+    collectedCoinCount: computed.expected,
+    collectedEstimated: true,
+    collectedTaxRate: computed.rate
+  });
+}
+
+// 账对不上：累计到账既没有推算标记，又超过「结清明细之和 + 剩余未领取」——典型是领取明细
+// 丢失或旧版本直接写下的金额。补一条结清明细把账对上，金额本身不动。领取明细有 20 条上限，
+// 已经记满的记录不参与，避免把正常的截断当成缺凭据；出售里偏差过大的记录交给「金额偏差」
+// 重算金额（两边都会动金币累计，互斥），购买侧的金额与物品是两条独立账，不互斥。
+function repairSettleEvidence(record) {
+  if (record.collectedEstimated) return null;
+  if ((Array.isArray(record.claims) ? record.claims.length : 0) >= CLAIMS_LIMIT) return null;
+  if (record.side === 'sell' && largeAmountDeviationOf(record)) return null;
+  const diffCoin =
+    record.side === 'sell'
+      ? toCount(record.collectedCoinCount) - sumClaims(record, 'coinCount') - toCount(record.unclaimedCoinCount)
+      : 0;
+  const diffItem =
+    record.side === 'buy'
+      ? toCount(record.collectedItemCount) - sumClaims(record, 'itemCount') - toCount(record.unclaimedItemCount)
+      : 0;
+  if (diffCoin <= 0 && diffItem <= 0) return null;
+  const at = record.claimedAt || record.filledAt || record.firstFillAt || record.updatedAt || record.createdAt || 0;
+  return normalizeRecord({
+    ...record,
+    claims: mergeClaims(record.claims, [
+      {at, coinCount: Math.max(0, diffCoin), itemCount: Math.max(0, diffItem)}
+    ]),
+    claimedAt: record.claimedAt || at || null
+  });
+}
+
+// 扫描一批记录的可修复条数：按类型独立统计（与只勾选该类型时的实际改动条数一致）。
+export function scanRepairIssues(records, {snapshot = null} = {}) {
+  const list = (Array.isArray(records) ? records : []).filter(Boolean);
+  const report = createRepairReport();
+  list.forEach((record) => {
+    if (!isKnownRecordKey(record)) report.unknownKey += 1;
+    if (repairStatusQuantity(record)) report.statusQuantity += 1;
+    if (repairUnobservedEnded(record, {now: 0, snapshot})) report.unobservedEnded += 1;
+    if (repairCollectedFields(record)) report.collectedFields += 1;
+    if (repairAmountRecalc(record)) report.amountRecalc += 1;
+    if (repairSettleEvidence(record)) report.settleEvidence += 1;
+  });
+  groupDuplicateListings(list).forEach((group) => {
+    if (group.length > 1) report.duplicateListings += 1;
+  });
+  return report;
+}
+
+// 扫描整个存储（全部角色与环境的分桶），只读，供「管理」页签显示每种问题的条数。
+// snapshots：`{ [分桶键]: {at, ids} }`——「进行中但已不在挂单列表」只有拿到过登录快照的
+// 角色桶才能判断，没有快照的桶这一类恒为 0。
+export function scanStoreRepairs(store, {snapshots} = {}) {
+  const report = createRepairReport();
+  Object.entries(store?.buckets || {}).forEach(
+    ([
+      bucket, records
+    ]) => {
+      const part = scanRepairIssues(records, {snapshot: snapshots?.[bucket] || null});
+      REPAIR_TYPE_KEYS.forEach((type) => {
+        report[type] += part[type];
+      });
+    }
+  );
+  return report;
+}
+
+// 按选中的类型修复一批记录（一个角色桶的内容）。顺序：先删无法识别的键、再合并重复订单，
+// 然后按状态 → 快照判断 → 字段 → 金额的顺序修正——后面的判定要看到前面修正后的状态
+// （例如快照里没有的「进度已满」记录先按已完成收尾，就不再算作「结束原因未观测」）。
+export function repairRecords(records, types, {now = Date.now(), snapshot = null} = {}) {
+  const selected = new Set((Array.isArray(types) ? types : []).filter((type) => REPAIR_TYPE_KEYS.includes(type)));
+  const report = createRepairReport();
+  let list = (Array.isArray(records) ? records : []).filter(Boolean);
+  if (!selected.size) return {records: list.slice(), report};
+  if (selected.has('unknownKey')) {
+    list = list.filter((record) => {
+      if (isKnownRecordKey(record)) return true;
+      report.unknownKey += 1;
+      return false;
+    });
+  }
+  if (selected.has('duplicateListings')) {
+    const groups = groupDuplicateListings(list);
+    const mergedIds = new Set();
+    const next = [];
+    list.forEach((record) => {
+      const id = record.listingId == null ? '' : String(record.listingId);
+      const group = id ? groups.get(id) : null;
+      if (!group || group.length < 2) {
+        next.push(record);
+        return;
+      }
+      if (mergedIds.has(id)) return;
+      mergedIds.add(id);
+      report.duplicateListings += 1;
+      next.push(mergeDuplicateListingGroup(group));
+    });
+    list = next;
+  }
+  list = list.map((record) => {
+    let next = record;
+    if (selected.has('statusQuantity')) {
+      const fixed = repairStatusQuantity(next);
+      if (fixed) {
+        next = fixed;
+        report.statusQuantity += 1;
+      }
+    }
+    if (selected.has('unobservedEnded')) {
+      const fixed = repairUnobservedEnded(next, {now, snapshot});
+      if (fixed) {
+        next = fixed;
+        report.unobservedEnded += 1;
+      }
+    }
+    if (selected.has('collectedFields')) {
+      const fixed = repairCollectedFields(next);
+      if (fixed) {
+        next = fixed;
+        report.collectedFields += 1;
+      }
+    }
+    if (selected.has('amountRecalc')) {
+      const fixed = repairAmountRecalc(next);
+      if (fixed) {
+        next = fixed;
+        report.amountRecalc += 1;
+      }
+    }
+    if (selected.has('settleEvidence')) {
+      const fixed = repairSettleEvidence(next);
+      if (fixed) {
+        next = fixed;
+        report.settleEvidence += 1;
+      }
+    }
+    // updatedAt 既是「这条记录最近被脚本改动过」的标记，也是列表缓存的签名来源。
+    return next === record ? record : {...next, updatedAt: now};
+  });
+  return {records: list, report};
 }
 
 // import / export

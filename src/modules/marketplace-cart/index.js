@@ -1,32 +1,9 @@
+import {readMarketplacePanelState} from '../../common/data.js';
 import {StyleService} from '../../common/runtime.js';
 import MST_MARKETPLACE_CART_CSS from './styles.css';
 
 // 市场加购固定数量：把“市场当前物品”加入购物车 1 个。
 const MARKETPLACE_CART_QUANTITY = 1;
-
-// marketplace-cart-state
-// 从锚点 DOM 的 React fiber 链向上找 MarketplacePanel 类组件实例并返回其 state；
-// 游戏源码（MarketplacePanel 组件）该 state 同时含 marketListingsView/itemHrid/enhancementLevel，
-// 订单簿视图下 enhancementLevel 就是当前查看的强化等级，可增强物品据此保留等级。
-export function readMarketplacePanelState(fiber) {
-  let current = fiber;
-  while (current) {
-    const instance = current.stateNode;
-    const state = instance?.state;
-    if (
-      state &&
-      typeof state === 'object' &&
-      'marketListingsView' in state &&
-      'itemHrid' in state &&
-      'enhancementLevel' in state &&
-      typeof instance.handleRefresh === 'function'
-    ) {
-      return state;
-    }
-    current = current.return;
-  }
-  return null;
-}
 
 // marketplace-cart-feature
 export class MarketplaceCartFeature {

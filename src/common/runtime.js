@@ -36,6 +36,11 @@ export function createGameUiAdapter() {
       labyrinthEntryScreen: '[class*="LabyrinthPanel_entryScreen__"]',
       labyrinthButtonsContainer: '[class*="LabyrinthPanel_buttonsContainer__"]',
       marketplaceNavButtons: '[class*="MarketplacePanel_marketNavButtonContainer__"]',
+      // 物品挂牌页（订单簿视图）的订单簿容器：作为「当前是订单簿视图」的判据（物品摘要视图没有它）。
+      marketOrderBooks: '[class*="MarketplacePanel_orderBooksContainer__"]',
+      // 挂牌按钮行（「+ 新出售挂牌 / + 新购买挂牌」，display: flex + space-between）：
+      // 模块把这一行设为相对定位锚点，两侧的最近成交提示条相对它绝对定位。
+      marketNewListingButtons: '[class*="MarketplacePanel_newListingButtonsContainer__"]',
       // 市场主标签栏（「商品列表 / 我的挂牌」所在行，display: flex，与标签同排）。
       marketplaceTabs: '[class*="MarketplacePanel_tabsComponentContainer__"]',
       // 主标签按钮所在的 MUI flex 行；优先匹配用户实测的 MarketplacePanel 直接子级，
@@ -506,6 +511,44 @@ export function createRuntimeUtils(ctx, {SpriteService, DomObserverService}) {
       return formatted + (unit?.suffix || '');
     },
 
+    // 游戏市场的价格写法（对照游戏源码 main chunk 的 formatMarketplacePrice，常量 K/M/B/T 与 EPSILON=1e-9）：
+    // 10 万以下显示整数（不带千位分隔符），10 万 / 1000 万 / 100 亿 / 10 万亿起换算 K / M / B / T 后缀，
+    // 换算后不足 100 保留两位、不足 1000 保留一位、再大取整。市场里的挂单价、可交易区间、
+    // 商品列表价格都走这套写法，挂牌页速览的单价必须与之一致。
+    formatMarketplacePrice(value) {
+      // 与游戏一致的换算误差补偿（游戏常量 EPSILON = 1e-9），避免浮点尾差把整数档算少 1。
+      const EPSILON = 1e-9;
+      const number = Number(value) || 0;
+      const abs = Math.abs(number);
+      const K = 1e3;
+      const M = 1e6;
+      const B = 1e9;
+      const T = 1e12;
+      let scaled = number;
+      let suffix = '';
+      if (abs < 100 * K) scaled = Math.sign(number) * Math.floor(abs);
+      else if (abs < 10 * M) {
+        scaled = number / K;
+        suffix = 'K';
+      } else if (abs < 10 * B) {
+        scaled = number / M;
+        suffix = 'M';
+      } else if (abs < 10 * T) {
+        scaled = number / B;
+        suffix = 'B';
+      } else if (abs <= 1e3 * T) {
+        scaled = number / T;
+        suffix = 'T';
+      } else return 'Lots!';
+      if (suffix) {
+        const scaledAbs = Math.abs(scaled);
+        const digits = scaledAbs < 100 ? 2 : scaledAbs < 1e3 ? 1 : 0;
+        const factor = 10 ** digits;
+        scaled = (Math.sign(scaled) * Math.floor((scaledAbs + EPSILON) * factor)) / factor;
+      }
+      return String(scaled) + suffix;
+    },
+
     formatDateTime(value) {
       const date = value instanceof Date ? value : new Date(value);
       if (Number.isNaN(date.getTime())) return '-';
@@ -818,7 +861,9 @@ export function createGameNavigationService(ctx) {
       try {
         marketMate = pageWindow.MWITools?.shopping;
         if (marketMate?.ready === true && typeof marketMate.openMarketplace === 'function') {
-          return marketMate.openMarketplace(fullHrid) === true;
+          // MWITools 的签名是 (itemHrid, enhancementLevel = 0)：必须带上强化等级，
+          // 否则物品页按等级取订单簿时对不上、一直停在「正在加载」。
+          return marketMate.openMarketplace(fullHrid, Number(enhancementLevel) || 0) === true;
         }
       } catch (error) {
         this.warnUnavailable('openMarketplace', {itemHrid, fullHrid, accessError: error?.message || String(error)});

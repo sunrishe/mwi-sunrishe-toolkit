@@ -269,6 +269,12 @@
   cursor: pointer;
 }
 
+/* 数据修复的复选框：本机没有该类问题时置灰，不可勾选。 */
+.mst-market-history-checkbox:has(input:disabled) {
+  cursor: default;
+  opacity: 0.6;
+}
+
 /* 统计页签：独立筛选栏 + 数值卡 + 图表卡片；图表是手绘 SVG，配色沿用收支方向色。 */
 .mst-market-history-stats-filters {
   display: flex;
@@ -587,6 +593,10 @@
    （勾选态、确认删除等）不会重算列宽，表格不抖动；超长内容省略号截断。 */
 .mst-market-history-table-records {
   table-layout: fixed;
+  /* 最小宽度 = RECORD_COLUMNS 各列宽之和（2.25+3+7.5+5.5+14+6.25+5.25+6.25+6.5+6.25+6.25+3 = 72rem）：
+     容器比这窄时表格保持这个宽度、由外层 .mst-market-history-table-wrap 横向滚动；
+     没有它时固定布局会把列压进容器，没有写宽度的列会被挤成 0（物品列曾整列消失）。 */
+  min-width: 72rem;
 }
 
 .mst-market-history-table-records tbody td {
@@ -726,10 +736,57 @@
   opacity: 0.4;
 }
 
-.mst-market-history-pending {
-  margin-left: 0.3rem;
-  font-size: 0.75rem;
-  opacity: 0.75;
+/* 区间价（浮动价）记录的「金额」列标记：挂牌价随行情移动，金额只作参考，悬浮给出倒算值。 */
+.mst-market-history-price-mark {
+  margin-left: 0.15rem;
+  color: var(--color-space-200, #bbc5f1);
+  cursor: help;
+}
+
+/* 物品挂牌页（订单簿视图）：挂牌按钮行作为相对定位锚点，两端各挂一条「最近两次成交单价」
+   速览——左侧出售、右侧收购，单价沿用列表的收入（卖出绿）/ 支出（买入红）配色。
+   提示条是这一行的绝对定位子元素：必须在行内预留出上方的一条空白带（padding-top），
+   否则提示条落到父级（订单簿容器的 overflow: auto）之外会被裁掉看不到；预留带里不放
+   其他东西，按钮仍贴行底、整体排版只多出这一条窄带。 */
+[class*='MarketplacePanel_newListingButtonsContainer__'] {
+  position: relative;
+  padding-top: 1.05rem;
+}
+
+.mst-market-history-listing-hint {
+  position: absolute;
+  top: 0;
+  z-index: 1100;
+  display: flex;
+  align-items: baseline;
+  gap: 0.6rem;
+  font-size: var(--font-size-base, 0.875rem);
+  line-height: 1.2;
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+.mst-market-history-listing-hint-sell {
+  left: 0;
+}
+
+.mst-market-history-listing-hint-buy {
+  right: 0;
+}
+
+.mst-market-history-listing-hint-item {
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  cursor: help;
+  pointer-events: auto;
+}
+
+.mst-market-history-listing-hint-sell .mst-market-history-listing-hint-item {
+  color: var(--color-jade-300, #86d7b1);
+}
+
+.mst-market-history-listing-hint-buy .mst-market-history-listing-hint-item {
+  color: var(--color-scarlet-300, #ef8f98);
 }
 
 .mst-market-history-status {
