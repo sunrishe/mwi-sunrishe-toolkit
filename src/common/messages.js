@@ -787,9 +787,12 @@ export const MARKET_HISTORY_MESSAGES = {
   marketHistoryCategoryAccessories: {zh: '饰品', en: 'Accessories'},
   marketHistoryCategoryTools: {zh: '工具', en: 'Tools'},
   marketHistoryTimeAll: {zh: '创建时间', en: 'Created'},
-  marketHistoryTimeToday: {zh: '今天', en: 'Today'},
   marketHistoryTime7d: {zh: '近 7 天', en: 'Last 7 days'},
+  marketHistoryTime15d: {zh: '近 15 天', en: 'Last 15 days'},
   marketHistoryTime30d: {zh: '近 30 天', en: 'Last 30 days'},
+  marketHistoryTime60d: {zh: '近 60 天', en: 'Last 60 days'},
+  marketHistoryTime90d: {zh: '近 90 天', en: 'Last 90 days'},
+  marketHistoryTime180d: {zh: '近 180 天', en: 'Last 180 days'},
   marketHistoryTimeCustom: {zh: '自定义', en: 'Custom'},
   marketHistorySortHint: {zh: '点击切换升序/降序', en: 'Click to toggle ascending/descending'},
   marketHistoryMoreFilters: {zh: '更多', en: 'More'},
@@ -815,6 +818,7 @@ export const MARKET_HISTORY_MESSAGES = {
   marketHistoryStatusActive: {zh: '有效', en: 'Active'},
   marketHistoryStatusPartial: {zh: '部分成交', en: 'Partially filled'},
   marketHistoryStatusFilled: {zh: '已完成', en: 'Filled'},
+  marketHistoryStatusUnconfirmed: {zh: '未确认', en: 'Unconfirmed'},
   marketHistoryStatusCancelled: {zh: '已取消', en: 'Cancelled'},
   marketHistoryStatusExpired: {zh: '已过期', en: 'Expired'},
   marketHistoryStatusPartialCancelled: {zh: '部分成交后取消', en: 'Cancelled (partially filled)'},
@@ -842,11 +846,8 @@ export const MARKET_HISTORY_MESSAGES = {
   marketHistoryTotalsBuy: {zh: '购买金额', en: 'Buy amount'},
   marketHistoryTotalsIncome: {zh: '收入金额', en: 'Income'},
   marketHistoryTotalsExpense: {zh: '支出金额', en: 'Expense'},
-  marketHistoryTotalsPending: {zh: '待领取', en: 'Pending'},
   marketHistoryPagePrev: {zh: '上一页', en: 'Prev'},
   marketHistoryPageNext: {zh: '下一页', en: 'Next'},
-  marketHistoryStatsTimeField: {zh: '创建时间', en: 'Created'},
-  marketHistoryStatsTime90d: {zh: '近 90 天', en: 'Last 90 days'},
   marketHistoryStatsSide: {zh: '方向', en: 'Direction'},
   marketHistoryStatsSideSell: {zh: '出售', en: 'Sells'},
   marketHistoryStatsSideBuy: {zh: '购买', en: 'Buys'},
@@ -888,16 +889,25 @@ export const MARKET_HISTORY_MESSAGES = {
     zh: '该记录缺少官方到账数据，按已成交数量 × 单价推算（购买不扣税）',
     en: 'Missing official collected data; estimated as filled quantity × price (buys are not taxed)'
   },
-  marketHistoryPending: {zh: '待领取', en: 'Pending'},
   marketHistoryRawValue: {zh: '原值', en: 'Raw'},
   marketHistoryCoin: {zh: '金币', en: 'coins'},
+  marketHistoryTaxDerived: {
+    zh: '单价随行情移动（区间价）：按官方税费倒算的真实成交额 {0}、税后 {1}（{2}% 税率）；「金额」列按挂牌价计算，只作参考',
+    en: 'Price moved with the market range: gross {0}, net {1} derived from the official tax ({2}% tax); the Amount column uses the listing price for reference only'
+  },
   marketHistoryInstantFallback: {
-    zh: '未收到官方条目，按委托信息记录（实际成交价可能更优，差额会退还）',
-    en: 'No official entry received; recorded from the request (the actual price may be better, with a refund).'
+    zh: '未收到官方条目，按委托信息记录：是否成交与成交价无法与官方核对（实际成交价可能更优，差额会退还）',
+    en: 'No official entry received; recorded from the request, so the fill itself and its price cannot be verified (the actual price may be better, with a refund).'
   },
   marketHistoryUnobservedNote: {
     zh: '页面关闭期间结束，未观测到结束原因（成交/取消/过期）',
     en: 'Ended while the page was closed; the exact cause was not observed.'
+  },
+  // 物品挂牌页（订单簿视图）：挂牌按钮行两端的「最近两次成交单价」速览——只显示单价、
+  // 不带标签（最近的一条在前），悬浮里给出该条的完整明细。
+  marketHistoryListingHintTitle: {
+    zh: '{0}\n单价 {1} × 成交数量 {2}\n金额 {3}\n创建时间 {4}',
+    en: '{0}\nUnit price {1} × Filled {2}\nAmount {3}\nCreated {4}'
   },
   marketHistoryDeleteDone: {zh: '已删除 {0} 条记录', en: '{0} records deleted'},
   marketHistoryDeleteConfirmClickOne: {zh: '确认删除', en: 'Confirm'},
@@ -950,6 +960,58 @@ export const MARKET_HISTORY_MESSAGES = {
     en: 'The file was exported by a newer version; update the script first.'
   },
   marketHistoryImportErrorEmpty: {zh: '文件中没有有效的交易记录', en: 'No valid records in the file'},
+  marketHistoryRepairTitle: {zh: '数据修复', en: 'Data repair'},
+  marketHistoryRepairHint: {
+    zh: '扫描全部角色与环境的记录，修复历史版本写下的结构性问题数据；修复前建议先在「导出交易记录」里备份一份。',
+    en: 'Scans every character and server and repairs structurally inconsistent data; export a backup first if you are unsure.'
+  },
+  marketHistoryRepairDuplicate: {
+    zh: '重复订单记录：同一订单合并为一条（{0} 组）',
+    en: 'Duplicate order records: merge into one ({0})'
+  },
+  marketHistoryRepairStatusQuantity: {
+    zh: '状态与成交进度：按官方状态修正（{0} 条）',
+    en: 'Status vs. fill progress: align to official status ({0})'
+  },
+  marketHistoryRepairUnobservedEnded: {
+    zh: '进行中但已不在挂单列表：标记结束（原因未观测，时间标推断）（{0} 条）',
+    en: 'Active but no longer in the listing snapshot: mark as ended (reason unobserved) ({0})'
+  },
+  marketHistoryRepairCollectedFields: {
+    zh: '收入 / 支出字段：清除方向不符的值与多余的推算标记（{0} 条）',
+    en: 'Income/expense fields: clear mismatched values and stale estimate flags ({0})'
+  },
+  marketHistoryRepairAmountRecalc: {
+    zh: '金额偏差：按数量 × 单价重算（购买不等即算错，出售收入偏差超一半）（{0} 条）',
+    en: 'Amount off: recompute as quantity × price (buys must match exactly; sells off by over half) ({0})'
+  },
+  marketHistoryRepairSettleEvidence: {
+    zh: '到账金额：补记缺失的结清明细（{0} 条）',
+    en: 'Collected amount: add missing claim entry ({0})'
+  },
+  marketHistoryRepairUnknownKey: {
+    zh: '无法识别的记录：删除（{0} 条）',
+    en: 'Unrecognized records: delete ({0})'
+  },
+  marketHistoryRepairApply: {zh: '修复选中项', en: 'Repair selected'},
+  marketHistoryRepairNothing: {zh: '未发现可修复的问题数据。', en: 'No repairable data found.'},
+  marketHistoryRepairDone: {zh: '数据修复完成', en: 'Repair finished'},
+  marketHistoryRepairResultDuplicate: {zh: '重复订单：合并 {0} 组', en: 'Duplicate orders: merged {0}'},
+  marketHistoryRepairResultStatusQuantity: {
+    zh: '状态与成交进度：修正 {0} 条',
+    en: 'Status vs. progress: fixed {0}'
+  },
+  marketHistoryRepairResultUnobservedEnded: {
+    zh: '不在挂单列表：标记结束 {0} 条',
+    en: 'No longer listed: ended {0}'
+  },
+  marketHistoryRepairResultCollectedFields: {
+    zh: '收入 / 支出字段：修正 {0} 条',
+    en: 'Income/expense fields: fixed {0}'
+  },
+  marketHistoryRepairResultAmountRecalc: {zh: '金额偏差过大：重算 {0} 条', en: 'Amounts far off: recomputed {0}'},
+  marketHistoryRepairResultSettleEvidence: {zh: '结清明细：补记 {0} 条', en: 'Claim entries: added {0}'},
+  marketHistoryRepairResultUnknownKey: {zh: '无法识别的记录：删除 {0} 条', en: 'Unrecognized records: deleted {0}'},
   marketHistorySaveFailed: {
     zh: '交易记录保存失败，请检查油猴存储空间',
     en: 'Failed to save market records. Check userscript storage.'

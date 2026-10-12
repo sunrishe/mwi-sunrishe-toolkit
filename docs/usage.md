@@ -52,7 +52,7 @@ MST 是独立脚本，以下项目提供了参考或公开接口；参考类功�
 
 ## 市场交易记录
 
-记录自己的市场挂牌、成交、取消、过期和立即购买 / 立即出售订单，可搜索、筛选、排序、批量删除与导出导入，“统计”页签用图表看收支与买卖分布。入口在市场“商品列表 / 我的挂牌”旁边，用“食用工具”时可通过配套桥接脚本导入它的历史订单。
+记录自己的市场交易并统计收支，入口在市场“商品列表 / 我的挂牌”旁边。
 
 ## 订阅通知
 
@@ -140,7 +140,7 @@ Add the currently viewed market item to the cart.
 
 ## Market History
 
-Records your market listings, fills, cancellations, expirations, and instant buy/sell orders, with search, filters, sorting, bulk delete, and import/export; the Stats tab charts income, expense, and buy/sell distribution. Open it next to the market listings tabs; if you use Edible Tools, a companion bridge script can import its order history.
+Records your market trades and shows income and expense stats; open it next to the market listings tabs.
 
 ## Subscription Notifications
 

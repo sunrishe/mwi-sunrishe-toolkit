@@ -3,6 +3,37 @@
 // 版本说明只写用户可感知的变化，更新版本时先改 docs/changelog.md，再同步这里并补英文。
 export const CHANGELOG_VERSIONS = [
   {
+    version: '2.20.0',
+    date: '2026-10-12',
+    notes: [
+      {
+        zh: '市场交易记录：订单成交时即计入收入 / 支出，不再显示“待领取”，旧记录里未领取的部分会自动计入。',
+        en: 'Market History: an order counts toward income/expense as soon as it fills — "Pending" is no longer shown, and uncollected parts in old records are counted in automatically.'
+      }, {
+        zh: '市场交易记录：打开游戏页后立刻发生的成交与领取不再漏记；登录时补记的订单会归入正确的服务器并补全金额，测试服与正式服不再混在一起。',
+        en: 'Market History: fills and collections right after you open the game are no longer missed; orders picked up at login go to the correct server and have their amounts filled in, so test-server and live records no longer mix.'
+      }, {
+        zh: '市场交易记录：“管理”页签新增“数据修复”，可一键修复重复、状态或金额异常的记录，修复前可先备份。',
+        en: 'Market History: the Manage tab gains "Data repair" — fix duplicate orders and records with a wrong status or amount in one click; export a backup first if you want to be safe.'
+      }, {
+        zh: '市场交易记录：“管理”页签的导入内容关闭弹窗即清空，不再跨次保留。',
+        en: 'Market History: import content in the Manage tab is cleared when the dialog closes instead of being kept for next time.'
+      }, {
+        zh: '市场交易记录：区间价订单的收入改按真实成交额显示，列表“金额”列旁的星号提示挂牌价与实际成交价不一致。',
+        en: 'Market History: range-priced orders now show income based on the real traded amount, and an asterisk next to the Amount column marks rows where the listing price differs from the traded price.'
+      },
+      {
+        zh: '市场交易记录：没等到官方数据的“立即购买 / 立即出售”记录标为“未确认”，可按状态筛选。',
+        en: 'Market History: "Buy now / Sell now" records still waiting for official data are marked "Unconfirmed" and can be filtered by status.'
+      }, {
+        zh: '市场交易记录：市场里点开物品的挂牌页，在“+ 新出售挂牌 / + 新购买挂牌”按钮上方显示自己最近两次出售 / 收购的成交单价；列表“单价”列与统计页“加权均价”列也改用市场里的价格写法。',
+        en: 'Market History: on the item listing page, your two most recent sell and buy unit prices appear above the Sell Listing / Buy Listing buttons; the Unit Price column and the stats Weighted Price column now use the same format as prices in the market.'
+      }, {
+        zh: '修复：从技能升级计算器跳转市场物品时，订单簿可能一直停在“正在加载”。',
+        en: 'Fixed: jumping from the ability upgrade calculator to a market item could leave the order book stuck on "Loading".'
+      }
+    ]
+  }, {
     version: '2.19.0',
     date: '2026-10-11',
     notes: [
@@ -65,7 +96,8 @@ export const CHANGELOG_VERSIONS = [
         en: 'Compatibility: the Toolkit now only forwards the game connection instead of modifying it, removing conflicts with other scripts that rewrite the game connection (such as the Oi momomo guild trial helper and MWI combat tools) while keeping its own data sync working.'
       }
     ]
-  }, {
+  },
+  {
     version: '2.17.0',
     date: '2026-09-23',
     notes: [
@@ -93,8 +125,7 @@ export const CHANGELOG_VERSIONS = [
         en: 'Dungeon Profit adds an "Exclude cowbell value" option (off by default): when checked, cowbells and bags of cowbells are excluded from profit and their value in the results and drop table shows as 0.'
       }
     ]
-  },
-  {
+  }, {
     version: '2.16.0',
     date: '2026-09-08',
     notes: [
@@ -154,7 +185,8 @@ export const CHANGELOG_VERSIONS = [
         en: 'Fixed MWITools header buttons being squeezed toward the center when both scripts are installed.'
       }
     ]
-  }, {
+  },
+  {
     version: '2.12.0',
     date: '2026-08-19',
     notes: [
@@ -163,8 +195,7 @@ export const CHANGELOG_VERSIONS = [
         en: 'Dungeon Profit improvements: the dungeon dropdown now shows D1-D4 numbers to match the in-game dungeon map, and the results area has a new "Drops" tab listing items, drop rates, expected quantities, and best-ask/best-bid prices per standard and refined chest, with details on hover; prices are calculated from market quotes before tax.'
       }
     ]
-  },
-  {
+  }, {
     version: '2.11.1',
     date: '2026-08-18',
     notes: [
@@ -225,7 +256,8 @@ export const CHANGELOG_VERSIONS = [
         en: 'Equipment Comparison profession names in Chinese now match the official game names: 重盾 and 长枪.'
       }
     ]
-  }, {
+  },
+  {
     version: '2.9.3',
     date: '2026-08-15',
     notes: [
@@ -237,8 +269,7 @@ export const CHANGELOG_VERSIONS = [
         en: 'Fixed cowbell value sometimes being calculated as 0: when a bag of cowbells has no market price it falls back to the official guide price and then to the market snapshot trade price (about 1.075M coins per bag), with cowbells at one tenth, so it no longer shows 0.'
       }
     ]
-  },
-  {
+  }, {
     version: '2.9.1',
     date: '2026-08-11',
     notes: [
@@ -274,7 +305,8 @@ export const CHANGELOG_VERSIONS = [
         en: 'Improved script loading and browser compatibility, fixing game connection, native navigation, loadout reading, game name language, and userscript API issues in Firefox; in Equipment Comparison, selecting a baseline item now also selects the same item for comparison.'
       }
     ]
-  }, {
+  },
+  {
     version: '2.7.22',
     date: '2026-08-02',
     notes: [
@@ -286,8 +318,7 @@ export const CHANGELOG_VERSIONS = [
         en: 'Improved dialog positioning on small screens and mobile browsers so the ability picker and Toolkit menu stay within the visible area.'
       }
     ]
-  },
-  {
+  }, {
     version: '2.7.20',
     date: '2026-08-02',
     notes: [
@@ -352,7 +383,8 @@ export const CHANGELOG_VERSIONS = [
         en: 'Avoid injecting game UI styles on non-game sites.'
       }
     ]
-  }, {
+  },
+  {
     version: '1.0.2',
     date: '2026-04-15',
     legacy: true,
@@ -362,8 +394,7 @@ export const CHANGELOG_VERSIONS = [
         en: 'Fixed Milkonomy sync failing when no loadout had ever been configured.'
       }
     ]
-  },
-  {
+  }, {
     version: '1.0.1',
     date: '2026-04-15',
     legacy: true,

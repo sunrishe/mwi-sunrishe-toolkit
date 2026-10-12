@@ -26,6 +26,31 @@ function isClientData(data) {
   );
 }
 
+// marketplace-panel-state
+// 从锚点 DOM 的 React fiber 链向上找 MarketplacePanel 类组件实例并返回其 state；
+// 游戏源码（MarketplacePanel 组件）该 state 含 marketListingsView / itemHrid / enhancementLevel，
+// 订单簿视图下 itemHrid 与 enhancementLevel 就是当前查看的物品与强化等级（物品挂牌页的锚点判定）。
+// 市场加购（读取当前物品）与市场交易记录的挂牌页速览共用，所以放在公共层。
+export function readMarketplacePanelState(fiber) {
+  let current = fiber;
+  while (current) {
+    const instance = current.stateNode;
+    const state = instance?.state;
+    if (
+      state &&
+      typeof state === 'object' &&
+      'marketListingsView' in state &&
+      'itemHrid' in state &&
+      'enhancementLevel' in state &&
+      typeof instance.handleRefresh === 'function'
+    ) {
+      return state;
+    }
+    current = current.return;
+  }
+  return null;
+}
+
 // data-hub-client-cache
 const dataHubClientCacheMethods = {
   initClientData(data, source) {

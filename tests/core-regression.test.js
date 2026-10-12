@@ -1408,6 +1408,9 @@ test('游戏原生跳转和配装读取失败时保留 Firefox 诊断信息', ()
   assert.match(runtimeSource, /installPageBridge/);
   assert.match(runtimeSource, /mst:navigation:open-marketplace/);
   assert.match(runtimeSource, /mst:navigation:switch-character/);
+  // MWITools 的 shopping.openMarketplace 签名是 (itemHrid, enhancementLevel = 0)：兜底跳转同样要带上
+  // 强化等级，否则物品挂牌页按等级取订单簿时对不上、一直停在「正在加载」。
+  assert.match(runtimeSource, /marketMate\.openMarketplace\(fullHrid, Number\(enhancementLevel\) \|\| 0\)/);
   assert.match(runtimeSource, /bridgeDiagnostics/);
   assert.match(runtimeSource, /\[MST\] 未找到游戏原生跳转入口:/);
   assert.match(runtimeSource, /hostKeys/);

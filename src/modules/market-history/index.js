@@ -8,8 +8,10 @@
 // - 入站 `market_listings_updated.endMarketListings`：新增、成交、状态变化、领取后清除；
 // - 出站 `post_market_order`（isInstantOrder）/ `cancel_market_listing` / `claim_market_listing`。
 // 实际到账金额以官方未领取数量（`unclaimedCoinCount` 为扣税后金币）为权威值；
-// 只有完全没有官方数据的记录（典型是导入的历史数据）才按成交当时的税率推算，见 store.js 的到账推算。
+// 只有完全没有官方数据的记录（典型是导入的历史数据）才按成交当时的税率推算，见 store.js 的到账推算；
+// 「管理」页签的数据修复用于清理历史版本写下的结构性问题数据，见 store.js 的 repair 段。
 import {StyleService} from '../../common/runtime.js';
+import {readMarketplacePanelState} from '../../common/data.js';
 import MST_MARKET_HISTORY_CSS from './styles.css';
 import {
   buildValueAxis,
@@ -26,32 +28,36 @@ import {
   buildExportPayload,
   buildStatsBreakdown,
   buildStatsTimeSeries,
-  countRecords,
+  createRepairReport,
   createStore,
   estimateStoreBytes,
   filterRecords,
+  findRecentTradedRecords,
   getCollectedCount,
   getDisplayStatus,
-  getPendingCount,
   getRecordAmount,
   getRecordType,
   getSortTimestamp,
   HISTORY_STATUS_KEYS,
   HISTORY_TYPE_KEYS,
-  INSTANT_MATCH_WINDOW_MS,
+  isUnconfirmedInstant,
   linkInstantRecords,
-  listUnlinkedInstants,
   mergeImport,
   paginate,
   parseImportPayload,
+  parseIsoTimestamp,
   parseStore,
   RECORDS_SOFT_LIMIT,
   reconcileWithSnapshot,
+  repairRecords,
+  REPAIR_TYPE_KEYS,
+  scanStoreRepairs,
   serializeStore,
   sortRecords,
   STORE_BYTES_SOFT_LIMIT,
   summarize,
-  summarizeByItem
+  summarizeByItem,
+  taxDerivedAmountOf
 } from './store.js';
 
 const SAVE_DEBOUNCE_MS = 500;
@@ -67,19 +73,21 @@ const PAGE_SIZE_OPTIONS = [
   20, 50, 100, 200, 500,
   1000
 ];
+// 记录与统计两个页签共用同一套时间范围选项（口径都是创建时间）：
+// 下拉默认项即「创建时间」（兼作控件标题、不再另加标签），不给「今天」（当天数据通常只有几笔，趋势图看不出东西）。
 const TIME_PRESETS = [
-  'all', 'today', '7d', '30d', 'custom'
+  'all', '7d', '15d', '30d', '60d',
+  '90d', '180d', 'custom'
 ];
-// 统计页的时间范围：不给「今天」（当天数据通常只有几笔，趋势图看不出东西），多了近 90 天。
-// 口径是创建时间，标签与记录页签的时间下拉一致（记录页签的默认项也叫「创建时间」）。
-const STATS_TIME_PRESETS = [
-  'all', '7d', '30d', '90d', 'custom'
-];
-const STATS_TIME_LABEL_KEYS = {
-  all: 'marketHistoryFilterAny',
+const TIME_PRESET_DAYS = {'7d': 7, '15d': 15, '30d': 30, '60d': 60, '90d': 90, '180d': 180};
+const TIME_PRESET_LABEL_KEYS = {
+  all: 'marketHistoryTimeAll',
   '7d': 'marketHistoryTime7d',
+  '15d': 'marketHistoryTime15d',
   '30d': 'marketHistoryTime30d',
-  '90d': 'marketHistoryStatsTime90d',
+  '60d': 'marketHistoryTime60d',
+  '90d': 'marketHistoryTime90d',
+  '180d': 'marketHistoryTime180d',
   custom: 'marketHistoryTimeCustom'
 };
 const STATS_SIDE_LABEL_KEYS = {
@@ -152,16 +160,11 @@ const CATEGORY_LABEL_KEYS = {
   accessories: 'marketHistoryCategoryAccessories',
   tools: 'marketHistoryCategoryTools'
 };
-const TIME_PRESET_LABEL_KEYS = {
-  all: 'marketHistoryTimeAll',
-  today: 'marketHistoryTimeToday',
-  '7d': 'marketHistoryTime7d',
-  '30d': 'marketHistoryTime30d',
-  custom: 'marketHistoryTimeCustom'
-};
 // 记录表格的列定义：宽度写在表头（table-layout: fixed 以第一行为准），numeric 列右对齐，
 // sortable 列的 key 与 store.sortRecords 支持的排序键一致（列头点击即排序，不再另设工具栏排序）。
 // 首列（复选框）与序号列由模板单独渲染，这里只贡献列宽。
+// 每一列都必须写宽度：固定布局下没有宽度的列在容器变窄时会被压成 0 宽度（物品列曾整列消失），
+// 表格同时声明最小宽度（= 列宽合计，见 styles.css）让窄容器改为横向滚动。
 const RECORD_COLUMNS = [
   {key: 'select', width: '2.25rem'}, {
     key: 'index',
@@ -172,7 +175,7 @@ const RECORD_COLUMNS = [
     key: 'type',
     labelKey: 'marketHistoryColumnType',
     width: '5.5rem'
-  }, {key: 'item', labelKey: 'marketHistoryColumnItem', sortable: true},
+  }, {key: 'item', labelKey: 'marketHistoryColumnItem', width: '14rem', sortable: true},
   {
     key: 'filledQuantity',
     labelKey: 'marketHistoryColumnProgress',
@@ -202,6 +205,7 @@ const STATUS_LABEL_KEYS = {
   active: 'marketHistoryStatusActive',
   partial: 'marketHistoryStatusPartial',
   filled: 'marketHistoryStatusFilled',
+  unconfirmed: 'marketHistoryStatusUnconfirmed',
   cancelled: 'marketHistoryStatusCancelled',
   expired: 'marketHistoryStatusExpired',
   partialCancelled: 'marketHistoryStatusPartialCancelled',
@@ -226,15 +230,28 @@ const IMPORT_MODE_LABEL_KEYS = {
   merge: 'marketHistoryImportModeMerge',
   overwrite: 'marketHistoryImportModeOverwrite'
 };
+// 「数据修复」的文案 key：复选框标签（带问题条数）与修复结果各一套，静态映射不用拼接 key。
+const REPAIR_LABEL_KEYS = {
+  duplicateListings: 'marketHistoryRepairDuplicate',
+  statusQuantity: 'marketHistoryRepairStatusQuantity',
+  unobservedEnded: 'marketHistoryRepairUnobservedEnded',
+  collectedFields: 'marketHistoryRepairCollectedFields',
+  amountRecalc: 'marketHistoryRepairAmountRecalc',
+  settleEvidence: 'marketHistoryRepairSettleEvidence',
+  unknownKey: 'marketHistoryRepairUnknownKey'
+};
+const REPAIR_RESULT_KEYS = {
+  duplicateListings: 'marketHistoryRepairResultDuplicate',
+  statusQuantity: 'marketHistoryRepairResultStatusQuantity',
+  unobservedEnded: 'marketHistoryRepairResultUnobservedEnded',
+  collectedFields: 'marketHistoryRepairResultCollectedFields',
+  amountRecalc: 'marketHistoryRepairResultAmountRecalc',
+  settleEvidence: 'marketHistoryRepairResultSettleEvidence',
+  unknownKey: 'marketHistoryRepairResultUnknownKey'
+};
 
 function formatItemKey(itemHrid, enhancementLevel) {
   return String(itemHrid || '') + '::' + String(Number(enhancementLevel) || 0);
-}
-
-function startOfToday(now) {
-  const date = new Date(now);
-  date.setHours(0, 0, 0, 0);
-  return date.getTime();
 }
 
 function parseDateInput(value, endOfDay = false) {
@@ -242,6 +259,21 @@ function parseDateInput(value, endOfDay = false) {
   if (!text) return null;
   const stamp = Date.parse(text + (endOfDay ? 'T23:59:59.999' : 'T00:00:00'));
   return Number.isFinite(stamp) ? stamp : null;
+}
+
+// 时间范围预设 → 筛选起止时间：记录与统计两个页签共用（口径都是创建时间）。
+function applyTimePreset(filters, now) {
+  const days = TIME_PRESET_DAYS[filters.timePreset];
+  if (days) {
+    filters.timeFrom = now - days * DAY_MS;
+    filters.timeTo = null;
+  } else if (filters.timePreset === 'custom') {
+    filters.timeFrom = parseDateInput(filters.timeFrom, false);
+    filters.timeTo = parseDateInput(filters.timeTo, true);
+  } else {
+    filters.timeFrom = null;
+    filters.timeTo = null;
+  }
 }
 
 // SVG 坐标只保留两位小数，省体积也避免一长串浮点尾巴。
@@ -305,6 +337,11 @@ export class MarketHistoryFeature {
     this.pendingDeleteKey = null;
     this.popoverDismiss = null;
     this.dialogState = this.createDialogState();
+    // 最近一次登录快照（按分桶存订单 id 与快照时间）：数据修复用它判断「进行中但已不在挂单列表」。
+    this.listingSnapshots = {};
+    // 物品挂牌页速览（订单簿上方的最近成交条）：两个方向的节点与渲染签名（未变化不重建）。
+    this.listingHintNodes = {sell: null, buy: null};
+    this.listingHintSignature = '';
     this.searchTextCache = new Map();
     this.queryCache = {signature: '', records: []};
     this.statsCache = {signature: '', records: []};
@@ -318,11 +355,13 @@ export class MarketHistoryFeature {
         exportScope: 'current',
         exportFormat: 'json',
         importText: '',
-        importFileName: '',
         importMode: 'merge',
         importOverwriteConfirmed: false,
         importReport: null,
-        importError: ''
+        importError: '',
+        // 「数据修复」的勾选类型与上次修复报告（与导入状态一致，不跨次保留）。
+        repairSelected: new Set(),
+        repairReport: null
       },
       filters: {
         keyword: '',
@@ -380,19 +419,53 @@ export class MarketHistoryFeature {
     StyleService.ensure('mst-market-history-style', MST_MARKET_HISTORY_CSS);
     this.environment = CONFIG.isTestServer ? 'test' : 'live';
     this.characterId = String(CONFIG.characterId || '');
-    // GM 读取是异步接口：先载入历史，再挂监听，避免把「读取中的空存储」写回覆盖已有数据。
+    // GM 读取是异步接口：监听器先同步挂上、事件按到达时间入队，历史载入后再依次处理。
+    // 既避免把「读取中的空存储」写回覆盖已有数据，也避免就绪前（页面加载后的头几秒，
+    // 玩家常在这时点「全部收集」）的领取请求与成交消息被丢掉。
+    this.ready = false;
+    this.eventQueue = [];
+    this.wsListeners = {
+      init: (event) => this.queueWsEvent('init', event.detail),
+      message: (event) => this.queueWsEvent('message', event.detail),
+      send: (event) => this.queueWsEvent('send', event.detail)
+    };
+    window.addEventListener('mst:ws:init-character-data', this.wsListeners.init);
+    window.addEventListener('mst:ws:message', this.wsListeners.message);
+    window.addEventListener('mst:ws:send', this.wsListeners.send);
+    window.addEventListener('pagehide', () => this.flushSave());
     this.loadStore().then(() => {
-      window.addEventListener('mst:ws:init-character-data', (event) => this.onInitCharacterData(event.detail));
-      window.addEventListener('mst:ws:message', (event) => this.onWsMessage(event.detail));
-      window.addEventListener('mst:ws:send', (event) => this.onWsSend(event.detail));
-      window.addEventListener('pagehide', () => this.flushSave());
+      this.ready = true;
+      if (this.eventQueue.length) {
+        const queued = this.eventQueue;
+        this.eventQueue = [];
+        queued.forEach((item) => this.handleWsEvent(item.kind, item.detail, item.at));
+      }
       this.watchStorage();
-      utils.observeBody(() => this.syncButton());
+      utils.observeBody(() => {
+        this.syncButton();
+        this.syncListingHints();
+      });
+      this.syncListingHints();
       LanguageEvents?.subscribe(() => this.handleLanguageChange());
       // 兜底：脚本初始化晚于登录快照时，用 DataHub 已保存的角色数据补一次快照对账。
       const rawCharacterData = this.ctx.DataHub?.characterData?.raw;
       if (rawCharacterData) this.onInitCharacterData(rawCharacterData);
     });
+  }
+
+  queueWsEvent(kind, detail) {
+    const at = Date.now();
+    if (!this.ready) {
+      this.eventQueue.push({kind, detail, at});
+      return;
+    }
+    this.handleWsEvent(kind, detail, at);
+  }
+
+  handleWsEvent(kind, detail, at) {
+    if (kind === 'init') this.onInitCharacterData(detail, at);
+    else if (kind === 'message') this.onWsMessage(detail, at);
+    else this.onWsSend(detail, at);
   }
 
   async loadStore() {
@@ -467,6 +540,8 @@ export class MarketHistoryFeature {
   }
 
   scheduleSave() {
+    // 记录随时可能因成交 / 领取变化，挂牌页速览跟着刷新（不在物品页时只是一次空查询）。
+    this.syncListingHints();
     if (this.saveTimer) return;
     this.saveTimer = setTimeout(() => {
       this.saveTimer = null;
@@ -479,6 +554,8 @@ export class MarketHistoryFeature {
       clearTimeout(this.saveTimer);
       this.saveTimer = null;
     }
+    // 存储尚未载入时不能写回：此刻的内存数据是空桶，写入会覆盖已有历史（事件已排队，就绪后重放）。
+    if (!this.ready) return;
     try {
       this.store.updatedAt = Date.now();
       this.ctx.GmApi.setValue(this.storageKey(), serializeStore(this.store));
@@ -490,7 +567,7 @@ export class MarketHistoryFeature {
 
   // ---- 官方消息接入 ----
 
-  onInitCharacterData(data) {
+  onInitCharacterData(data, now = Date.now()) {
     const {CONFIG} = this.ctx;
     const nextCharacterId = String(data?.character?.id ?? CONFIG.characterId ?? this.characterId ?? '');
     const changed = nextCharacterId !== this.characterId;
@@ -499,11 +576,25 @@ export class MarketHistoryFeature {
     if (nextName) this.characterName = nextName;
     if (changed) this.dialogState = this.createDialogState();
     const records = this.getRecords();
-    const now = Date.now();
-    const listings = Array.isArray(data?.myMarketListings) ? data.myMarketListings : [];
-    // 快照只用于补齐与对账：新出现的时间按登录时间推断，已有记录不被覆盖成推断时间。
-    applyListingBatch(records, listings, now, {origin: 'snapshot', inferredTime: true});
-    const result = reconcileWithSnapshot(records, listings, now);
+    // 官方确实下发 myMarketListings 时才拿它补齐与对账；字段缺失时保持 undefined 传给
+    // 对账函数（store 侧按「没有快照」处理），不能在这里退化成空数组——空数组等于
+    // 「我的挂单一条都不剩」，会把本机记录全部误标为已领取 / 结束。
+    const listings = data?.myMarketListings;
+    // 快照时间取事件自带的服务器时间：脚本晚于登录事件初始化时（下面用 DataHub 兜底补
+    // 一次对账），处理时刻晚于快照本身，用它判断会把「快照之后才观测到」的记录误判成
+    // 已不在挂单列表（结束 / 已领取）。
+    const snapshotAt = parseIsoTimestamp(data?.currentTimestamp) || now;
+    // 快照只用于补齐与对账：新出现的时间按登录时间推断（有官方创建时间则直接用官方值），
+    // 已有记录不被覆盖成推断时间；补齐「创建时没收到消息、只在快照里出现」的订单时，
+    // 环境与角色取当前会话，避免测试服记录被写进正式服桶。
+    applyListingBatch(records, Array.isArray(listings) ? listings : [], now, {
+      origin: 'snapshot',
+      inferredTime: true,
+      environment: this.environment,
+      characterId: this.characterId
+    });
+    const result = reconcileWithSnapshot(records, listings, now, {snapshotAt});
+    this.rememberListingSnapshot(listings, snapshotAt);
     if (result.unobserved.length || result.settled.length || changed) {
       console.info('[MST] 市场交易记录快照对账:', {
         records: records.length,
@@ -516,13 +607,24 @@ export class MarketHistoryFeature {
     this.refreshOpenDialog();
   }
 
-  onWsMessage(message) {
+  // 记下本会话拿到的登录快照（订单 id 集合与快照取数时间，取官方 currentTimestamp），
+  // 供数据修复判断「进行中但已不在挂单列表」的记录；只有快照之后没有再观测过
+  // （updatedAt ≤ 快照时间）的记录才用这份快照判断，之后又观测过的记录快照给不出结论
+  // （见 store.js 的 repair 段）。
+  rememberListingSnapshot(listings, at) {
+    if (!Array.isArray(listings)) return;
+    this.listingSnapshots[this.currentBucketKey()] = {
+      at,
+      ids: new Set(listings.map((item) => String(item?.id ?? '')).filter(Boolean))
+    };
+  }
+
+  onWsMessage(message, now = Date.now()) {
     if (!message || typeof message !== 'object') return;
     if (message.type !== 'market_listings_updated') return;
     const listings = Array.isArray(message.endMarketListings) ? message.endMarketListings : [];
     if (!listings.length) return;
     const records = this.getRecords();
-    const now = Date.now();
     listings.forEach((listing) => {
       // 直购/直售请求先落记录的，官方条目到达时按内容关联为同一条，再按官方 id 跟踪。
       if (linkInstantRecords(records, listing, now)) return;
@@ -532,17 +634,17 @@ export class MarketHistoryFeature {
           listing
         ],
         now,
-        {origin: 'update'}
+        {origin: 'update', environment: this.environment, characterId: this.characterId}
       );
     });
     this.scheduleSave();
     this.refreshOpenDialog();
   }
 
-  onWsSend(message) {
+  onWsSend(message, now = Date.now()) {
     if (!message || typeof message !== 'object') return;
     const records = this.getRecords();
-    const result = applyOutgoingMessage(records, message, Date.now(), {
+    const result = applyOutgoingMessage(records, message, now, {
       environment: this.environment,
       characterId: this.characterId,
       characterName: this.characterName,
@@ -606,6 +708,113 @@ export class MarketHistoryFeature {
     this.buttonAnchor = null;
   }
 
+  // ---- 物品挂牌页速览（挂牌按钮上方的最近两次成交） ----
+
+  // 进入物品挂牌页（订单簿视图）时，在「+ 新出售挂牌 / + 新购买挂牌」按钮那一行的两端各显示自己
+  // 最近两次出售 / 收购的单价（第一次 / 第二次，按创建时间从旧到新）；提示条相对按钮行绝对定位，
+  // 不参与按钮行的 flex 布局。物品与强化等级从 MarketplacePanel 的 React state 读取；订单簿容器
+  // 只在官方数据到达后才渲染（同时作为「当前是订单簿视图」的判据，物品摘要视图也有按钮行但不显示），
+  // 所以由页面观察器反复同步（节点被游戏重渲染清掉后自动补回）。
+  syncListingHints() {
+    if (!this.ready) return;
+    const {DataHub, GameUiAdapter, i18n} = this.ctx;
+    const books = GameUiAdapter.query('marketOrderBooks');
+    const host = books ? GameUiAdapter.query('marketNewListingButtons') : null;
+    const state = books ? readMarketplacePanelState(DataHub.getReactFiber(books)) : null;
+    const itemHrid = state?.itemHrid;
+    if (!books || !host || !itemHrid) {
+      this.teardownListingHints();
+      return;
+    }
+    const level = Math.max(0, Math.floor(Number(state.enhancementLevel) || 0));
+    const recent = findRecentTradedRecords(this.getRecords(), itemHrid, level);
+    const sides = [
+      'sell', 'buy'
+    ];
+    const signature =
+      itemHrid +
+      '|' +
+      level +
+      '|' +
+      i18n.locale +
+      '|' +
+      sides
+        .map((side) =>
+          recent[side]
+            .map((record) => String(record.key || '') + ':' + Number(record.price) + ':' + (record.updatedAt || 0))
+            .join(',')
+        )
+        .join('|');
+    if (signature === this.listingHintSignature && this.listingHintsConnected()) return;
+    this.removeListingHintNodes();
+    this.listingHintSignature = signature;
+    sides.forEach((side) => {
+      if (!recent[side].length) return;
+      const hint = this.buildListingHint(side, recent[side]);
+      host.appendChild(hint);
+      this.listingHintNodes[side] = hint;
+    });
+  }
+
+  // 签名没变但游戏重渲染把节点清掉时同样要重建：只要挂上的节点有断开的就不算完整。
+  listingHintsConnected() {
+    return [
+      'sell', 'buy'
+    ].every((side) => {
+      const node = this.listingHintNodes[side];
+      return node == null || node.isConnected;
+    });
+  }
+
+  // 一侧的提示条：只显示单价、没有文字标签，悬浮给出该条的完整明细。两条按时间从新到旧排
+  // （最近的一条在前，第二条是紧挨着的一条）；价格用游戏市场的写法（与订单簿里的价格一致）。
+  buildListingHint(side, records) {
+    const {utils} = this.ctx;
+    const hint = document.createElement('div');
+    hint.className = 'mst-market-history-listing-hint mst-market-history-listing-hint-' + side;
+    records.forEach((record) => {
+      const item = document.createElement('span');
+      item.className = 'mst-market-history-listing-hint-item';
+      item.title = this.listingHintTitle(record);
+      item.textContent = utils.formatMarketplacePrice(record.price);
+      hint.append(item);
+    });
+    return hint;
+  }
+
+  // 悬浮明细：类型 + 单价 × 成交数量 + 金额（精确值）+ 创建时间；未确认 / 推断时间等备注照常带上。
+  listingHintTitle(record) {
+    const {i18n} = this.ctx;
+    const lines = [
+      i18n.t(
+        'marketHistoryListingHintTitle',
+        i18n.t(this.typeLabelKey(getRecordType(record))),
+        this.rawValueText(record.price),
+        this.rawValueText(record.filledQuantity),
+        this.rawValueText(getRecordAmount(record)),
+        this.formatTime(record.createdAt)
+      )
+    ];
+    const note = this.recordNote(record);
+    if (note) lines.push(note);
+    return lines.join('\n');
+  }
+
+  // 离开订单簿视图（或换物品）时清掉节点；签名一并失效，回来时重建。
+  teardownListingHints() {
+    this.removeListingHintNodes();
+    this.listingHintSignature = '';
+  }
+
+  removeListingHintNodes() {
+    [
+      'sell', 'buy'
+    ].forEach((side) => {
+      this.listingHintNodes[side]?.remove();
+      this.listingHintNodes[side] = null;
+    });
+  }
+
   handleLanguageChange() {
     const {i18n} = this.ctx;
     this.updateButtonLabel();
@@ -655,17 +864,7 @@ export class MarketHistoryFeature {
 
   resolveFilters() {
     const filters = {...this.dialogState.filters};
-    const now = Date.now();
-    if (filters.timePreset === 'today') filters.timeFrom = startOfToday(now);
-    else if (filters.timePreset === '7d') filters.timeFrom = now - 7 * DAY_MS;
-    else if (filters.timePreset === '30d') filters.timeFrom = now - 30 * DAY_MS;
-    else if (filters.timePreset === 'custom') {
-      filters.timeFrom = parseDateInput(filters.timeFrom, false);
-      filters.timeTo = parseDateInput(filters.timeTo, true);
-    } else {
-      filters.timeFrom = null;
-      filters.timeTo = null;
-    }
+    applyTimePreset(filters, Date.now());
     return filters;
   }
 
@@ -695,21 +894,11 @@ export class MarketHistoryFeature {
     return sorted;
   }
 
-  // 统计页的筛选条件（与列表筛选完全独立）：时间范围按「创建时间」算（界面标注同名），
+  // 统计页的筛选条件（与列表筛选完全独立）：时间范围按「创建时间」算（与记录页签同一套选项），
   // 另加方向 / 分类 / 关键词。
   resolveStatsFilters() {
     const filters = {...this.dialogState.stats.filters};
-    const now = Date.now();
-    if (filters.timePreset === '7d') filters.timeFrom = now - 7 * DAY_MS;
-    else if (filters.timePreset === '30d') filters.timeFrom = now - 30 * DAY_MS;
-    else if (filters.timePreset === '90d') filters.timeFrom = now - 90 * DAY_MS;
-    else if (filters.timePreset === 'custom') {
-      filters.timeFrom = parseDateInput(filters.timeFrom, false);
-      filters.timeTo = parseDateInput(filters.timeTo, true);
-    } else {
-      filters.timeFrom = null;
-      filters.timeTo = null;
-    }
+    applyTimePreset(filters, Date.now());
     filters.sides = filters.side && filters.side !== 'all' ? [
             filters.side
           ] : [];
@@ -746,6 +935,11 @@ export class MarketHistoryFeature {
 
   formatMoney(value) {
     return this.ctx.utils.formatCompactNumber(Number(value) || 0, 2);
+  }
+
+  // 单价列按游戏市场的价格写法展示（与订单簿、挂牌页速览一致）：10 万以下整数、10 万起 K / M / B / T。
+  formatUnitPrice(value) {
+    return this.ctx.utils.formatMarketplacePrice(value);
   }
 
   formatTime(value) {
@@ -809,8 +1003,11 @@ export class MarketHistoryFeature {
           : `${Number(record.collectedItemCount) || 0}`)
     );
     lines.push(i18n.t('marketHistoryRawValue') + '：' + this.rawValueText(collected));
-    if (record.collectedEstimated) {
-      // 购买不扣税，不写「（1 − 0% 税率）」。
+    // 区间价（浮动价）记录：挂牌价随行情移动，与各次成交当时的价格不同——金额来自官方税费
+    // 倒算，悬浮给出倒算的毛额与税后额，列表里的「金额」列按挂牌价计算、只作参考。
+    const derived = taxDerivedAmountOf(record);
+    if (record.collectedEstimated && !derived?.differs) {
+      // 购买不扣税，不写「（1 − 0% 税率）」；区间价记录的倒算口径由下面一行说明。
       const rate = Number(record.collectedTaxRate) || 0;
       lines.push(
         rate > 0
@@ -823,13 +1020,17 @@ export class MarketHistoryFeature {
         i18n.t('marketHistoryTaxTaken') + '：' + this.formatMoney(record.taxTaken) + ' ' + i18n.t('marketHistoryCoin')
       );
     }
-    lines.push(
-      i18n.t('marketHistoryPending') +
-        '：' +
-        (record.side === 'sell'
-          ? this.formatMoney(record.unclaimedCoinCount) + ' ' + i18n.t('marketHistoryCoin')
-          : `${Number(record.unclaimedItemCount) || 0}`)
-    );
+    if (derived?.differs) {
+      lines.push(
+        i18n.t(
+          'marketHistoryTaxDerived',
+          this.rawValueText(derived.gross),
+          this.rawValueText(derived.net),
+          String(Math.round(derived.rate * 100))
+        )
+      );
+    }
+    // 待领取只是临时中间状态，金额在成交完成时就已计入，不在这里展示。
     (record.claims || []).forEach((claim) => {
       lines.push(
         this.formatTime(claim.at) +
@@ -842,7 +1043,7 @@ export class MarketHistoryFeature {
 
   recordNote(record) {
     const {i18n} = this.ctx;
-    if (record.kind === 'instant' && record.listingId == null) return i18n.t('marketHistoryInstantFallback');
+    if (isUnconfirmedInstant(record)) return i18n.t('marketHistoryInstantFallback');
     if (record.endedUnobserved) return i18n.t('marketHistoryUnobservedNote');
     if (record.inferredTime) return i18n.t('marketHistoryInferredTime');
     return '';
@@ -855,6 +1056,10 @@ export class MarketHistoryFeature {
     this.dialogState.page = 1;
     this.dialogState.openFilterPanel = null;
     this.dialogState.selected = new Set();
+    // 导入内容（可能是整份导出文件的大文本）不跨次保留：避免下次打开时渲染大文本造成卡顿，
+    // 也避免误把上次的内容当成这次要导入的数据。
+    this.resetImportState();
+    this.resetRepairState();
     return Notifier.html({
       title: i18n.t('marketHistoryTitle'),
       width: 'min(76rem, calc(100vw - 1rem))',
@@ -871,9 +1076,29 @@ export class MarketHistoryFeature {
         this.toolbarRoot = null;
         this.contentRoot = null;
         this.pendingDeleteKey = null;
+        // 关闭即释放导入文本与预览结果，不留大字符串在内存里；数据修复的勾选与报告同样清空。
+        this.resetImportState();
+        this.resetRepairState();
         this.unbindPopoverDismiss();
       }
     });
+  }
+
+  // 重置「管理」页签的导入状态（文本、模式、覆盖确认、预览报告与错误提示）。
+  resetImportState() {
+    const panel = this.dialogState.panel;
+    panel.importText = '';
+    panel.importMode = 'merge';
+    panel.importOverwriteConfirmed = false;
+    panel.importReport = null;
+    panel.importError = '';
+  }
+
+  // 重置「管理」页签的数据修复状态（勾选类型与上次修复报告）。
+  resetRepairState() {
+    const panel = this.dialogState.panel;
+    panel.repairSelected = new Set();
+    panel.repairReport = null;
   }
 
   // 弹窗内所有区域都「每次新建容器再渲染」：本模块模板结构会随状态变化（工具栏按页签显隐、
@@ -891,6 +1116,8 @@ export class MarketHistoryFeature {
   // 数据变化时刷新已打开的弹窗：内容区总是重建，工具栏只在 forceToolbar 时重建，
   // 避免键盘输入（关键词 / 区间数字）在实时消息到达时被整块重建打断。
   refreshOpenDialog({forceToolbar = false} = {}) {
+    // 记录变化 / 语言切换 / 其他标签页合并都可能改变挂牌页速览（与弹窗是否打开无关）。
+    this.syncListingHints();
     if (!this.root?.isConnected) return;
     if (forceToolbar) this.renderToolbar();
     this.renderContent();
@@ -1466,6 +1693,20 @@ export class MarketHistoryFeature {
     const statusLabel = i18n.t(this.statusLabelKey(status));
     const itemLabel = this.itemLabel(record);
     const endTime = record.filledAt || record.cancelledAt || record.expiredAt;
+    // 区间价（浮动价）记录：挂牌价与各次成交当时的价不同，「金额」列（单价 × 数量）与真实成交额
+    // 有出入——给一个星号标记并在悬浮里给出官方税费倒算的成交额（收入/支出用的是倒算值）。
+    const derived = taxDerivedAmountOf(record);
+    const amountMark = derived?.differs
+      ? TemplateRenderer.html`<span
+            class="mst-market-history-price-mark"
+            title=${i18n.t(
+              'marketHistoryTaxDerived',
+              this.rawValueText(derived.gross),
+              this.rawValueText(derived.net),
+              String(Math.round(derived.rate * 100))
+            )}
+          >*</span>`
+      : null;
     // 零值 / 空值弱化，避免「0」「—」与真实数值抢注意力。
     const muted = (text) => TemplateRenderer.html`<span class="mst-market-history-muted">${text}</span>`;
     const money = (value) => (Number(value) ? this.formatMoney(value) : muted('0'));
@@ -1504,11 +1745,12 @@ export class MarketHistoryFeature {
       </div>
     </td>
     <td class="mst-market-history-number-cell">${progress}</td>
-    <td class="mst-market-history-number-cell" title=${this.rawValueText(record.price)}>${money(record.price)}</td>
-    <td class="mst-market-history-number-cell" title=${this.rawValueText(amount)}>${money(amount)}</td>
+    <td class="mst-market-history-number-cell" title=${this.rawValueText(record.price)}>${
+      Number(record.price) ? this.formatUnitPrice(record.price) : muted('0')
+    }</td>
+    <td class="mst-market-history-number-cell" title=${this.rawValueText(amount)}>${money(amount)}${amountMark}</td>
     <td class=${'mst-market-history-number-cell' + collectedTone} title=${this.collectedHint(record)}>
       ${money(collected)}
-      ${this.formatPendingSuffix(record)}
     </td>
     <td>${timeCell(record.createdAt)}</td>
     <td>${timeCell(endTime)}</td>
@@ -1522,14 +1764,6 @@ export class MarketHistoryFeature {
       >&times;</button>
     </td>
   </tr>`;
-  }
-
-  formatPendingSuffix(record) {
-    const pending = getPendingCount(record);
-    if (!pending) return null;
-    const {TemplateRenderer, i18n} = this.ctx;
-    // 列宽有限，行内只给增量数字，「待领取」的名称放在 title 与合计口径里。
-    return TemplateRenderer.html`<span class="mst-market-history-pending" title=${i18n.t('marketHistoryPending')}>+${this.formatMoney(pending)}</span>`;
   }
 
   // 底栏合计分组：一个范围（本页合计 / 筛选总计）内的「标签 + 数值」，不含条数；
@@ -1589,8 +1823,8 @@ export class MarketHistoryFeature {
   statsFilterBarTemplate() {
     const {TemplateRenderer, i18n} = this.ctx;
     const filters = this.dialogState.stats.filters;
-    const timeOptions = STATS_TIME_PRESETS.map(
-      (key) => TemplateRenderer.html`<option value=${key}>${i18n.t(STATS_TIME_LABEL_KEYS[key])}</option>`
+    const timeOptions = TIME_PRESETS.map(
+      (key) => TemplateRenderer.html`<option value=${key}>${i18n.t(TIME_PRESET_LABEL_KEYS[key])}</option>`
     );
     const sideOptions = [
       'all', 'sell', 'buy'
@@ -1604,17 +1838,14 @@ export class MarketHistoryFeature {
     };
     return TemplateRenderer.html`
     <div class="mst-market-history-stats-filters">
-      <label class="mst-market-history-inline">
-        <span>${i18n.t('marketHistoryStatsTimeField')}</span>
-        <select
-          class="mst-market-history-select"
-          .value=${filters.timePreset}
-          @change=${(event) =>
-            apply(() => {
-              filters.timePreset = event.target.value;
-            })}
-        >${timeOptions}</select>
-      </label>
+      <select
+        class="mst-market-history-select"
+        .value=${filters.timePreset}
+        @change=${(event) =>
+          apply(() => {
+            filters.timePreset = event.target.value;
+          })}
+      >${timeOptions}</select>
       ${
         filters.timePreset === 'custom'
           ? TemplateRenderer.html`
@@ -2077,7 +2308,9 @@ export class MarketHistoryFeature {
       </td>
       <td class="mst-market-history-number-cell" title=${this.rawValueText(item.count)}>${String(item.count)}</td>
       <td class="mst-market-history-number-cell" title=${this.rawValueText(item.filledQuantity)}>${utils.formatCompactNumber(item.filledQuantity, 0)}</td>
-      <td class="mst-market-history-number-cell" title=${this.rawValueText(item.weightedPrice)}>${this.formatMoney(item.weightedPrice)}</td>
+      <td class="mst-market-history-number-cell" title=${this.rawValueText(item.weightedPrice)}>${this.formatUnitPrice(
+        item.weightedPrice
+      )}</td>
       <td class="mst-market-history-number-cell" title=${this.rawValueText(item.sellAmount)}>${this.formatMoney(item.sellAmount)}</td>
       <td class="mst-market-history-number-cell" title=${this.rawValueText(item.buyAmount)}>${this.formatMoney(item.buyAmount)}</td>
       <td class="mst-market-history-number-cell mst-market-history-income-cell" title=${this.rawValueText(item.income)}>${this.formatMoney(item.income)}</td>
@@ -2243,7 +2476,7 @@ export class MarketHistoryFeature {
     this.refreshOpenDialog({forceToolbar: true});
   }
 
-  // 管理页签：导入与导出两块（原工具栏按钮），各自独立成区。
+  // 管理页签：导入、导出与数据修复三块（原工具栏按钮），各自独立成区。
   manageTemplate() {
     const {TemplateRenderer, i18n} = this.ctx;
     return TemplateRenderer.html`
@@ -2260,6 +2493,7 @@ export class MarketHistoryFeature {
       </div>
       ${this.exportFormTemplate()}
     </section>
+    ${this.repairFormTemplate()}
   </div>`;
   }
 
@@ -2413,7 +2647,7 @@ export class MarketHistoryFeature {
       ), i18n.t('marketHistoryColumnType'), i18n.t('marketHistoryColumnItem'), i18n.t('marketHistoryColumnProgress'), i18n.t('marketHistoryColumnPrice'),
       i18n.t(
         'marketHistoryColumnNominal'
-      ), i18n.t('marketHistoryColumnCollected'), i18n.t('marketHistoryTotalsPending'), i18n.t('marketHistoryColumnCreatedAt'), i18n.t('marketHistoryColumnFilledAt')
+      ), i18n.t('marketHistoryColumnCollected'), i18n.t('marketHistoryColumnCreatedAt'), i18n.t('marketHistoryColumnFilledAt')
     ];
     const rows = records.map((record) => [
       i18n.t(
@@ -2421,7 +2655,7 @@ export class MarketHistoryFeature {
       ), i18n.t(this.typeLabelKey(getRecordType(record))), this.itemLabel(record), `${record.filledQuantity} / ${record.orderQuantity}`, record.price,
       getRecordAmount(
         record
-      ), getCollectedCount(record), getPendingCount(record), this.formatTime(record.createdAt), this.formatTime(getSortTimestamp(record, 'filledAt'))
+      ), getCollectedCount(record), this.formatTime(record.createdAt), this.formatTime(getSortTimestamp(record, 'filledAt'))
     ]);
     const csv =
       '\ufeff' +
@@ -2541,10 +2775,11 @@ export class MarketHistoryFeature {
     if (!file) return;
     const reader = new FileReader();
     reader.onload = () => {
-      if (this.dialogState.view !== 'manage') return;
+      // 弹窗已关闭（root 置空）或已离开「管理」页签：丢弃读取结果，
+      // 否则关闭后异步回调仍会把大文本写回内存、下次打开又重新显示。
+      if (!this.root || this.dialogState.view !== 'manage') return;
       const panel = this.dialogState.panel;
       panel.importText = String(reader.result || '');
-      panel.importFileName = file.name;
       panel.importReport = null;
       panel.importError = '';
       this.refreshOpenDialog({forceToolbar: true});
@@ -2601,14 +2836,98 @@ export class MarketHistoryFeature {
     if (reason === 'no-records') return i18n.t('marketHistoryImportErrorEmpty');
     return i18n.t('marketHistoryImportErrorFormat');
   }
-}
 
-// 供测试与诊断使用：记录数量与未关联直购数量。
-export function describeMarketHistory(store, now = Date.now()) {
-  const key = Object.keys(store?.buckets || {})[0] || '';
-  const records = key ? store.buckets[key] : [];
-  return {
-    total: countRecords(store),
-    unlinkedInstants: listUnlinkedInstants(records, now, {windowMs: INSTANT_MATCH_WINDOW_MS}).length
-  };
+  // ---- 数据修复（「管理」页签的第三块）----
+
+  // 数据修复区：扫描全部角色与环境的记录，按类型勾选后一次性修复；修复前可先在导出区备份。
+  // 条数来自只读扫描（store.js 的 scanStoreRepairs），没问题的类型复选框置灰不可勾选。
+  repairFormTemplate() {
+    const {TemplateRenderer, i18n} = this.ctx;
+    const panel = this.dialogState.panel;
+    const counts = this.repairCounts();
+    const total = REPAIR_TYPE_KEYS.reduce((sum, type) => sum + (counts[type] || 0), 0);
+    const options = REPAIR_TYPE_KEYS.map((type) => {
+      const count = counts[type] || 0;
+      return TemplateRenderer.html`
+    <label class="mst-market-history-checkbox">
+      <input
+        type="checkbox"
+        .checked=${count > 0 && panel.repairSelected.has(type)}
+        ?disabled=${count === 0}
+        @change=${(event) => {
+          if (event.target.checked) panel.repairSelected.add(type);
+          else panel.repairSelected.delete(type);
+          this.refreshOpenDialog();
+        }}
+      />
+      <span>${i18n.t(REPAIR_LABEL_KEYS[type], count)}</span>
+    </label>`;
+    });
+    const report = panel.repairReport;
+    const reportLines = report
+      ? REPAIR_TYPE_KEYS.filter((type) => report[type] > 0).map(
+          (type) => TemplateRenderer.html`
+    <div class="mst-market-history-aux-hint">${i18n.t(REPAIR_RESULT_KEYS[type], report[type])}</div>`
+        )
+      : [];
+    const selectedCount = REPAIR_TYPE_KEYS.filter(
+      (type) => (counts[type] || 0) > 0 && panel.repairSelected.has(type)
+    ).length;
+    return TemplateRenderer.html`
+    <section class="mst-market-history-manage-section">
+      <div class="mst-market-history-aux-head">
+        <span class="mst-market-history-aux-title">${i18n.t('marketHistoryRepairTitle')}</span>
+      </div>
+      <div class="mst-market-history-aux-hint">${i18n.t('marketHistoryRepairHint')}</div>
+      ${
+        total > 0
+          ? TemplateRenderer.html`
+    <div class="mst-market-history-aux-group">${options}</div>`
+          : TemplateRenderer.html`
+    <div class="mst-market-history-aux-hint">${i18n.t('marketHistoryRepairNothing')}</div>`
+      }
+      ${reportLines}
+      <div class="mst-market-history-aux-actions">
+        <button
+          type="button"
+          class="mst-market-history-button"
+          ?disabled=${selectedCount === 0}
+          @click=${() => this.applyRepair()}
+        >${i18n.t('marketHistoryRepairApply')}</button>
+      </div>
+    </section>`;
+  }
+
+  // 数据修复的扫描结果（只读）：全部角色与环境分桶的问题条数合计；
+  // 「进行中但已不在挂单列表」按本会话拿到的登录快照判断，没有快照的分桶这一类恒为 0。
+  repairCounts() {
+    return scanStoreRepairs(this.store, {snapshots: this.listingSnapshots});
+  }
+
+  // 应用数据修复：只处理本次勾选且确实有问题的类型，逐桶修复后整体保存，并按类型给出改动条数。
+  applyRepair() {
+    const {i18n, Notifier} = this.ctx;
+    const panel = this.dialogState.panel;
+    const counts = this.repairCounts();
+    const selected = REPAIR_TYPE_KEYS.filter((type) => (counts[type] || 0) > 0 && panel.repairSelected.has(type));
+    if (!selected.length) return;
+    const now = Date.now();
+    const report = createRepairReport();
+    Object.keys(this.store.buckets || {}).forEach((bucket) => {
+      const result = repairRecords(this.store.buckets[bucket], selected, {
+        now,
+        snapshot: this.listingSnapshots[bucket] || null
+      });
+      if (result.records.length) this.store.buckets[bucket] = result.records;
+      else delete this.store.buckets[bucket];
+      REPAIR_TYPE_KEYS.forEach((type) => {
+        report[type] += result.report[type];
+      });
+    });
+    panel.repairReport = report;
+    panel.repairSelected = new Set();
+    this.scheduleSave();
+    this.refreshOpenDialog();
+    Notifier?.toast(i18n.t('marketHistoryRepairDone'), 'success');
+  }
 }

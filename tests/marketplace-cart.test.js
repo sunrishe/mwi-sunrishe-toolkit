@@ -7,6 +7,7 @@ const {readRuntimeSource, readSourceFile, readVmSource} = require('./helpers/sou
 
 const source = readRuntimeSource();
 const runtimeSourceFile = readSourceFile('src', 'common', 'runtime.js');
+const dataSourceFile = readSourceFile('src', 'common', 'data.js');
 const messagesSourceFile = readSourceFile('src', 'common', 'messages.js');
 const moduleSourceFile = readSourceFile('src', 'modules', 'marketplace-cart', 'index.js');
 const moduleCssSourceFile = readSourceFile('src', 'modules', 'marketplace-cart', 'styles.css');
@@ -16,7 +17,7 @@ const usageSource = readSourceFile('docs', 'usage.md');
 
 function loadReader() {
   return vm.runInNewContext(
-    `${readVmSource('src/modules/marketplace-cart/index.js')}
+    `${readVmSource('src/common/data.js')}
       readMarketplacePanelState;`,
     {}
   );
@@ -86,6 +87,10 @@ test('市场加购模块装配完整', () => {
   // 锚点只认 React 渲染的按钮：其他脚本克隆/注入的按钮（无 __reactFiber 关联）会被跳过，
   // 避免误把克隆按钮当刷新按钮、点击时报“当前没有可加入购物车的市场物品”。
   assert.match(moduleSourceFile, /DataHub\.getReactFiber\(button\)/);
+  // MarketplacePanel state 读取器已抽到公共层（市场加购与交易记录挂牌页速览共用），
+  // 模块从 data.js 引入而不是各自维护一份。
+  assert.match(moduleSourceFile, /import \{readMarketplacePanelState\} from '\.\.\/\.\.\/common\/data\.js'/);
+  assert.match(dataSourceFile, /export function readMarketplacePanelState\(fiber\)/);
   // 加购条目保留强化等级并走 MWITools 购物车接口。
   assert.match(moduleSourceFile, /enhancementLevel/);
   assert.match(moduleSourceFile, /MarketMateBridge\.addToCart/);
