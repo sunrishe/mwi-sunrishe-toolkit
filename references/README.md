@@ -11,6 +11,7 @@
 - `legacy-scripts/eds/`：MST 融合前的 EDS 原始脚本，用于兼容逻辑和历史版本核对。
 - `legacy-scripts/mst/`：MST 历史基准脚本和备份脚本，仅用于核对，不参与构建。
 - `legacy-scripts/地牢计算器/`：旧版地下城收益计算脚本归档，用于地下城收益算法和数值口径核对。
+- `legacy-scripts/战斗升级时间/`：第三方脚本《[银河奶牛]显示战斗升级所需时间 v1.4》，供战斗技能悬浮显示升级时间的逻辑与时间格式核对（设计见 `docs/analysis/战斗升级悬浮时间与交战入口需求说明书.md`）。
 - `external-tools/mwi-tool/`：旧版配装与价格计算工具，当前用于方案和市场数据核对。
 - `vendor/sweetalert2-themes/`：第三方 SweetAlert2 主题样式素材，后续抽离 CSS 时可参考。
 - `combat-simulator/MWICombatSimulatorTest/`：装备提升模拟所参考的战斗模拟器构建产物。

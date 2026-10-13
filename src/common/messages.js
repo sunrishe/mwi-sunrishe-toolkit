@@ -25,6 +25,9 @@ export const COMMON_MESSAGES = {
   close: {zh: '关闭', en: 'Close'},
   confirm: {zh: '确定', en: 'OK'},
   dayUnit: {zh: '天', en: 'd'},
+  yearUnit: {zh: '年', en: 'y'},
+  hourUnit: {zh: '小时', en: 'h'},
+  minuteUnit: {zh: '分', en: 'm'},
   messageSeparator: {zh: '；', en: '; '},
   marketPriceUnavailable: {zh: '暂无市场数据', en: 'No market data'},
   clipboardUnavailable: {zh: '当前环境不支持剪贴板 API', en: 'Clipboard API is unavailable'}
@@ -593,7 +596,31 @@ export const COMBAT_CALCULATOR_MESSAGES = {
   secondaryXpRate: {zh: '选修经验 (K/h)', en: 'Secondary XP (K/h)'},
   useCurrentCombatXp: {zh: '使用当前战斗经验', en: 'Use Current Combat XP'},
   currentCombatXpApplied: {zh: '已填入当前战斗小时经验', en: 'Current combat XP rates filled'},
-  currentCombatXpUnavailable: {zh: '当前战斗小时经验不可用', en: 'Current combat XP rates are unavailable'},
+  currentCombatXpUnavailable: {
+    zh: '本场战斗开始不足 1 分钟或没有经验数据，暂时无法估算时间',
+    en: 'The battle started less than a minute ago or has no XP data, so time cannot be estimated yet'
+  },
+  combatUpgradeTimeNeeded: {zh: '升级所需时间', en: 'Time Needed'},
+  combatUpgradeTimeExact: {zh: '升级具体时间', en: 'Level Up At'},
+  combatUpgradeMilestoneNeeded: {zh: 'Lv.{0} 升级所需时间', en: 'Time to Lv.{0}'},
+  combatUpgradeMilestoneExact: {zh: 'Lv.{0} 升级具体时间', en: 'Lv.{0} At'},
+  combatUpgradeCalculatorForPlayer: {zh: '战斗升级计算器 · {0}', en: 'Combat Upgrade Calculator · {0}'},
+  combatUpgradeUnitEntry: {zh: '战斗升级计算器（{0}）', en: 'Combat upgrade calculator ({0})'},
+  combatUpgradePlayerName: {zh: '玩家：{0}', en: 'Player: {0}'},
+  combatUpgradeLevelsCached: {
+    zh: '技能等级来自 {0} 查看的名片缓存（非实时）',
+    en: 'Skill levels come from the profile viewed at {0} (not live)'
+  },
+  combatUpgradeLevelsCachedNoTime: {
+    zh: '技能等级来自名片缓存（非实时，缓存未记录查看时间）',
+    en: 'Skill levels come from the profile cache (not live; the cache has no timestamp)'
+  },
+  combatUpgradeLevelsMissing: {
+    zh: '未获取到技能等级（需先在游戏内点开该玩家资料），列表起始等级按 0 计算，请手动调整',
+    en: "Skill levels are unavailable (open this player's profile in game first); rows start at level 0 — adjust manually"
+  },
+  combatUpgradeRateLive: {zh: '经验速率：本场战斗实时数据', en: 'XP rates: live from this battle'},
+  combatUpgradeRateLine: {zh: '经验速率：{0}K/h', en: 'XP rate: {0}K/h'},
   optionalEph: {zh: 'EPH（选填）', en: 'EPH (optional)'},
   resetList: {zh: '重置列表', en: 'Reset List'},
   order: {zh: '序号', en: 'Sequence'},
