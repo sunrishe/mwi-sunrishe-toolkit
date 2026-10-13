@@ -257,6 +257,21 @@ test('顶部用户名片入口只增强角色名与总等级，不改变原有�
   assert.doesNotMatch(characterCardStylesSource, /\.mst-header-card-level-layout/);
 });
 
+test('队伍名片入口用橙色高亮与游戏原生按钮区分', () => {
+  const cardSource = readSourceFile('src', 'modules', 'character-card', 'index.js');
+
+  // 入口继承游戏按钮类，配色必须由 MST 补：游戏底色规则与之同级，用属性选择器提高优先级。
+  assert.match(cardSource, /gameButtonClass,\s*'mst-party-card-btn'/);
+  assert.match(
+    characterCardStylesSource,
+    /\[class\*='Button_button__'\]\.mst-party-card-btn\s*\{[^}]*background-color:\s*var\(--color-orange-500,\s*#faa21e\);[^}]*color:\s*#14151f;/
+  );
+  assert.match(
+    characterCardStylesSource,
+    /\[class\*='Button_button__'\]\.mst-party-card-btn:hover\s*\{[^}]*background-color:\s*var\(--color-orange-400,\s*#fbb54b\);/
+  );
+});
+
 test('评分块按内容模式只渲染对应的评分行', () => {
   const {context, generateCharacterCard} = loadGenerateCharacterCard();
   const data = {player: {}, dataTimestamp: 1};

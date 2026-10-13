@@ -1,4 +1,16 @@
 // combat-upgrade-planner
+// 战斗升级里程碑：低于 119 级取下一个 10 的整数倍等级、119 级起取下一个 5 的整数倍等级（用户口径）；
+// 算出的等级超过 200 时没有下一个大等级。
+const MILESTONE_LOW_LEVEL_LIMIT = 119;
+const MILESTONE_LOW_LEVEL_STEP = 10;
+const MILESTONE_HIGH_LEVEL_STEP = 5;
+// 技能等级上限与 7 个战斗技能清单：计算、悬浮与弹窗列表共用一份，避免多处硬编码。
+export const MAX_SKILL_LEVEL = 200;
+export const COMBAT_SKILL_HRIDS = [
+  '/skills/stamina', '/skills/intelligence', '/skills/attack', '/skills/defense', '/skills/melee',
+  '/skills/ranged', '/skills/magic'
+];
+
 export class CombatUpgradePlanner {
   constructor(ctx) {
     this.ctx = ctx;
@@ -14,13 +26,27 @@ export class CombatUpgradePlanner {
     return 'flexible';
   }
 
-  getDefaultPrimarySkillHrid() {
+  // 下一个大等级；超过 200 级返回 null，调用方据此隐藏「Lv 等级」两行。
+  getMilestoneLevel(level) {
+    const safeLevel = Math.max(0, Math.floor(Number(level) || 0));
+    const step = safeLevel < MILESTONE_LOW_LEVEL_LIMIT ? MILESTONE_LOW_LEVEL_STEP : MILESTONE_HIGH_LEVEL_STEP;
+    const nextLevel = (Math.floor(safeLevel / step) + 1) * step;
+    return nextLevel <= MAX_SKILL_LEVEL ? nextLevel : null;
+  }
+
+  // 技能状态解析器：没有解析器时读自己（实时角色数据），传入时用外部快照（队友的名片缓存等级）。
+  resolveSkillState(getSkillState, skillHrid) {
+    if (typeof getSkillState === 'function') return getSkillState(skillHrid) || {level: 0, experience: 0};
     const {CharacterDataService} = this.ctx;
+    return CharacterDataService.getCharacterSkill(skillHrid) || {level: 0, experience: 0};
+  }
+
+  getDefaultPrimarySkillHrid(getSkillState) {
     return [
       '/skills/melee', '/skills/ranged', '/skills/magic'
     ].reduce((highestHrid, skillHrid) => {
-      const highestLevel = Number(CharacterDataService.getCharacterSkill(highestHrid)?.level || 0);
-      const currentLevel = Number(CharacterDataService.getCharacterSkill(skillHrid)?.level || 0);
+      const highestLevel = Number(this.resolveSkillState(getSkillState, highestHrid)?.level || 0);
+      const currentLevel = Number(this.resolveSkillState(getSkillState, skillHrid)?.level || 0);
       return currentLevel > highestLevel ? skillHrid : highestHrid;
     });
   }
@@ -109,7 +135,7 @@ export class CombatUpgradePlanner {
     return requiredExperience / hourlyRate;
   }
 
-  calculatePlan(rows, primaryRate, secondaryRate) {
+  calculatePlan(rows, primaryRate, secondaryRate, getSkillState) {
     const {CharacterDataService, utils} = this.ctx;
     const {sequenceById, concurrentAllowedById} = this.getSequenceState(rows);
     const sequenceDurations = new Map();
@@ -118,7 +144,14 @@ export class CombatUpgradePlanner {
     let maxSequence = 0;
 
     for (const row of rows) {
-      const context = this.getPlanRowContext(row, sequenceById, previousBySkill, CharacterDataService, utils);
+      const context = this.getPlanRowContext(
+        row,
+        sequenceById,
+        previousBySkill,
+        CharacterDataService,
+        utils,
+        getSkillState
+      );
       // 重复专业继承上一次训练后的精确经验，不允许再手动指定起点。
       if (context.isRepeated) row.customStart = false;
       this.applyCustomStart(row, context, CharacterDataService, utils);
@@ -145,10 +178,10 @@ export class CombatUpgradePlanner {
     return {results, sequenceById, concurrentAllowedById, sequenceDurations, totalHours};
   }
 
-  getPlanRowContext(row, sequenceById, previousBySkill, CharacterDataService, utils) {
+  getPlanRowContext(row, sequenceById, previousBySkill, CharacterDataService, utils, getSkillState) {
     const sequence = sequenceById.get(row.id);
     const previous = previousBySkill.get(row.skillHrid);
-    const actual = CharacterDataService.getCharacterSkill(row.skillHrid) || {level: 0, experience: 0};
+    const actual = this.resolveSkillState(getSkillState, row.skillHrid);
     const actualLevel = utils.clampLevel(actual.level, 0, 200);
     const actualExperience = Math.max(
       CharacterDataService.getLevelExperience(actualLevel),

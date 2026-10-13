@@ -32,7 +32,9 @@ MST 是独立脚本，以下项目提供了参考或公开接口；参考类功�
 
 ## 战斗升级计算器
 
-按职业、等级和经验规划升级耗时与预计完成时间。
+按职业、等级和经验规划升级耗时与预计完成时间；导航栏悬浮「战斗」或战斗技能，可直接看到升级所需时间。
+
+战斗的「交战」界面里悬浮队伍中的玩家，可以用该玩家的数据打开计算器。
 
 ## 装备提升计算器
 
@@ -120,7 +122,9 @@ Calculate upgrade materials and costs, with export and cart support.
 
 ## Combat Upgrade Calculator
 
-Plan training duration and completion time by profession, level, and XP rate.
+Plan training duration and completion time by profession, level, and XP rate; hover the Combat nav entry or a combat skill to see the time needed to level up.
+
+Hover a party member in the battle screen to open the calculator with that player's data.
 
 ## Equipment Comparison
 

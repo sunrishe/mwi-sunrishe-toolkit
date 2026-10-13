@@ -1,18 +1,19 @@
-import {CombatUpgradePlanner} from './planner.js';
+import {StyleService} from '../../common/runtime.js';
+import {COMBAT_SKILL_HRIDS, CombatUpgradePlanner} from './planner.js';
+import {combatUpgradeTooltip} from './tooltip.js';
+import {combatUpgradeBattleEntry} from './battle-entry.js';
+import MST_COMBAT_UPGRADE_CSS from './styles.css';
 
 // combat-upgrade-dialog-view
 const combatUpgradeDialogView = {
-  COMBAT_SKILL_HRIDS: new Set([
-    '/skills/stamina', '/skills/intelligence', '/skills/attack', '/skills/defense', '/skills/melee',
-    '/skills/ranged', '/skills/magic'
-  ]),
+  COMBAT_SKILL_HRIDS: new Set(COMBAT_SKILL_HRIDS),
 
   getProfessionGridHtml(feature) {
     const {CharacterDataService, i18n, utils} = feature.ctx;
     return CharacterDataService.getCombatSkills()
       .map((entry) => {
         const skillHrid = entry.detail.hrid;
-        const level = Number(entry.characterSkill?.level || 0);
+        const level = Number(feature.getCharacterSkill(skillHrid)?.level || 0);
         return `<button type="button" class="mst-combat-profession" data-skill-hrid="${utils.escapeHtml(skillHrid)}" title="${utils.escapeHtml(i18n.t('doubleClickToAdd'))}">
     <svg aria-hidden="true"><use href="${utils.escapeHtml(feature.getSkillIconHref(skillHrid))}"></use></svg>
     <strong>${utils.escapeHtml(feature.getSkillName(skillHrid))}</strong>
@@ -33,6 +34,7 @@ const combatUpgradeDialogView = {
       <button type="button" class="mst-combat-current-xp">${utils.escapeHtml(i18n.t('useCurrentCombatXp'))}</button>
       <button type="button" class="mst-calculator-reset">${utils.escapeHtml(i18n.t('resetList'))}</button>
     </div>
+    ${feature.getPlayerHintHtml()}
     <div class="mst-combat-profession-picker">
       ${feature.getProfessionGridHtml()}
     </div>
@@ -283,7 +285,7 @@ const combatUpgradeInputEvents = {
 // combat-upgrade-language-refresh
 const combatUpgradeLanguageRefresh = {
   refreshLanguage(feature) {
-    const {TemplateRenderer, i18n} = feature.ctx;
+    const {TemplateRenderer} = feature.ctx;
     const popup = feature.popup;
     if (!popup?.isConnected) return;
     // 语言切换时重绘表头和文案，但保留工具栏输入与表格滚动位置。
@@ -300,7 +302,7 @@ const combatUpgradeLanguageRefresh = {
     if (!contentRoot) return;
     TemplateRenderer.renderHtml(() => feature.getDialogHtml(), contentRoot);
     const title = popup.querySelector('.swal2-title');
-    if (title) title.textContent = i18n.t('combatUpgradeCalculator');
+    if (title) title.textContent = feature.getDialogTitle();
     feature.bind(popup);
     this.restoreToolbarValues(popup, values);
     feature.recalculate();
@@ -611,6 +613,9 @@ const combatUpgradeRowView = {
 
 // combat-upgrade-state
 const combatUpgradeState = {
+  // 战斗开始不足 1 分钟不做估算（用户决策）：几秒取样会把速率放大几十倍。
+  MIN_BATTLE_SECONDS: 60,
+
   getGameState(feature) {
     const doc = feature.ctx.pageWindow?.document || document;
     const gamePageElement = doc.querySelector('[class^="GamePage"]');
@@ -622,33 +627,138 @@ const combatUpgradeState = {
     return null;
   },
 
-  getCurrentBattleExperienceFill(feature, nowMs = Date.now()) {
-    return this.getBattleExperienceFill(feature, this.getGameState(feature), nowMs);
+  getSelfCharacterId(feature) {
+    const {CharacterDataService, DataHub} = feature.ctx;
+    return CharacterDataService.raw?.character?.id ?? DataHub.getGameState?.()?.character?.id ?? null;
   },
 
-  getBattleExperienceFill(feature, gameState, nowMs = Date.now()) {
-    const characterId = gameState?.character?.id;
+  // 打开弹窗时的数据源：自己 = 实时角色数据；队友 = 名片缓存快照 + 本场战斗速率。
+  // {characterId, isSelf, levels: Map<skillHrid, level> | null, levelsTimestamp, name}
+  buildPlayerContext(feature, player) {
+    const {DataHub} = feature.ctx;
+    if (!player || player.characterId == null) return null;
+    const characterId = String(player.characterId);
+    const name = String(player.name || '');
+    const selfCharacterId = this.getSelfCharacterId(feature);
+    if (selfCharacterId != null && characterId === String(selfCharacterId)) {
+      return {characterId, isSelf: true, levels: null, levelsTimestamp: 0, name};
+    }
+    const stored = DataHub.getProfile?.(characterId) || null;
+    const levels = new Map();
+    (stored?.profile?.characterSkills || []).forEach((skill) => {
+      if (skill?.skillHrid) levels.set(skill.skillHrid, Number(skill.level) || 0);
+    });
+    return {
+      characterId,
+      isSelf: false,
+      levels: levels.size ? levels : null,
+      // 名片缓存的数据时间：脚本收到该资料的毫秒时间戳，展示在提示行里。
+      levelsTimestamp: Number(stored?.timestamp) || 0,
+      name
+    };
+  },
+
+  getContextCharacterId(feature) {
+    return feature.playerContext?.characterId ?? this.getSelfCharacterId(feature);
+  },
+
+  // 队友的名片缓存只有等级、没有经验：按该等级 0% 起算（提示行会写明非实时）。
+  getCharacterSkill(feature, skillHrid, context = feature.playerContext) {
+    const {CharacterDataService} = feature.ctx;
+    if (!context || context.isSelf)
+      return CharacterDataService.getCharacterSkill(skillHrid) || {level: 0, experience: 0};
+    const level = context.levels?.get(skillHrid);
+    if (level == null) return {level: 0, experience: 0};
+    return {level, experience: CharacterDataService.getLevelExperience(level)};
+  },
+
+  // 自己在当前战斗里的逐技能经验速率（原始经验 / 小时）；不足 60 秒或没有数据时返回 null。
+  getBattleSkillRates(feature, nowMs = Date.now()) {
+    return this.getBattleSkillRatesFromState(
+      feature,
+      this.getGameState(feature),
+      this.getSelfCharacterId(feature),
+      nowMs
+    );
+  },
+
+  getBattleSkillRatesFromState(feature, gameState, characterId, nowMs = Date.now()) {
     const battlePlayers = Array.isArray(gameState?.battlePlayers) ? gameState.battlePlayers : [];
     const combatStartMs = new Date(gameState?.combatStartTime || 0).getTime();
-    if (!characterId || !battlePlayers.length || !Number.isFinite(combatStartMs) || combatStartMs <= 0) return null;
-    const player = battlePlayers.find((unit) => unit?.character?.id === characterId);
-    const elapsedHours = Math.max(1 / 3600, (Number(nowMs) - combatStartMs) / 3600000);
-    const rates = Object.entries(player?.totalSkillExperienceMap || {})
-      .filter(
+    if (characterId == null || !battlePlayers.length || !Number.isFinite(combatStartMs) || combatStartMs <= 0)
+      return null;
+    const player = battlePlayers.find((unit) => String(unit?.character?.id) === String(characterId));
+    if (!player) return null;
+    const elapsedSeconds = (Number(nowMs) - combatStartMs) / 1000;
+    if (!(elapsedSeconds >= this.MIN_BATTLE_SECONDS)) return null;
+    const rates = new Map();
+    Object.entries(player.totalSkillExperienceMap || {}).forEach(
+      ([
+        skillHrid, experience
+      ]) => {
+        if (!combatUpgradeDialogView.COMBAT_SKILL_HRIDS.has(skillHrid)) return;
+        const rate = (Math.max(0, Number(experience) || 0) / elapsedSeconds) * 3600;
+        if (rate > 0) rates.set(skillHrid, rate);
+      }
+    );
+    return rates.size ? rates : null;
+  },
+
+  getBattleExperienceFill(feature, gameState, nowMs = Date.now(), characterId = gameState?.character?.id) {
+    const rates = this.getBattleSkillRatesFromState(feature, gameState, characterId, nowMs);
+    if (!rates) return null;
+    return this.getExperienceFillFromRates(
+      feature,
+      [
+        ...rates
+      ].map(
         ([
-          skillHrid
-        ]) => combatUpgradeDialogView.COMBAT_SKILL_HRIDS.has(skillHrid)
+          skillHrid, rate
+        ]) => ({skillHrid, rate})
       )
-      .map(
-        ([
-          skillHrid, experience
-        ]) => ({
-          skillHrid,
-          rate: Math.max(0, Number(experience) || 0) / elapsedHours
-        })
-      )
-      .filter((entry) => entry.rate > 0);
-    return this.getExperienceFillFromRates(feature, rates);
+    );
+  },
+
+  getCurrentBattleExperienceFill(feature, nowMs = Date.now()) {
+    return this.getBattleExperienceFill(
+      feature,
+      this.getGameState(feature),
+      nowMs,
+      this.getContextCharacterId(feature)
+    );
+  },
+
+  // 弹窗标题与数据来源提示行：没有玩家上下文（工具箱菜单入口）时退回原有标题、不渲染提示行。
+  getDialogTitle(feature) {
+    const {i18n} = feature.ctx;
+    const name = feature.playerContext?.name;
+    return name ? i18n.t('combatUpgradeCalculatorForPlayer', name) : i18n.t('combatUpgradeCalculator');
+  },
+
+  getPlayerHintHtml(feature) {
+    const {i18n, utils} = feature.ctx;
+    const context = feature.playerContext;
+    if (!context) return '';
+    const parts = [
+      i18n.t('combatUpgradePlayerName', context.name || '')
+    ];
+    if (!context.isSelf) {
+      // 队友的等级只能来自名片缓存：必须写出资料的查看时间；没有记录时间时退化为通用提示，
+      // 绝不显示一个算出来的时间（避免用户以为缓存数据是当下的）。
+      parts.push(
+        context.levels
+          ? context.levelsTimestamp > 0
+            ? i18n.t('combatUpgradeLevelsCached', utils.formatDateTime(context.levelsTimestamp))
+            : i18n.t('combatUpgradeLevelsCachedNoTime')
+          : i18n.t('combatUpgradeLevelsMissing')
+      );
+    }
+    parts.push(
+      this.getCurrentBattleExperienceFill(feature)
+        ? i18n.t('combatUpgradeRateLive')
+        : i18n.t('currentCombatXpUnavailable')
+    );
+    return `<div class="mst-combat-player-hint">${utils.escapeHtml(parts.join(i18n.t('messageSeparator')))}</div>`;
   },
 
   getExperienceFillFromRates(feature, rates) {
@@ -691,20 +801,22 @@ const combatUpgradeState = {
     return String(Number((Math.max(0, Number(rate) || 0) / 1000).toFixed(1)));
   },
 
-  applyCurrentBattleExperience(feature) {
+  applyCurrentBattleExperience(feature, options = {}) {
     const {Notifier, i18n} = feature.ctx;
+    // 跟随当前玩家上下文：从队友单位打开时填的是队友的本场速率。
     const fill = this.getCurrentBattleExperienceFill(feature);
     if (!fill) {
-      Notifier.toast(i18n.t('currentCombatXpUnavailable'), 'warning');
-      return;
+      if (!options.silent) Notifier.toast(i18n.t('currentCombatXpUnavailable'), 'warning');
+      return false;
     }
     const primaryInput = feature.popup?.querySelector('[data-field="primary-rate"]');
     const secondaryInput = feature.popup?.querySelector('[data-field="secondary-rate"]');
-    if (!primaryInput || !secondaryInput) return;
+    if (!primaryInput || !secondaryInput) return false;
     primaryInput.value = this.formatRateInputValue(fill.primaryRate);
     secondaryInput.value = this.formatRateInputValue(fill.secondaryRate);
     feature.recalculate();
-    Notifier.toast(i18n.t('currentCombatXpApplied'), 'success');
+    if (!options.silent) Notifier.toast(i18n.t('currentCombatXpApplied'), 'success');
+    return true;
   },
 
   getSkillName(feature, skillHrid) {
@@ -719,8 +831,9 @@ const combatUpgradeState = {
   },
 
   createRow(feature, skillHrid, defaultPrimarySkillHrid = feature.planner.getDefaultPrimarySkillHrid()) {
-    const {CharacterDataService, utils} = feature.ctx;
-    const current = CharacterDataService.getCharacterSkill(skillHrid) || {level: 0, experience: 0};
+    const {utils} = feature.ctx;
+    // 起始等级跟随当前玩家上下文：自己是实时等级，队友是名片缓存等级（经验按该等级 0% 起算）。
+    const current = feature.getCharacterSkill(skillHrid);
     const startLevel = utils.clampLevel(current.level, 0, 199);
     const trainingTypeMode = feature.planner.getTrainingTypeMode(skillHrid);
     let trainingType = trainingTypeMode;
@@ -750,7 +863,7 @@ const combatUpgradeState = {
         )
       : new Map();
     feature.nextRowId = 0;
-    const defaultPrimarySkillHrid = feature.planner.getDefaultPrimarySkillHrid();
+    const defaultPrimarySkillHrid = feature.getDefaultPrimarySkillHrid();
     const defaultSkillHrids = new Set([
       '/skills/stamina', '/skills/intelligence', '/skills/attack', '/skills/defense', defaultPrimarySkillHrid
     ]);
@@ -808,6 +921,9 @@ export class CombatUpgradeCalculatorFeature {
     this.popup = null;
     this.helpController = null;
     this.bindController = null;
+    // 打开弹窗时的玩家上下文（null = 工具箱菜单入口，等同自己且不显示名字）。
+    this.playerContext = null;
+    this.observer = null;
   }
 
   getSkillName(skillHrid) {
@@ -822,8 +938,37 @@ export class CombatUpgradeCalculatorFeature {
     return this.planner.getTrainingTypeMode(skillHrid);
   }
 
+  getMilestoneLevel(level) {
+    return this.planner.getMilestoneLevel(level);
+  }
+
   getDefaultPrimarySkillHrid() {
-    return this.planner.getDefaultPrimarySkillHrid();
+    return this.planner.getDefaultPrimarySkillHrid((skillHrid) => this.getCharacterSkill(skillHrid));
+  }
+
+  getCharacterSkill(skillHrid, context = this.playerContext) {
+    return this.state.getCharacterSkill(this, skillHrid, context);
+  }
+
+  buildPlayerContext(player) {
+    return this.state.buildPlayerContext(this, player);
+  }
+
+  getDialogTitle() {
+    return this.state.getDialogTitle(this);
+  }
+
+  getPlayerHintHtml() {
+    return this.state.getPlayerHintHtml(this);
+  }
+
+  getBattleSkillRates(nowMs = Date.now()) {
+    return this.state.getBattleSkillRates(this, nowMs);
+  }
+
+  getUnitEntryTitle(name) {
+    const {i18n} = this.ctx;
+    return name ? i18n.t('combatUpgradeUnitEntry', name) : i18n.t('combatUpgradeCalculator');
   }
 
   getHourlyExperience(row, primaryRate, secondaryRate) {
@@ -838,16 +983,16 @@ export class CombatUpgradeCalculatorFeature {
     return this.state.resetState(this, preserveExperienceOverrides);
   }
 
-  getBattleExperienceFill(gameState, nowMs = Date.now()) {
-    return this.state.getBattleExperienceFill(this, gameState, nowMs);
+  getBattleExperienceFill(gameState, nowMs = Date.now(), characterId = gameState?.character?.id) {
+    return this.state.getBattleExperienceFill(this, gameState, nowMs, characterId);
   }
 
   getExperienceFillFromRates(rates) {
     return this.state.getExperienceFillFromRates(this, rates);
   }
 
-  applyCurrentBattleExperience() {
-    return this.state.applyCurrentBattleExperience(this);
+  applyCurrentBattleExperience(options) {
+    return this.state.applyCurrentBattleExperience(this, options);
   }
 
   getSequenceState() {
@@ -871,7 +1016,9 @@ export class CombatUpgradeCalculatorFeature {
   }
 
   calculatePlan(primaryRate, secondaryRate) {
-    return this.planner.calculatePlan(this.rows, primaryRate, secondaryRate);
+    return this.planner.calculatePlan(this.rows, primaryRate, secondaryRate, (skillHrid) =>
+      this.getCharacterSkill(skillHrid)
+    );
   }
 
   getProfessionGridHtml() {
@@ -902,31 +1049,49 @@ export class CombatUpgradeCalculatorFeature {
     return this.view.refreshLanguage(this);
   }
 
-  open() {
+  // 可带玩家上下文打开：`open({characterId, name})`（交战界面单位入口）；
+  // 不传参数时保持原有行为（工具箱菜单入口，等同自己且不显示玩家名）。
+  open(player = null) {
     const {DataHub, CharacterDataService, Notifier, i18n} = this.ctx;
     if (!DataHub.getClientData()?.levelExperienceTable || !CharacterDataService.getCombatSkills().length) {
       return Notifier.alert(i18n.t('calculatorDataNotReady'), 'warning');
     }
+    this.playerContext = this.buildPlayerContext(player);
     this.resetState();
     return Notifier.html({
-      title: i18n.t('combatUpgradeCalculator'),
+      title: this.getDialogTitle(),
       html: this.getDialogHtml(),
       width: 'min(56rem, calc(100vw - 1rem))',
       popupClass: 'mst-upgrade-calculator-dialog',
       icon: 'experience',
-      didOpen: (popup) => this.bind(popup),
+      didOpen: (popup) => {
+        this.bind(popup);
+        // 从玩家单位打开时自动填入该玩家的本场经验速率；填不上由提示行说明原因，不再弹 toast。
+        if (this.playerContext) this.applyCurrentBattleExperience({silent: true});
+      },
       willClose: () => {
         this.bindController?.abort();
         this.bindController = null;
         this.helpController?.cleanup();
         this.helpController = null;
         this.popup = null;
+        this.playerContext = null;
       }
     });
   }
 
   init() {
-    const {LanguageEvents} = this.ctx;
-    LanguageEvents.subscribe(() => this.refreshLanguage());
+    const {CONFIG, LanguageEvents, utils} = this.ctx;
+    LanguageEvents.subscribe(() => {
+      this.refreshLanguage();
+      combatUpgradeBattleEntry.refreshLanguage(this);
+    });
+    if (!CONFIG?.isGameSite) return;
+    StyleService.ensure('mst-combat-upgrade-style', MST_COMBAT_UPGRADE_CSS);
+    // 悬浮时间与交战界面入口复用公共观察器（禁止在业务模块自建 MutationObserver）。
+    this.observer = utils.observeBody(() => {
+      combatUpgradeTooltip.mount(this);
+      combatUpgradeBattleEntry.mount(this);
+    });
   }
 }

@@ -10,8 +10,11 @@ const combatSkillHrids = [
   '/skills/stamina', '/skills/intelligence', '/skills/attack', '/skills/defense', '/skills/melee',
   '/skills/ranged', '/skills/magic'
 ];
+// 名片缓存（DataHub.getProfile）的测试替身，按用例改写。
+const profileStore = {profiles: {}};
 
 const CharacterDataService = {
+  raw: {character: {id: 7}},
   getCharacterSkill(skillHrid) {
     const level = skillLevels.get(skillHrid) || 0;
     return {level, experience: level * 1000};
@@ -30,21 +33,58 @@ const CharacterDataService = {
 const utils = {
   clampLevel(level, min, max) {
     return Math.min(max, Math.max(min, Number(level) || 0));
+  },
+  escapeHtml(value) {
+    return String(value ?? '');
+  },
+  formatDateTime(value) {
+    return new Date(value).toISOString();
+  },
+  getSpriteUrl() {
+    return '';
+  },
+  substrLastSlash(value) {
+    return String(value || '').substring(String(value || '').lastIndexOf('/') + 1);
   }
 };
 
 // 直接执行成品脚本中的类，确保测试覆盖实际发布代码。
 function loadCombatUpgradeCalculatorFeature() {
   return vm.runInNewContext(
-    `${readVmSource('src/modules/combat-upgrade/planner.js', 'src/modules/combat-upgrade/index.js')}
+    `${readVmSource(
+      'src/modules/combat-upgrade/planner.js',
+      'src/modules/combat-upgrade/tooltip.js',
+      'src/modules/combat-upgrade/index.js'
+    )}
         const ctx = {
-            DataHub: {getLocalizedGameName(_group, hrid) { return hrid; }},
+            DataHub: {
+              getLocalizedGameName(_group, hrid) { return hrid; },
+              getClientData() { return {levelExperienceTable: [0]}; },
+              getClientDataMap() { return {}; },
+              getProfile(characterId) { return profileStore.profiles[String(characterId)] || null; },
+              getGameState() { return null; }
+            },
             CharacterDataService,
             TemplateRenderer: {},
             CalculatorHelpPopover: {},
-            Notifier: {},
+            Notifier: {alert() {}, html() { return null; }, toast() {}},
             LanguageEvents: {subscribe() {}},
-            i18n: {t(key) { return key; }},
+            i18n: {
+              languageKey: 'zh',
+              locale: 'zh-CN',
+              t(key, ...args) {
+                // 只补时间单位与分隔符；其余文案键保持 key 原样，参数以 key[参数] 形式附在后面便于断言。
+                const units = {yearUnit: '年', dayUnit: '天', hourUnit: '小时', minuteUnit: '分', messageSeparator: '；'};
+                let text = Object.prototype.hasOwnProperty.call(units, key) ? units[key] : key;
+                const extraArgs = [];
+                args.forEach((arg, index) => {
+                  const placeholder = '{' + index + '}';
+                  if (text.includes(placeholder)) text = text.replace(placeholder, String(arg));
+                  else extraArgs.push(String(arg));
+                });
+                return extraArgs.length ? text + '[' + extraArgs.join('|') + ']' : text;
+              }
+            },
             utils
         };
         class CombatUpgradeCalculatorFeatureWithContext extends CombatUpgradeCalculatorFeature {
@@ -52,12 +92,23 @@ function loadCombatUpgradeCalculatorFeature() {
             super(ctx);
           }
         }
-        CombatUpgradeCalculatorFeatureWithContext;`,
-    {CharacterDataService, utils}
+        [CombatUpgradeCalculatorFeatureWithContext, combatUpgradeTooltip];`,
+    {
+      CharacterDataService,
+      utils,
+      profileStore,
+      document: {
+        querySelector() {
+          return null;
+        }
+      }
+    }
   );
 }
 
-const CombatUpgradeCalculatorFeature = loadCombatUpgradeCalculatorFeature();
+const [
+  CombatUpgradeCalculatorFeature, combatUpgradeTooltip
+] = loadCombatUpgradeCalculatorFeature();
 
 test('战斗专业类型遵循固定与可切换规则', () => {
   const feature = new CombatUpgradeCalculatorFeature();
@@ -599,4 +650,286 @@ test('同修主修反推经验不超过 200 级上限', () => {
   assert.equal(result.endState.experience, 200000);
   assert.equal(result.endState.level, 200);
   assert.equal(result.endState.percent, 0);
+});
+
+test('战斗升级里程碑取下一个 10 的整数倍（<119）或 5 的整数倍（>=119）等级', () => {
+  const feature = new CombatUpgradeCalculatorFeature();
+
+  // 低于 119：下一个 10 的整数倍（整十等级本身也进到下一档）。
+  assert.equal(feature.getMilestoneLevel(5), 10);
+  assert.equal(feature.getMilestoneLevel(110), 120);
+  assert.equal(feature.getMilestoneLevel(118), 120);
+  // 119 起：下一个 5 的整数倍。
+  assert.equal(feature.getMilestoneLevel(119), 120);
+  assert.equal(feature.getMilestoneLevel(133), 135);
+  assert.equal(feature.getMilestoneLevel(150), 155);
+  // 超过 200 级没有下一个大等级。
+  assert.equal(feature.getMilestoneLevel(195), 200);
+  assert.equal(feature.getMilestoneLevel(196), 200);
+  assert.equal(feature.getMilestoneLevel(199), 200);
+  assert.equal(feature.getMilestoneLevel(200), null);
+});
+
+test('战斗不足 1 分钟不做速率估算，超过 1 分钟按真实速率计算', () => {
+  const feature = new CombatUpgradeCalculatorFeature();
+  const combatStartTime = '2026-08-04T12:00:00Z';
+  const startMs = Date.parse(combatStartTime);
+  const gameState = {
+    character: {id: 1},
+    combatStartTime,
+    battlePlayers: [
+      {
+        character: {id: 1},
+        totalSkillExperienceMap: {'/skills/magic': 100000}
+      }
+    ]
+  };
+
+  assert.equal(feature.getBattleExperienceFill(gameState, startMs + 30000), null);
+
+  const rates = feature.state.getBattleSkillRatesFromState(feature, gameState, 1, startMs + 90000);
+  assert.equal(rates.get('/skills/magic'), (100000 / 90) * 3600);
+
+  const fill = feature.getBattleExperienceFill(gameState, startMs + 90000);
+  assert.equal(fill.primaryRate, (100000 / 90) * 3600 * 0.3);
+  assert.equal(fill.secondaryRate, (100000 / 90) * 3600 * 0.7);
+});
+
+test('战斗速率只保留本场有经验的战斗技能', () => {
+  const feature = new CombatUpgradeCalculatorFeature();
+  const gameState = {
+    character: {id: 1},
+    combatStartTime: '2026-08-04T12:00:00Z',
+    battlePlayers: [
+      {
+        character: {id: 1},
+        totalSkillExperienceMap: {
+          '/skills/woodcutting': 99999,
+          '/skills/attack': 0,
+          '/skills/melee': 7200,
+          '/skills/magic': 3600
+        }
+      }
+    ]
+  };
+  const nowMs = Date.parse('2026-08-04T13:00:00Z');
+
+  const rates = feature.state.getBattleSkillRatesFromState(feature, gameState, 1, nowMs);
+  assert.deepEqual(
+    [
+      ...rates.keys()
+    ],
+    [
+      '/skills/melee', '/skills/magic'
+    ]
+  );
+  assert.equal(rates.get('/skills/melee'), 7200);
+  // 不是本场参战玩家时没有速率。
+  assert.equal(feature.state.getBattleSkillRatesFromState(feature, gameState, 99, nowMs), null);
+});
+
+test('玩家上下文：自己、队友名片缓存与缺资料三种情况', () => {
+  const feature = new CombatUpgradeCalculatorFeature();
+  profileStore.profiles = {};
+  skillLevels.clear();
+
+  const self = feature.buildPlayerContext({characterId: 7, name: 'dadada6'});
+  assert.equal(self.isSelf, true);
+  assert.equal(self.name, 'dadada6');
+  assert.equal(self.levels, null);
+
+  const timestamp = Date.parse('2026-08-04T10:00:00Z');
+  profileStore.profiles['42'] = {
+    timestamp,
+    profile: {characterSkills: [
+        {skillHrid: '/skills/melee', level: 133}
+      ]}
+  };
+  const teammate = feature.buildPlayerContext({characterId: 42, name: 'ally'});
+  assert.equal(teammate.isSelf, false);
+  assert.equal(teammate.levels.get('/skills/melee'), 133);
+  assert.equal(teammate.levelsTimestamp, timestamp);
+
+  feature.playerContext = teammate;
+  // 名片缓存只有等级：经验按该等级 0% 起算；名片里没有的技能按 0 级。
+  const melee = feature.getCharacterSkill('/skills/melee');
+  assert.equal(melee.level, 133);
+  assert.equal(melee.experience, 133000);
+  const ranged = feature.getCharacterSkill('/skills/ranged');
+  assert.equal(ranged.level, 0);
+  assert.equal(ranged.experience, 0);
+  // 传 null 时固定读自己，不受弹窗上下文影响（悬浮时间走这条路径）。
+  const selfMelee = feature.getCharacterSkill('/skills/melee', null);
+  assert.equal(selfMelee.level, 0);
+  assert.equal(selfMelee.experience, 0);
+
+  feature.playerContext = feature.buildPlayerContext({characterId: 99, name: 'ghost'});
+  assert.equal(feature.playerContext.levels, null);
+  const ghost = feature.getCharacterSkill('/skills/melee');
+  assert.equal(ghost.level, 0);
+  assert.equal(ghost.experience, 0);
+
+  // 缓存里有等级但没记录查看时间时，提示行退化为不带时间的口径，不能显示算出来的时间。
+  profileStore.profiles['43'] = {
+    timestamp: 0,
+    profile: {characterSkills: [
+        {skillHrid: '/skills/melee', level: 100}
+      ]}
+  };
+  feature.playerContext = feature.buildPlayerContext({characterId: 43, name: 'nosy'});
+  assert.equal(feature.playerContext.levels.get('/skills/melee'), 100);
+  assert.match(feature.getPlayerHintHtml(), /combatUpgradeLevelsCachedNoTime/);
+
+  assert.equal(feature.buildPlayerContext(null), null);
+});
+
+test('队友上下文：默认主修与列表起始等级按名片快照', () => {
+  const feature = new CombatUpgradeCalculatorFeature();
+  skillLevels.clear();
+  skillLevels.set('/skills/melee', 160);
+  skillLevels.set('/skills/ranged', 10);
+  skillLevels.set('/skills/magic', 12);
+  profileStore.profiles = {
+    42: {
+      timestamp: Date.parse('2026-08-04T10:00:00Z'),
+      profile: {
+        characterSkills: [
+          {
+            skillHrid: '/skills/stamina',
+            level: 30
+          }, {skillHrid: '/skills/intelligence', level: 31}, {skillHrid: '/skills/attack', level: 32}, {
+            skillHrid: '/skills/defense',
+            level: 33
+          }, {skillHrid: '/skills/melee', level: 20},
+          {skillHrid: '/skills/ranged', level: 60}, {skillHrid: '/skills/magic', level: 5}
+        ]
+      }
+    }
+  };
+  feature.playerContext = feature.buildPlayerContext({characterId: 42, name: 'ally'});
+
+  // 默认主修按快照里近战 / 远程 / 魔法最高的：自己 160 级的近战不参与。
+  assert.equal(feature.getDefaultPrimarySkillHrid(), '/skills/ranged');
+
+  feature.resetState();
+  const rangedRow = feature.rows.find((row) => row.skillHrid === '/skills/ranged');
+  assert.equal(rangedRow.startLevel, 60);
+  assert.equal(rangedRow.targetLevel, 60);
+  assert.equal(rangedRow.trainingType, 'primary');
+
+  const plan = feature.calculatePlan(1000, 1000);
+  assert.equal(plan.results.get(rangedRow.id).currentState.level, 60);
+  assert.equal(plan.results.get(rangedRow.id).currentState.experience, 60000);
+
+  assert.equal(feature.createRow('/skills/magic').startLevel, 5);
+  // 回到自己时仍是实时等级。
+  feature.playerContext = null;
+  assert.equal(feature.createRow('/skills/melee').startLevel, 160);
+});
+
+test('open() 兼容无参与带玩家上下文调用', () => {
+  const feature = new CombatUpgradeCalculatorFeature();
+  profileStore.profiles = {
+    42: {timestamp: Date.now(), profile: {characterSkills: [
+          {skillHrid: '/skills/melee', level: 133}
+        ]}}
+  };
+
+  feature.open();
+  assert.equal(feature.playerContext, null);
+  assert.equal(feature.getDialogTitle(), 'combatUpgradeCalculator');
+
+  feature.open({characterId: 42, name: 'ally'});
+  assert.equal(feature.playerContext.characterId, '42');
+  assert.equal(feature.getDialogTitle(), 'combatUpgradeCalculatorForPlayer[ally]');
+
+  // 速率不可用时自动填充静默返回 false（不弹 toast），由提示行说明原因。
+  assert.equal(feature.applyCurrentBattleExperience({silent: true}), false);
+  const hint = feature.getPlayerHintHtml();
+  assert.match(hint, /combatUpgradePlayerName\[ally\]/);
+  assert.match(hint, /combatUpgradeLevelsCached\[/);
+  assert.match(hint, /currentCombatXpUnavailable/);
+});
+
+test('悬浮时间文案格式：四行、里程碑与满级', () => {
+  const feature = new CombatUpgradeCalculatorFeature();
+
+  // 120 级、0% 经验、10 万/h：升 121 级需 1000 经验 → 36 秒 → 0 分；里程碑 125 级 → 3 分。
+  const lines = combatUpgradeTooltip.getTimeLinesHtml(feature, 120, 120000, 100000);
+  // 第一行是本场该技能的 K/h 速率（与计算器输入框同口径：一位小数、去掉多余的 0）。
+  assert.match(lines, /combatUpgradeRateLine\[100\]/);
+  assert.match(lines, /combatUpgradeTimeNeeded：0分/);
+  assert.match(lines, /combatUpgradeTimeExact：\d\d\/\d\d \d\d:\d\d/);
+  assert.match(lines, /combatUpgradeMilestoneNeeded\[125\]：3分/);
+  assert.match(lines, /combatUpgradeMilestoneExact\[125\]：\d\d\/\d\d \d\d:\d\d/);
+
+  // 119 级的里程碑是 120 级（下一个 5 的整数倍），118 级也是 120 级（下一个 10 的整数倍），133 级是 135 级。
+  assert.match(
+    combatUpgradeTooltip.getTimeLinesHtml(feature, 119, 119000, 100000),
+    /combatUpgradeMilestoneNeeded\[120\]：0分/
+  );
+  assert.match(
+    combatUpgradeTooltip.getTimeLinesHtml(feature, 118, 118000, 100000),
+    /combatUpgradeMilestoneNeeded\[120\]/
+  );
+  assert.match(
+    combatUpgradeTooltip.getTimeLinesHtml(feature, 133, 133000, 100000),
+    /combatUpgradeMilestoneNeeded\[135\]/
+  );
+  // 196 级的里程碑是 200 级，仍能显示；满级（200）时没有下一个大等级。
+  assert.match(
+    combatUpgradeTooltip.getTimeLinesHtml(feature, 196, 196000, 100000),
+    /combatUpgradeMilestoneNeeded\[200\]/
+  );
+  // 满级与没有速率时不注入。
+  assert.equal(combatUpgradeTooltip.getTimeLinesHtml(feature, 200, 200000, 100000), '');
+  assert.equal(combatUpgradeTooltip.getTimeLinesHtml(feature, 120, 120000, 0), '');
+
+  assert.equal(combatUpgradeTooltip.formatDuration(feature, 3670), '1小时1分');
+  assert.equal(
+    combatUpgradeTooltip.formatDuration(feature, 31536000 + 86400 * 2 + 3600 * 3 + 60 * 20),
+    '1年2天3小时20分'
+  );
+  assert.equal(combatUpgradeTooltip.formatDuration(feature, 0), '0分');
+  assert.match(combatUpgradeTooltip.formatUpgradeTime(3600), /^\d\d\/\d\d \d\d:\d\d$/);
+});
+
+test('悬浮时间与交战入口接线复用公共观察器，不自建观察器', () => {
+  const tooltipSource = readSourceFile('src', 'modules', 'combat-upgrade', 'tooltip.js');
+  const entrySource = readSourceFile('src', 'modules', 'combat-upgrade', 'battle-entry.js');
+  const featureSource = readSourceFile('src', 'modules', 'combat-upgrade', 'index.js');
+  const styleSource = readSourceFile('src', 'modules', 'combat-upgrade', 'styles.css');
+  const sourceHelper = readSourceFile('tests', 'helpers', 'source.js');
+
+  assert.match(featureSource, /import \{combatUpgradeTooltip\} from '\.\/tooltip\.js';/);
+  assert.match(featureSource, /import \{combatUpgradeBattleEntry\} from '\.\/battle-entry\.js';/);
+  assert.match(featureSource, /import MST_COMBAT_UPGRADE_CSS from '\.\/styles\.css';/);
+  assert.match(featureSource, /StyleService\.ensure\('mst-combat-upgrade-style', MST_COMBAT_UPGRADE_CSS\)/);
+  assert.match(featureSource, /utils\.observeBody\(\(\) => \{/);
+  assert.match(featureSource, /combatUpgradeTooltip\.mount\(this\);/);
+  assert.match(featureSource, /combatUpgradeBattleEntry\.mount\(this\);/);
+
+  assert.match(tooltipSource, /NavigationBar_navigationSkillTooltip/);
+  assert.match(tooltipSource, /mst-combat-tooltip/);
+  assert.match(tooltipSource, /skills_sprite/);
+  // 悬浮期间内容冻结：按轮次（hoverToken）判定，不再按秒级时间戳重写。
+  assert.match(tooltipSource, /hoverToken/);
+  assert.doesNotMatch(tooltipSource, /Date\.now\(\) \/ 1000/);
+  assert.doesNotMatch(tooltipSource, /new MutationObserver/);
+
+  assert.match(entrySource, /CombatUnit_combatUnit/);
+  assert.match(entrySource, /memoizedProps\?\.combatUnit/);
+  assert.match(entrySource, /stopPropagation\(\)/);
+  assert.match(entrySource, /mst-combat-unit-entry/);
+  assert.doesNotMatch(entrySource, /new MutationObserver/);
+
+  assert.match(styleSource, /:hover \.mst-combat-unit-entry/);
+  assert.match(styleSource, /opacity: 0;/);
+  assert.match(styleSource, /pointer-events: none;/);
+
+  // 运行时源码顺序：planner → tooltip → battle-entry → index（索引文件的依赖必须在前）。
+  const order = [
+    'combat-upgrade/planner.js', 'combat-upgrade/tooltip.js', 'combat-upgrade/battle-entry.js', 'combat-upgrade/index.js'
+  ].map((file) => sourceHelper.indexOf(file));
+  assert.ok(order.every((position, index) => position >= 0 && (index === 0 || position > order[index - 1])));
 });

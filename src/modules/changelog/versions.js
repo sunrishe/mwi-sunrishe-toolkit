@@ -3,6 +3,24 @@
 // 版本说明只写用户可感知的变化，更新版本时先改 docs/changelog.md，再同步这里并补英文。
 export const CHANGELOG_VERSIONS = [
   {
+    version: '2.21.0',
+    date: '2026-10-13',
+    notes: [
+      {
+        zh: '战斗升级计算器：导航栏里悬浮「战斗」或战斗技能，可以直接看到本场的经验速率、升级所需时间和预计升级时间；「战斗」项按本场有经验的技能逐个列出。',
+        en: "Combat Upgrade Calculator: hovering the Combat nav entry or a combat skill shows this battle's XP rate, the time needed to level up, and the expected level-up time; the Combat entry lists each skill that gained XP in this battle."
+      }, {
+        zh: '战斗升级计算器：战斗的「交战」界面里悬浮队伍中的玩家，可以用该玩家的等级与本场经验打开计算器，队友的等级取自已查看过的名片。',
+        en: "Combat Upgrade Calculator: hovering a party member in the battle screen opens the calculator with that player's levels and this battle's XP, and a teammate's levels come from the profile you have viewed."
+      }, {
+        zh: '战斗升级计算器：战斗开始不足 1 分钟时不再估算升级时间，悬浮和自动填入都会说明数据不足；悬浮显示的时间在停留期间固定不变。',
+        en: 'Combat Upgrade Calculator: no level-up time estimate during the first minute of a battle — hovering and auto-fill both explain that there is not enough data; the times shown while hovering stay fixed during one hover.'
+      }, {
+        zh: '队伍名片：队伍面板里的「队伍名片」按钮改为橙色高亮，与旁边的游戏原生按钮区分开。',
+        en: "Party Card: the Party Card button in the party panel is now highlighted in orange so it stands out from the game's own buttons beside it."
+      }
+    ]
+  }, {
     version: '2.20.1',
     date: '2026-10-12',
     notes: [
@@ -78,7 +96,8 @@ export const CHANGELOG_VERSIONS = [
         en: 'New "Check for Updates": it checks in the background and, when a new version is found, shows a hint on the Toolkit entry and turns the button into "Update to vX" for one-click install; with no new version, click it to view the installed and latest versions.'
       }
     ]
-  }, {
+  },
+  {
     version: '2.17.2',
     date: '2026-09-24',
     notes: [
@@ -96,8 +115,7 @@ export const CHANGELOG_VERSIONS = [
         en: 'Equipment Comparison: the simulation reflects only the selected equipment and no longer includes fixed bonuses such as character achievements; searching and switching equipment is faster.'
       }
     ]
-  },
-  {
+  }, {
     version: '2.17.1',
     date: '2026-09-23',
     notes: [
@@ -164,7 +182,8 @@ export const CHANGELOG_VERSIONS = [
         en: "Combat Upgrade Calculator can now plan upgrades without a major profession, estimating duration and completion time from each row's XP."
       }
     ]
-  }, {
+  },
+  {
     version: '2.14.0',
     date: '2026-08-26',
     notes: [
@@ -179,8 +198,7 @@ export const CHANGELOG_VERSIONS = [
         en: 'The Dungeon Profit "Drops" tab now matches the game\'s tab style.'
       }
     ]
-  },
-  {
+  }, {
     version: '2.13.0',
     date: '2026-08-21',
     notes: [
@@ -228,7 +246,8 @@ export const CHANGELOG_VERSIONS = [
         en: 'Marketplace adds an "Add to cart" button next to "Refresh" that adds the currently viewed item to the MWITools cart, 1 per click; a specific enhancement level is kept and unenhanced items are added as +0 (cart only, never orders).'
       }
     ]
-  }, {
+  },
+  {
     version: '2.10.2',
     date: '2026-08-17',
     notes: [
@@ -237,8 +256,7 @@ export const CHANGELOG_VERSIONS = [
         en: 'Fixed the market data source: prices are now always read from the current entry domain (release and test are separate environments, and the cn domain is a mirror entry of the release server), so pages with or without www or on the test domain all work without a fixed domain redirect.'
       }
     ]
-  },
-  {
+  }, {
     version: '2.10.1',
     date: '2026-08-17',
     notes: [
@@ -296,7 +314,8 @@ export const CHANGELOG_VERSIONS = [
         en: 'Dungeon Profit adds a party size option (1-5): chest quantity uses the official formula `5 ÷ party size`, so with the default 5 members a standard chest is still 1.295 per run, and tickets, keys, and profit adjust automatically.'
       }
     ]
-  }, {
+  },
+  {
     version: '2.8.3',
     date: '2026-08-04',
     notes: [
@@ -305,8 +324,7 @@ export const CHANGELOG_VERSIONS = [
         en: 'Fixed the Toolkit entry layout in the header; local debug scripts now include a file version and a web version; Dungeon Profit adds "Exclude cape value" and fixes a small deviation from rounding quantities too early; Combat Upgrade adds "Use current combat XP"; Equipment Comparison fixes two-handed weapon setups double-counting the off-hand and overstating the damage gain.'
       }
     ]
-  },
-  {
+  }, {
     version: '2.7.26',
     date: '2026-08-03',
     notes: [
@@ -368,7 +386,8 @@ export const CHANGELOG_VERSIONS = [
         en: 'Fixed missing personal achievement bonuses when copying Milkonomy data.'
       }
     ]
-  }, {
+  },
+  {
     version: '1.2.5',
     date: '2026-04-17',
     legacy: true,
@@ -378,8 +397,7 @@ export const CHANGELOG_VERSIONS = [
         en: 'Added support for the new profit site `hyhfish.github.io/milkonomy`.'
       }
     ]
-  },
-  {
+  }, {
     // 未在 GreasyFork 发布过，无发布记录可查，不标注日期。
     version: '1.1.3',
     date: '',
