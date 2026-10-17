@@ -8,6 +8,7 @@ export class ToolkitMenuFeature {
       combatCalculator,
       abilityCalculator,
       equipmentComparison,
+      enhancementCost,
       dungeonCalculator,
       subscribeNotification,
       marketHistory,
@@ -21,6 +22,7 @@ export class ToolkitMenuFeature {
     this.combatCalculator = combatCalculator;
     this.abilityCalculator = abilityCalculator;
     this.equipmentComparison = equipmentComparison;
+    this.enhancementCost = enhancementCost;
     this.dungeonCalculator = dungeonCalculator;
     this.subscribeNotification = subscribeNotification;
     this.marketHistory = marketHistory;
@@ -63,12 +65,16 @@ export class ToolkitMenuFeature {
         key: 'equipmentComparison',
         icon: 'loadout',
         handler: () => this.equipmentComparison.open()
+      }, {
+        key: 'enhancementCostCalculator',
+        icon: 'item_category_currency',
+        handler: () => this.enhancementCost.open()
       }, {key: 'dungeonProfitCalculator', icon: 'loot_tracker', handler: () => this.dungeonCalculator.open()}, {
         key: 'combatSimAiwwb',
         icon: 'combat',
         handler: () => this.openCombatSimulator()
-      }, {key: 'changelog', icon: 'patch_notes', handler: () => this.changelog.open()},
-      {
+      },
+      {key: 'changelog', icon: 'patch_notes', handler: () => this.changelog.open()}, {
         key: 'checkUpdate',
         icon: 'news',
         variant: hasUpdate ? 'update' : '',

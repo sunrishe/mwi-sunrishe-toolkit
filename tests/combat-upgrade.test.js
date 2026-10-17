@@ -728,7 +728,7 @@ test('战斗速率只保留本场有经验的战斗技能', () => {
   assert.equal(feature.state.getBattleSkillRatesFromState(feature, gameState, 99, nowMs), null);
 });
 
-test('玩家上下文：自己、队友名片缓存与缺资料三种情况', () => {
+test('玩家上下文：自己、队友名片快照与缺资料三种情况', () => {
   const feature = new CombatUpgradeCalculatorFeature();
   profileStore.profiles = {};
   skillLevels.clear();
@@ -736,25 +736,28 @@ test('玩家上下文：自己、队友名片缓存与缺资料三种情况', ()
   const self = feature.buildPlayerContext({characterId: 7, name: 'dadada6'});
   assert.equal(self.isSelf, true);
   assert.equal(self.name, 'dadada6');
-  assert.equal(self.levels, null);
+  assert.equal(self.skills, null);
 
   const timestamp = Date.parse('2026-08-04T10:00:00Z');
   profileStore.profiles['42'] = {
     timestamp,
     profile: {characterSkills: [
-        {skillHrid: '/skills/melee', level: 133}
+        {skillHrid: '/skills/melee', level: 133, experience: 133500}
       ]}
   };
   const teammate = feature.buildPlayerContext({characterId: 42, name: 'ally'});
   assert.equal(teammate.isSelf, false);
-  assert.equal(teammate.levels.get('/skills/melee'), 133);
+  // 等级与经验都取名片快照（官方名片带各技能经验）。
+  assert.equal(teammate.skills.get('/skills/melee').level, 133);
+  assert.equal(teammate.skills.get('/skills/melee').experience, 133500);
   assert.equal(teammate.levelsTimestamp, timestamp);
+  assert.equal(feature.state.hasCachedExperience(teammate), true);
 
   feature.playerContext = teammate;
-  // 名片缓存只有等级：经验按该等级 0% 起算；名片里没有的技能按 0 级。
   const melee = feature.getCharacterSkill('/skills/melee');
   assert.equal(melee.level, 133);
-  assert.equal(melee.experience, 133000);
+  assert.equal(melee.experience, 133500);
+  // 名片里没有的技能按 0 级。
   const ranged = feature.getCharacterSkill('/skills/ranged');
   assert.equal(ranged.level, 0);
   assert.equal(ranged.experience, 0);
@@ -764,7 +767,7 @@ test('玩家上下文：自己、队友名片缓存与缺资料三种情况', ()
   assert.equal(selfMelee.experience, 0);
 
   feature.playerContext = feature.buildPlayerContext({characterId: 99, name: 'ghost'});
-  assert.equal(feature.playerContext.levels, null);
+  assert.equal(feature.playerContext.skills, null);
   const ghost = feature.getCharacterSkill('/skills/melee');
   assert.equal(ghost.level, 0);
   assert.equal(ghost.experience, 0);
@@ -773,12 +776,26 @@ test('玩家上下文：自己、队友名片缓存与缺资料三种情况', ()
   profileStore.profiles['43'] = {
     timestamp: 0,
     profile: {characterSkills: [
-        {skillHrid: '/skills/melee', level: 100}
+        {skillHrid: '/skills/melee', level: 100, experience: 100500}
       ]}
   };
   feature.playerContext = feature.buildPlayerContext({characterId: 43, name: 'nosy'});
-  assert.equal(feature.playerContext.levels.get('/skills/melee'), 100);
+  assert.equal(feature.playerContext.skills.get('/skills/melee').level, 100);
   assert.match(feature.getPlayerHintHtml(), /combatUpgradeLevelsCachedNoTime/);
+  assert.doesNotMatch(feature.getPlayerHintHtml(), /combatUpgradeLevelsNoExperience/);
+
+  // 旧版缓存（v2.21.0 及更早）裁剪掉了经验字段：退回该等级 0% 起算，并在提示行写明。
+  profileStore.profiles['44'] = {
+    timestamp,
+    profile: {characterSkills: [
+        {skillHrid: '/skills/melee', level: 133}
+      ]}
+  };
+  feature.playerContext = feature.buildPlayerContext({characterId: 44, name: 'oldcache'});
+  assert.equal(feature.state.hasCachedExperience(feature.playerContext), false);
+  assert.equal(feature.getCharacterSkill('/skills/melee').level, 133);
+  assert.equal(feature.getCharacterSkill('/skills/melee').experience, 133000);
+  assert.match(feature.getPlayerHintHtml(), /combatUpgradeLevelsNoExperience/);
 
   assert.equal(feature.buildPlayerContext(null), null);
 });
@@ -801,7 +818,7 @@ test('队友上下文：默认主修与列表起始等级按名片快照', () =>
             skillHrid: '/skills/defense',
             level: 33
           }, {skillHrid: '/skills/melee', level: 20},
-          {skillHrid: '/skills/ranged', level: 60}, {skillHrid: '/skills/magic', level: 5}
+          {skillHrid: '/skills/ranged', level: 60, experience: 61234}, {skillHrid: '/skills/magic', level: 5}
         ]
       }
     }
@@ -819,7 +836,8 @@ test('队友上下文：默认主修与列表起始等级按名片快照', () =>
 
   const plan = feature.calculatePlan(1000, 1000);
   assert.equal(plan.results.get(rangedRow.id).currentState.level, 60);
-  assert.equal(plan.results.get(rangedRow.id).currentState.experience, 60000);
+  // 起始经验用名片快照里的经验，不再一律按该等级 0% 起算。
+  assert.equal(plan.results.get(rangedRow.id).currentState.experience, 61234);
 
   assert.equal(feature.createRow('/skills/magic').startLevel, 5);
   // 回到自己时仍是实时等级。
@@ -848,6 +866,8 @@ test('open() 兼容无参与带玩家上下文调用', () => {
   const hint = feature.getPlayerHintHtml();
   assert.match(hint, /combatUpgradePlayerName\[ally\]/);
   assert.match(hint, /combatUpgradeLevelsCached\[/);
+  // 这份测试名片没有经验字段：提示行要写明按 0% 起算。
+  assert.match(hint, /combatUpgradeLevelsNoExperience/);
   assert.match(hint, /currentCombatXpUnavailable/);
 });
 
@@ -894,6 +914,41 @@ test('悬浮时间文案格式：四行、里程碑与满级', () => {
   assert.match(combatUpgradeTooltip.formatUpgradeTime(3600), /^\d\d\/\d\d \d\d:\d\d$/);
 });
 
+test('悬浮「战斗」技能块标题为专业、等级与当前经验百分比', () => {
+  const feature = new CombatUpgradeCalculatorFeature();
+
+  // 经验百分比最多两位小数、不补零，与计算器「当前等级」列同口径。
+  assert.equal(
+    combatUpgradeTooltip.getSkillBlockTitle(feature, {
+      skillHrid: '/skills/attack',
+      level: 133,
+      experience: 133123.4
+    }),
+    '/skills/attack Lv.133 12.34%'
+  );
+  assert.equal(
+    combatUpgradeTooltip.getSkillBlockTitle(feature, {
+      skillHrid: '/skills/attack',
+      level: 133,
+      experience: 133125
+    }),
+    '/skills/attack Lv.133 12.5%'
+  );
+  assert.equal(
+    combatUpgradeTooltip.getSkillBlockTitle(feature, {skillHrid: '/skills/attack', level: 133, experience: 133000}),
+    '/skills/attack Lv.133 0%'
+  );
+  // 经验超出该等级区间（或数据异常）时封顶 100%。
+  assert.equal(
+    combatUpgradeTooltip.getSkillBlockTitle(feature, {
+      skillHrid: '/skills/attack',
+      level: 133,
+      experience: 999999
+    }),
+    '/skills/attack Lv.133 100%'
+  );
+});
+
 test('悬浮时间与交战入口接线复用公共观察器，不自建观察器', () => {
   const tooltipSource = readSourceFile('src', 'modules', 'combat-upgrade', 'tooltip.js');
   const entrySource = readSourceFile('src', 'modules', 'combat-upgrade', 'battle-entry.js');
@@ -912,6 +967,9 @@ test('悬浮时间与交战入口接线复用公共观察器，不自建观察�
   assert.match(tooltipSource, /NavigationBar_navigationSkillTooltip/);
   assert.match(tooltipSource, /mst-combat-tooltip/);
   assert.match(tooltipSource, /skills_sprite/);
+  // 「战斗」块标题带专业、等级与经验百分比。
+  assert.match(tooltipSource, /getSkillBlockTitle/);
+  assert.match(tooltipSource, /maximumFractionDigits: 2/);
   // 悬浮期间内容冻结：按轮次（hoverToken）判定，不再按秒级时间戳重写。
   assert.match(tooltipSource, /hoverToken/);
   assert.doesNotMatch(tooltipSource, /Date\.now\(\) \/ 1000/);

@@ -16,6 +16,8 @@ const source = readRuntimeSource();
 const storeSourceFile = readSourceFile('src', 'modules', 'market-history', 'store.js');
 const moduleSourceFile = readSourceFile('src', 'modules', 'market-history', 'index.js');
 const moduleCssSourceFile = readSourceFile('src', 'modules', 'market-history', 'styles.css');
+// 涨跌配色是跨模块共用组件，样式统一放在 components.css。
+const componentsCssSourceFile = readSourceFile('src', 'common', 'styles', 'components.css');
 const moduleIndexSourceFile = readSourceFile('src', 'modules', 'index.js');
 const appControllerSourceFile = readSourceFile('src', 'app', 'app-controller.js');
 const toolkitMenuSourceFile = readSourceFile('src', 'modules', 'toolkit-menu', 'index.js');
@@ -2145,26 +2147,32 @@ test('市场交易记录：界面布局约束（紧凑工具栏 / 固定列宽 /
 });
 
 test('市场交易记录：记录与统计共用同一套创建时间范围选项', () => {
-  // 两个页签的时间下拉统一为 创建时间（默认项，兼作控件标题）/ 近 7 / 15 / 30 / 60 / 90 / 180 天 / 自定义。
+  // 两个页签的时间下拉统一为 创建时间（默认项，兼作控件标题）/ 今天 / 近 7 / 15 / 30 / 60 / 90 / 180 天 / 自定义。
   assert.match(
     moduleSourceFile,
-    /const TIME_PRESETS = \[\s*'all',\s*'7d',\s*'15d',\s*'30d',\s*'60d',\s*'90d',\s*'180d',\s*'custom'\s*\]/
+    /const TIME_PRESETS = \[\s*'all',\s*'today',\s*'7d',\s*'15d',\s*'30d',\s*'60d',\s*'90d',\s*'180d',\s*'custom'\s*\]/
   );
   assert.match(
     moduleSourceFile,
     /const TIME_PRESET_DAYS = \{'7d': 7, '15d': 15, '30d': 30, '60d': 60, '90d': 90, '180d': 180\}/
   );
-  assert.doesNotMatch(moduleSourceFile, /STATS_TIME_PRESETS|STATS_TIME_LABEL_KEYS|'today'/);
+  assert.doesNotMatch(moduleSourceFile, /STATS_TIME_PRESETS|STATS_TIME_LABEL_KEYS/);
+  // 「今天」按本地自然日算：起止两端都落在今天的 0 点与次日 0 点，不受夏令时影响。
+  assert.match(
+    moduleSourceFile,
+    /if \(filters\.timePreset === 'today'\) \{[\s\S]{0,400}?from\.setHours\(0, 0, 0, 0\);[\s\S]{0,200}?to\.setDate\(to\.getDate\(\) \+ 1\);[\s\S]{0,200}?filters\.timeFrom = from\.getTime\(\);[\s\S]{0,100}?filters\.timeTo = to\.getTime\(\) - 1;/
+  );
   // 两处筛选解析都走同一份预设换算（口径一致）；下拉前不加独立标签（默认项文字即「创建时间」）。
   assert.equal((moduleSourceFile.match(/applyTimePreset\(filters, Date\.now\(\)\)/g) || []).length, 2);
   assert.equal((moduleSourceFile.match(/marketHistoryTimeAll/g) || []).length, 1);
   assert.doesNotMatch(moduleSourceFile, /marketHistoryTimeRange/);
   [
-    'marketHistoryTime7d', 'marketHistoryTime15d', 'marketHistoryTime30d', 'marketHistoryTime60d', 'marketHistoryTime90d',
-    'marketHistoryTime180d', 'marketHistoryTimeCustom'
+    'marketHistoryTimeToday', 'marketHistoryTime7d', 'marketHistoryTime15d', 'marketHistoryTime30d', 'marketHistoryTime60d',
+    'marketHistoryTime90d', 'marketHistoryTime180d', 'marketHistoryTimeCustom'
   ].forEach((key) => assert.ok(messagesSourceFile.includes(`${key}: {zh:`), `${key} 缺少中文文案`));
   assert.ok(messagesSourceFile.includes("marketHistoryTimeAll: {zh: '创建时间', en: 'Created'}"));
-  assert.doesNotMatch(messagesSourceFile, /marketHistoryTimeToday:|marketHistoryTimeRange:/);
+  assert.ok(messagesSourceFile.includes("marketHistoryTimeToday: {zh: '今天', en: 'Today'}"));
+  assert.doesNotMatch(messagesSourceFile, /marketHistoryTimeRange:/);
   assert.doesNotMatch(messagesSourceFile, /marketHistoryStatsTimeField:|marketHistoryStatsTime90d:/);
 });
 
@@ -2247,8 +2255,8 @@ test('市场交易记录：统计页签使用独立筛选并给出四个维度�
   assert.match(moduleSourceFile, /mst-market-history-rank-value" title=\$\{this\.rawValueText\(item\.total\)\}/);
   assert.match(moduleSourceFile, /mst-market-history-stat-value' \+ tone\} title=\$\{raw\}/);
   // 数值卡：净收支按正负着色，去掉委托数量。
-  assert.match(moduleSourceFile, /mst-market-history-stat-positive/);
-  assert.match(moduleSourceFile, /mst-market-history-stat-negative/);
+  assert.match(moduleSourceFile, /mst-positive/);
+  assert.match(moduleSourceFile, /mst-negative/);
   assert.match(moduleSourceFile, /marketHistoryStatsNet/);
   assert.doesNotMatch(moduleSourceFile, /marketHistoryTotalsOrderQuantity/);
   assert.doesNotMatch(messagesSourceFile, /marketHistoryTotalsOrderQuantity:/);
@@ -2266,8 +2274,8 @@ test('市场交易记录：统计页签使用独立筛选并给出四个维度�
   assert.match(moduleCssSourceFile, /\.mst-market-history-chart-bar-expense\s*\{/);
   assert.match(moduleCssSourceFile, /\.mst-market-history-chart-swatch-net\s*\{/);
   assert.match(moduleCssSourceFile, /\.mst-market-history-rank-track\s*\{/);
-  assert.match(moduleCssSourceFile, /\.mst-market-history-stat-positive\s*\{/);
-  assert.match(moduleCssSourceFile, /\.mst-market-history-stat-negative\s*\{/);
+  assert.match(componentsCssSourceFile, /\.mst-positive\s*\{/);
+  assert.match(componentsCssSourceFile, /\.mst-negative\s*\{/);
   assert.match(moduleCssSourceFile, /\.mst-market-history-stats-table thead th\s*\{[\s\S]*?position:\s*sticky/);
   // 统计页文案齐备（中文键都在 messages 分组里）。
   [
@@ -3106,6 +3114,21 @@ test('市场交易记录：挂牌页速览接线完整（按钮行锚点 / 公�
   assert.match(moduleCssSourceFile, /padding-top: 1\.05rem;/);
   assert.match(moduleCssSourceFile, /\.mst-market-history-listing-hint-sell \{\s*left: 0;/);
   assert.match(moduleCssSourceFile, /\.mst-market-history-listing-hint-buy \{\s*right: 0;/);
+  // 速览层级 1100 高于 MST 弹窗（--mst-z-popup 1000）：MST 的 SweetAlert2 弹窗都带统一弹窗类
+  // mst-swal2-popup（`SWAL_CLASS_NAMES`），弹窗节点只在打开期间存在于 DOM（关闭即被移除），
+  // 所以按这个统一类名把速览降到正常文档流（z-index: auto），不额外维护状态类。
+  assert.match(moduleCssSourceFile, /\.mst-market-history-listing-hint \{[\s\S]{0,200}?z-index: 1100;/);
+  assert.match(
+    moduleCssSourceFile,
+    /body:has\(\.mst-swal2-popup\) \.mst-market-history-listing-hint \{\s*z-index: auto;/
+  );
+  // 统一弹窗类必须确实是 MST 弹窗的类名（改名后这条规则会失效，这里跟着一起锁住）；
+  // Toast 的 popup 类名是 mst-swal2-toast、不在规则内，提示浮层不受影响。
+  assert.match(uiSourceFile, /html: \{container: 'mst-swal2-theme', popup: 'mst-swal2-popup mst-swal2-html-popup'\}/);
+  assert.match(uiSourceFile, /popup\.className = 'swal2-popup swal2-toast mst-swal2-toast'/);
+  assert.doesNotMatch(moduleSourceFile, /mst-market-history-dialog-open/);
+  assert.doesNotMatch(moduleCssSourceFile, /mst-market-history-dialog-open/);
+  assert.match(moduleSourceFile, /popupClass: 'mst-market-history-dialog'/);
   // 只显示单价（游戏市场的价格写法），没有「第一次 / 第二次」这类文字标签。
   assert.match(moduleSourceFile, /item\.textContent = utils\.formatMarketplacePrice\(record\.price\)/);
   assert.match(runtimeSourceFile, /formatMarketplacePrice\(value\) \{/);

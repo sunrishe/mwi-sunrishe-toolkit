@@ -66,7 +66,7 @@
   font-size: var(--font-size-base, 0.875rem);
   text-align: left;
 }
-.mst-equipment-compare-view.mst-equipment-compare-picker-open {
+.mst-equipment-compare-view.mst-picker-open {
   min-height: min(16rem, calc(100vh - 10rem));
   min-height: min(16rem, calc(100dvh - 10rem));
   min-height: min(16rem, calc(100svh - 10rem));
@@ -85,22 +85,10 @@
   font-size: var(--font-size-small, 0.75rem);
   line-height: 1.35;
 }
-.mst-equipment-compare-config-scroll {
-  max-width: 100%;
-  overflow-x: auto;
-  scrollbar-color: var(--color-space-300, #98a7e9) transparent;
-  scrollbar-width: thin;
-}
-.mst-equipment-compare-config-row {
-  display: grid;
-  width: max-content;
-  min-width: 100%;
-  box-sizing: border-box;
+/* 配置区的滚动容器与配置行（mst-config-scroll / mst-config-row）是跨模块共用组件，
+   统一样式见 common/styles/components.css，这里只补预设选择列。 */
+.mst-equipment-compare-view .mst-config-row {
   grid-template-columns: 8rem repeat(2, 10.5rem);
-  align-items: stretch;
-  justify-content: center;
-  gap: 0.65rem;
-  padding-bottom: 0.15rem;
 }
 .mst-equipment-compare-preset {
   display: grid;
@@ -114,17 +102,6 @@
 }
 .mst-equipment-compare-preset select {
   align-self: center;
-}
-.mst-equipment-compare-selector {
-  display: flex;
-  width: 10.5rem;
-  min-width: 0;
-  flex-direction: column;
-  gap: 0.35rem;
-}
-.mst-equipment-compare-selector-title {
-  font-weight: var(--font-weight-semibold, 600);
-  text-align: center;
 }
 .mst-equipment-compare-view select {
   width: 100%;
@@ -151,125 +128,9 @@
 .mst-equipment-compare-target-controls > .mst-equipment-compare-empty {
   height: 5.5rem;
 }
-.mst-equipment-compare-enhancement {
-  display: block;
-  width: 3rem;
-  margin: 0;
-  color: var(--color-neutral-300, #b9bbca);
-  font-size: var(--font-size-small, 0.75rem);
-  white-space: nowrap;
-}
-.mst-equipment-compare-enhancement > span {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  overflow: hidden;
-  clip: rect(0, 0, 0, 0);
-  white-space: nowrap;
-}
-.mst-equipment-compare-enhancement select {
-  width: 3rem;
-  min-width: 0;
-  height: 1.6rem;
-  padding: 0.1rem 0.15rem;
-  text-align: center;
-  text-align-last: center;
-}
-.mst-equipment-compare-select-button {
-  display: grid;
-  width: 100%;
-  height: 5.5rem;
-  min-width: 0;
-  box-sizing: border-box;
-  grid-template-columns: 3.25rem minmax(0, 1fr);
-  grid-template-rows: minmax(0, 1fr) 1.6rem;
-  align-items: center;
-  column-gap: 0.45rem;
-  row-gap: 0.2rem;
-  padding: 0.4rem 0.45rem;
-  border: 1px solid var(--color-midnight-100, #454771);
-  border-radius: var(--radius-sm, 0.25rem);
-  background: var(--color-midnight-600, #27283b);
-  color: inherit;
-  font: inherit;
-  text-align: left;
-  cursor: pointer;
-}
-.mst-equipment-compare-select-button:hover:not([aria-disabled='true']) {
-  border-color: var(--color-space-300, #98a7e9);
-  background: var(--color-midnight-500, #2c2e45);
-}
-.mst-equipment-compare-select-button[aria-disabled='true'] {
-  opacity: 0.6;
-  cursor: not-allowed;
-}
-.mst-equipment-compare-select-empty {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border-style: dashed;
-  text-align: center;
-}
-.mst-equipment-compare-placeholder {
-  color: var(--color-neutral-400, #999baa);
-  font-size: var(--font-size-small, 0.75rem);
-}
-.mst-equipment-compare-select-button > [hidden],
-.mst-equipment-compare-icon > [hidden],
-.mst-equipment-compare-picker-option > [hidden],
-.mst-equipment-compare-picker-empty[hidden] {
-  display: none;
-}
-.mst-equipment-compare-icon {
-  position: relative;
-  width: 3.25rem;
-  height: 3.25rem;
-  grid-column: 1;
-  grid-row: 1/-1;
-  align-self: center;
-}
-.mst-equipment-compare-icon svg {
-  display: block;
-  width: 100%;
-  height: 100%;
-}
-.mst-equipment-compare-summary-text {
-  display: flex;
-  width: 100%;
-  min-width: 0;
-  grid-column: 2;
-  grid-row: 1;
-  flex-direction: column;
-  align-items: flex-start;
-  justify-content: center;
-  gap: 0.12rem;
-}
-.mst-equipment-compare-summary-text strong {
-  display: -webkit-box;
-  max-width: 100%;
-  overflow: hidden;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 2;
-  overflow-wrap: anywhere;
-  color: var(--color-text-dark-mode, #e7e7e7);
-  font-size: var(--font-size-small, 0.75rem);
-  line-height: 1.15;
-}
-.mst-equipment-compare-summary-text small {
-  display: block;
-  width: 100%;
-  overflow: hidden;
-  color: var(--color-neutral-300, #b9bbca);
-  font-size: var(--font-size-tiny, 0.6875rem);
-  line-height: 1.15;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.mst-equipment-compare-select-button > .mst-equipment-compare-enhancement {
-  grid-column: 2;
-  grid-row: 2;
-  align-self: end;
-}
+/* 已选物品卡片（mst-item-selector / mst-item-select-button / mst-item-icon /
+   mst-item-summary / mst-item-select-level）是跨模块共用组件，
+   统一样式见 common/styles/components.css。 */
 .mst-equipment-compare-empty {
   display: flex;
   min-height: 3.25rem;
@@ -385,164 +246,8 @@
   font-weight: 600;
   white-space: nowrap;
 }
-.mst-equipment-compare-positive {
-  color: var(--color-jade-300, #86d7b1);
-}
-.mst-equipment-compare-negative {
-  color: var(--color-scarlet-300, #ef8f98);
-}
-.mst-equipment-compare-neutral {
-  color: var(--color-neutral-400, #999baa);
-}
-.mst-equipment-compare-picker {
-  position: absolute;
-  inset: 0;
-  z-index: 5;
-  display: flex;
-  align-items: flex-start;
-  justify-content: center;
-  background: rgba(14, 15, 24, 0.92);
-}
-.mst-equipment-compare-picker[hidden] {
-  display: none;
-}
-.mst-equipment-compare-picker-panel {
-  display: flex;
-  width: 100%;
-  height: 100%;
-  min-height: 0;
-  box-sizing: border-box;
-  flex-direction: column;
-  gap: 0.4rem;
-  padding: 0.5rem;
-  border: 1px solid var(--color-midnight-100, #454771);
-  border-radius: var(--radius-sm, 0.25rem);
-  background: var(--color-midnight-600, #27283b);
-  box-shadow: var(--shadow-md, 0 0.35rem 1rem rgba(0, 0, 0, 0.4));
-}
-.mst-equipment-compare-picker-filters {
-  display: flex;
-  min-width: 0;
-  gap: 0.4rem;
-}
-.mst-equipment-compare-picker-type,
-.mst-equipment-compare-picker-search {
-  height: var(--button-height-normal, 1.875rem);
-  box-sizing: border-box;
-  padding: 0.2rem 0.45rem;
-  border: 1px solid var(--color-midnight-100, #454771);
-  border-radius: var(--radius-sm, 0.25rem);
-  background: var(--color-midnight-700, #20212f);
-  color: var(--color-text-dark-mode, #e7e7e7);
-  font: inherit;
-}
-.mst-equipment-compare-picker-type {
-  width: 10rem;
-  max-width: 42%;
-  flex: 0 0 auto;
-}
-.mst-equipment-compare-picker-search {
-  min-width: 0;
-  flex: 1;
-}
-.mst-equipment-compare-picker-type:focus,
-.mst-equipment-compare-picker-search:focus {
-  border-color: var(--color-space-300, #98a7e9);
-  outline: none;
-}
-.mst-equipment-compare-picker-options {
-  display: grid;
-  min-height: 0;
-  flex: 1;
-  grid-template-columns: repeat(auto-fill, 6rem);
-  grid-auto-rows: 6rem;
-  align-content: start;
-  justify-content: center;
-  gap: 0.3rem;
-  overflow: auto;
-}
-.mst-equipment-compare-picker-option {
-  position: relative;
-  display: flex;
-  min-width: 0;
-  min-height: 0;
-  box-sizing: border-box;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 0.2rem;
-  padding: 0.35rem;
-  border: 1px solid var(--color-midnight-100, #454771);
-  border-radius: var(--radius-sm, 0.25rem);
-  background: var(--color-midnight-500, #2c2e45);
-  color: var(--color-text-dark-mode, #e7e7e7);
-  font: inherit;
-  text-align: center;
-  cursor: pointer;
-}
-.mst-equipment-compare-picker-option:hover:not(:disabled) {
-  border-color: var(--color-space-300, #98a7e9);
-  background: var(--color-midnight-400, #323450);
-}
-.mst-equipment-compare-picker-option-selected {
-  border-color: var(--color-cowbell, #f6c95c);
-  opacity: 0.55;
-  cursor: default;
-}
-.mst-equipment-compare-picker-option svg {
-  width: 2.75rem;
-  height: 2.75rem;
-  flex: 0 0 2.75rem;
-}
-.mst-equipment-compare-picker-option strong {
-  display: -webkit-box;
-  max-width: 100%;
-  overflow: hidden;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 2;
-  white-space: normal;
-  font-size: var(--font-size-small, 0.75rem);
-  line-height: 1.1;
-}
-.mst-equipment-compare-picker-level,
-.mst-equipment-compare-picker-item-level {
-  position: absolute;
-  top: 0.25rem;
-  z-index: 1;
-  color: var(--color-cowbell, #f6c95c);
-  font-size: var(--font-size-tiny, 0.6875rem);
-  font-weight: 600;
-  line-height: 1;
-  text-shadow: 0 1px 2px #000;
-}
-.mst-equipment-compare-picker-level {
-  left: 0.3rem;
-}
-.mst-equipment-compare-picker-item-level {
-  right: 0.3rem;
-  color: var(--color-neutral-200, #d2d3dc);
-}
-.mst-equipment-compare-picker-empty {
-  grid-column: 1/-1;
-  align-self: center;
-  color: var(--color-neutral-300, #b9bbca);
-  text-align: center;
-}
-.mst-equipment-compare-picker-close {
-  align-self: center;
-  min-height: var(--button-height-normal, 1.875rem);
-  padding: 0.25rem 0.65rem;
-  border: 1px solid var(--color-space-400, #7686cc);
-  border-radius: var(--radius-sm, 0.25rem);
-  background: var(--color-midnight-400, #323450);
-  color: var(--color-text-dark-mode, #e7e7e7);
-  font: inherit;
-  cursor: pointer;
-}
-.mst-equipment-compare-picker-close:hover {
-  border-color: var(--color-space-200, #bbc5f1);
-  background: var(--color-midnight-300, #393b5c);
-}
+/* 涨跌配色（mst-positive / mst-negative / mst-neutral）与物品选择浮层（mst-picker-*）
+   是跨模块共用组件，统一样式见 common/styles/components.css。 */
 .mst-upgrade-calculator {
   position: relative;
   color: var(--color-text-dark-mode, #e7e7e7);
@@ -879,141 +584,8 @@
   width: 100%;
   height: 100%;
 }
-.mst-combat-help-anchor,
-.mst-ability-help-anchor,
-.mst-equipment-help-anchor,
-.mst-dungeon-help-anchor,
-.mst-house-help-anchor,
-.mst-subscribe-help-anchor {
-  position: relative;
-  display: inline-flex;
-  width: var(--spacing-lg-plus, 1.25rem);
-  height: var(--spacing-lg-plus, 1.25rem);
-  flex: 0 0 auto;
-  align-self: center;
-  align-items: center;
-  pointer-events: auto;
-  vertical-align: middle;
-}
-.mst-combat-help-trigger,
-.mst-ability-help-trigger,
-.mst-equipment-help-trigger,
-.mst-dungeon-help-trigger,
-.mst-house-help-trigger,
-.mst-subscribe-help-trigger {
-  display: block;
-  width: var(--spacing-lg-plus, 1.25rem);
-  height: var(--spacing-lg-plus, 1.25rem);
-  min-height: var(--spacing-lg-plus, 1.25rem) !important;
-  box-sizing: border-box;
-  padding: 0 !important;
-  border: 0 !important;
-  border-radius: 0 !important;
-  background: transparent !important;
-  font-size: 0 !important;
-  line-height: 0 !important;
-  box-shadow: none !important;
-  cursor: pointer;
-  touch-action: manipulation;
-}
-.mst-combat-help-trigger svg,
-.mst-ability-help-trigger svg,
-.mst-equipment-help-trigger svg,
-.mst-dungeon-help-trigger svg,
-.mst-house-help-trigger svg,
-.mst-subscribe-help-trigger svg {
-  display: block;
-  width: 100%;
-  height: 100%;
-  pointer-events: none;
-}
-.mst-combat-help-trigger:hover,
-.mst-ability-help-trigger:hover,
-.mst-equipment-help-trigger:hover,
-.mst-dungeon-help-trigger:hover,
-.mst-house-help-trigger:hover,
-.mst-subscribe-help-trigger:hover {
-  filter: brightness(1.12);
-}
-.mst-combat-help-trigger-error,
-.mst-ability-help-trigger-error,
-.mst-equipment-help-trigger-error,
-.mst-dungeon-help-trigger-error,
-.mst-house-help-trigger-error {
-  border-color: #c86b75 !important;
-  color: #f4c4ca !important;
-}
-.mst-combat-help-popover,
-.mst-ability-help-popover,
-.mst-equipment-help-popover,
-.mst-dungeon-help-popover,
-.mst-house-help-popover,
-.mst-subscribe-help-popover {
-  position: fixed;
-  z-index: 2;
-  width: max-content;
-  max-width: min(var(--tooltip-max-width, 40ch), calc(100vw - 1rem));
-  max-height: calc(100svh - 1rem);
-  overflow-y: auto;
-  box-sizing: border-box;
-  padding: var(--tooltip-padding-y, 0.375rem) var(--tooltip-padding-x, 0.5rem);
-  border: 0;
-  border-radius: var(--tooltip-border-radius, 0.25rem);
-  background: rgba(187, 197, 241, 0.95);
-  box-shadow: var(--shadow-md, 2px 2px 10px 6px rgba(0, 0, 0, 0.3));
-  color: #000;
-  font-size: var(--tooltip-font-size, var(--font-size-base, 0.875rem));
-  font-weight: var(--font-weight-medium, 500);
-  line-height: var(--line-height-normal, 1.375);
-  text-align: left;
-  user-select: none;
-}
-.mst-combat-help-popover[hidden],
-.mst-ability-help-popover[hidden],
-.mst-equipment-help-popover[hidden],
-.mst-dungeon-help-popover[hidden],
-.mst-house-help-popover[hidden],
-.mst-subscribe-help-popover[hidden] {
-  display: none;
-}
-.mst-combat-help-popover-title,
-.mst-ability-help-popover-title,
-.mst-equipment-help-popover-title,
-.mst-dungeon-help-popover-title,
-.mst-house-help-popover-title,
-.mst-subscribe-help-popover-title {
-  margin: 0;
-  padding: 0;
-  font-size: var(--font-size-md, 1rem);
-  font-weight: var(--font-weight-medium, 500);
-  line-height: var(--line-height-normal, 1.375);
-}
-.mst-combat-help-popover-content,
-.mst-ability-help-popover-content,
-.mst-equipment-help-popover-content,
-.mst-dungeon-help-popover-content,
-.mst-house-help-popover-content,
-.mst-subscribe-help-popover-content {
-  margin-top: var(--spacing-xs, 0.25rem);
-  padding-top: var(--spacing-xs, 0.25rem);
-  border-top: 1px solid #000;
-}
-.mst-combat-help-popover-paragraph,
-.mst-ability-help-popover-paragraph,
-.mst-equipment-help-popover-paragraph,
-.mst-dungeon-help-popover-paragraph,
-.mst-house-help-popover-paragraph,
-.mst-subscribe-help-popover-paragraph {
-  margin-top: var(--spacing-xs, 0.25rem);
-  padding-bottom: var(--spacing-xs, 0.25rem);
-}
-.mst-combat-help-popover-error,
-.mst-ability-help-popover-error,
-.mst-equipment-help-popover-error,
-.mst-dungeon-help-popover-error,
-.mst-house-help-popover-error {
-  border-color: #c86b75;
-}
+/* 弹窗标题帮助提示的锚点、图标按钮与说明浮层（mst-help-*）是跨模块共用组件，
+   统一样式见 common/styles/components.css。 */
 .mst-combat-upgrade-calculator .mst-calculator-table-wrap {
   max-height: min(28rem, calc(100svh - 19rem));
 }
@@ -2099,12 +1671,6 @@
 .mst-dungeon-batch-line small {
   color: var(--color-neutral-400, #999baa);
   font-size: var(--font-size-tiny, 0.6875rem);
-}
-.mst-dungeon-batch-cost {
-  color: var(--color-scarlet-300, #ef8f98);
-}
-.mst-dungeon-batch-profit {
-  color: var(--color-jade-300, #86d7b1);
 }
 /* 期望数量两行展示：普通宝箱数量与精炼宝箱数量各自带小标签，无精炼时不出现第二行。 */
 .mst-dungeon-batch-expected {

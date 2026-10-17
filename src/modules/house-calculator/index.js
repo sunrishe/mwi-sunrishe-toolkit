@@ -758,7 +758,6 @@ export class HouseCalculatorUI {
         this.helpController?.cleanup();
         this.helpController = CalculatorHelpPopover.mount({
           popup,
-          moduleName: 'house',
           title: i18n.t('houseCalculatorHelpTitle'),
           heading: i18n.t('title'),
           content: i18n.t('houseCalculatorHelp')
@@ -827,7 +826,6 @@ export class HouseCalculatorUI {
       this.helpController?.cleanup();
       this.helpController = CalculatorHelpPopover.mount({
         popup,
-        moduleName: 'house',
         title: i18n.t('houseCalculatorHelpTitle'),
         heading: i18n.t('title'),
         content: i18n.t('houseCalculatorHelp')

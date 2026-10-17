@@ -810,6 +810,14 @@ test('profile_shared 缓存会淘汰过期资料并限制数量', () => {
 test('profile_shared 持久化时裁剪为最小字段集', () => {
   const now = {value: 1_800_000_000_000};
   const store = loadProfileStore(now);
+  // 客户端字典就位后才能分辨战斗/生活技能：经验只保留战斗技能。
+  store.clientData.raw = {
+    skillDetailMap: {
+      '/skills/attack': {hrid: '/skills/attack', isCombat: true},
+      '/skills/milking': {hrid: '/skills/milking', isCombat: false},
+      '/skills/total_level': {hrid: '/skills/total_level', isCombat: false}
+    }
+  };
   store.addProfileShared({
     characterName: 'Tester',
     profile: {
@@ -845,7 +853,17 @@ test('profile_shared 持久化时裁剪为最小字段集', () => {
         }
       },
       characterSkills: [
-        {skillHrid: '/skills/attack', level: 77, xp: 12345, characterID: 26623}
+        {
+          skillHrid: '/skills/attack',
+          level: 77,
+          experience: 12345,
+          characterID: 26623
+        }, {skillHrid: '/skills/milking', level: 100, experience: 999999, characterID: 26623}, {
+          skillHrid: '/skills/total_level',
+          level: 1890,
+          experience: 888888,
+          characterID: 26623
+        }
       ],
       equippedAbilities: [
         {abilityHrid: '/abilities/slash', level: 3, slotNumber: 1, characterID: 26623, junk: true}
@@ -893,8 +911,13 @@ test('profile_shared 持久化时裁剪为最小字段集', () => {
     enhancementLevel: 0,
     count: 1
   });
+  // 技能经验只留战斗技能（计算器只在战斗专业上用得到）；生活技能与总等级只留等级。
   assert.deepEqual(compact.characterSkills, [
-    {skillHrid: '/skills/attack', level: 77}
+    {
+      skillHrid: '/skills/attack',
+      level: 77,
+      experience: 12345
+    }, {skillHrid: '/skills/milking', level: 100}, {skillHrid: '/skills/total_level', level: 1890}
   ]);
   assert.deepEqual(compact.equippedAbilities, [
     {abilityHrid: '/abilities/slash', level: 3, slotNumber: 1}
@@ -992,6 +1015,72 @@ test('读取旧版未裁剪缓存后自动重写为紧凑格式', () => {
   assert.deepEqual(stored['1'].profile.wearableItemMap.a, {itemHrid: '/items/x'});
   // 成就裁剪为 hrid → isCompleted 映射，无效条目丢弃。
   assert.deepEqual(stored['1'].profile.characterAchievements, {});
+});
+
+test('技能经验只保留战斗技能，生活技能的经验在读取重写时被裁掉', () => {
+  const now = {value: 10_000};
+  const store = loadProfileStore(now);
+  store.clientData.raw = {
+    skillDetailMap: {
+      '/skills/attack': {hrid: '/skills/attack', isCombat: true},
+      '/skills/milking': {hrid: '/skills/milking', isCombat: false}
+    }
+  };
+  store.localStorage.setItem(
+    'MST_CC_profiles',
+    JSON.stringify({
+      1: {
+        type: 'profile_shared',
+        characterID: '1',
+        characterName: 'A',
+        timestamp: 5_000,
+        profile: {
+          characterSkills: [
+            {
+              skillHrid: '/skills/attack',
+              level: 133,
+              experience: 12345
+            }, {skillHrid: '/skills/milking', level: 100, experience: 999999}
+          ]
+        }
+      }
+    })
+  );
+
+  store.loadStoredProfiles();
+  const stored = JSON.parse(store.localStorage.getItem('MST_CC_profiles'));
+  assert.deepEqual(stored['1'].profile.characterSkills, [
+    {skillHrid: '/skills/attack', level: 133, experience: 12345}, {skillHrid: '/skills/milking', level: 100}
+  ]);
+});
+
+test('客户端字典未就绪时技能经验整份保留（不丢计算器要用的数据）', () => {
+  const now = {value: 10_000};
+  const store = loadProfileStore(now);
+  // 加载期字典还没就位：判定不了战斗/生活，一律保留。
+  assert.equal(store.keepsSkillExperience('/skills/milking'), true);
+  assert.equal(store.keepsSkillExperience('/skills/attack'), true);
+
+  store.clientData.raw = {
+    skillDetailMap: {
+      '/skills/attack': {isCombat: true},
+      '/skills/milking': {isCombat: false},
+      '/skills/total_level': {isCombat: false}
+    }
+  };
+  assert.equal(store.keepsSkillExperience('/skills/attack'), true);
+  assert.equal(store.keepsSkillExperience('/skills/milking'), false);
+  assert.equal(store.keepsSkillExperience('/skills/total_level'), false);
+  // 字典里没有的技能（版本不匹配等）按非战斗处理：计算器本来也用不到。
+  assert.equal(store.keepsSkillExperience('/skills/unknown'), false);
+});
+
+test('DataHub 初始化先加载客户端字典再读取名片缓存（裁剪要按 isCombat 判定）', () => {
+  const source = readSourceFile('src', 'common', 'data.js');
+  assert.match(source, /initClientDataFromCache\(\);\s*\n\s*this\.loadStoredProfiles\(\);/);
+  assert.doesNotMatch(source, /loadStoredProfiles\(\);\s*\n\s*this\.initClientDataFromCache\(\);/);
+  assert.match(source, /keepsSkillExperience\(skillHrid\)/);
+  assert.match(source, /skillDetailMap\[skillHrid\]\?\.isCombat/);
 });
 
 test('名片技能数据统一兼容直接等级、官方技能数组和旧 power 字段', () => {
@@ -1968,6 +2057,58 @@ test('角色数据服务延迟解析 utils：真实启动顺序（utils 晚于�
   // 房屋材料缺口等路径依赖 getInventoryCount（经 this.utils.normalizeItemHrid 匹配背包物品）。
   assert.equal(service.getInventoryCount('/items/a'), 1);
   assert.equal(service.getInventoryCount('/items/not_owned'), 0);
+});
+
+test('技能书列表按游戏的物品顺序排列：走技能书的 itemDetailMap.sortIndex，不用技能自身序号', () => {
+  // 技能升级计算器的「添加技能」列表直接消费这个顺序，排序键必须与游戏物品列表一致。
+  const abilityBookByAbilityHrid = new Map();
+  Object.values(clientData.itemDetailMap).forEach((item) => {
+    const abilityHrid = item?.abilityBookDetail?.abilityHrid;
+    if (abilityHrid) abilityBookByAbilityHrid.set(abilityHrid, item);
+  });
+  const DataHub = {
+    characterData: {raw: {}},
+    clientData: {raw: clientData, indexes: {abilityBookByAbilityHrid}},
+    getClientData() {
+      return clientData;
+    },
+    getClientDataMap(key) {
+      return clientData[key] || {};
+    },
+    getGameState() {
+      return {};
+    }
+  };
+  const ctx = {DataHub};
+  const service = vm.runInNewContext(
+    `${readVmSource('src/common/data.js')}
+        createCharacterDataService(ctx, DataHub);`,
+    {console, ctx, DataHub, window: {dispatchEvent() {}}}
+  );
+  const books = service.getAbilityBooks();
+  assert.equal(books.length, abilityBookByAbilityHrid.size);
+  for (let index = 1; index < books.length; index += 1) {
+    assert.ok(
+      Number(books[index - 1].book.sortIndex) <= Number(books[index].book.sortIndex),
+      `第 ${index} 本 ${books[index].book.hrid} 的物品序号小于前一本 ${books[index - 1].book.hrid}`
+    );
+  }
+  // 两个序号在 frenzy / elemental_affinity 上正好相反：技能序号把 frenzy 记成 44、elemental_affinity 记成 45，
+  // 物品序号是 elemental_affinity(204) 在前、frenzy(205) 在后，列表必须跟物品序号走。
+  assert.ok(
+    Number(clientData.abilityDetailMap['/abilities/frenzy'].sortIndex) <
+      Number(clientData.abilityDetailMap['/abilities/elemental_affinity'].sortIndex)
+  );
+  assert.deepEqual(
+    [
+      ...books
+    ]
+      .slice(42, 46)
+      .map((entry) => entry.book.hrid),
+    [
+      '/items/berserk', '/items/elemental_affinity', '/items/frenzy', '/items/spike_shell'
+    ]
+  );
 });
 
 test('角色数据服务读取当前装配技能并按槽位排序', () => {

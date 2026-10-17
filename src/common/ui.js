@@ -92,27 +92,28 @@ export const TemplateRenderer = {
 };
 
 // calculator-help-popover
+let helpPopoverSequence = 0;
+
 export class CalculatorHelpPopover {
   constructor(ctx) {
     this.ctx = ctx;
   }
 
-  mount({popup, moduleName, title, heading, content}) {
+  mount({popup, title, heading, content}) {
     const {TemplateRenderer, utils} = this.ctx;
     const titleElement = popup.querySelector('.swal2-title');
     const container = popup.closest('.swal2-container');
     if (!titleElement || !container) return null;
 
-    const prefix = `mst-${moduleName}-help`;
-    const popoverId = `${prefix}-popover`;
-    const triggerClass = `${prefix}-trigger`;
-    const paragraphClass = `${prefix}-popover-paragraph`;
+    // 帮助提示浮层是跨模块共用的同一个组件，类名不带模块前缀；
+    // 浮层 id 只用于 aria-controls 关联，用递增序号保证同页多个弹窗不重号。
+    const popoverId = `mst-help-popover-${++helpPopoverSequence}`;
     const miscSprite = utils.getSpriteUrl('misc') || '/static/media/misc_sprite.02869244.svg';
     const triggerHost = document.createElement('span');
-    triggerHost.className = `${prefix}-anchor`;
+    triggerHost.className = 'mst-help-anchor';
     TemplateRenderer.render(
       () => TemplateRenderer.html`
-  <button type="button" class=${triggerClass} aria-haspopup="true" aria-expanded="false" aria-controls=${popoverId} title=${title}>
+  <button type="button" class="mst-help-trigger" aria-haspopup="true" aria-expanded="false" aria-controls=${popoverId} title=${title}>
     <svg aria-hidden="true"><use href=${`${miscSprite}#info`}></use></svg>
   </button>
 `,
@@ -122,26 +123,26 @@ export class CalculatorHelpPopover {
 
     const popover = document.createElement('div');
     popover.id = popoverId;
-    popover.className = `${prefix}-popover`;
+    popover.className = 'mst-help-popover';
     popover.setAttribute('role', 'tooltip');
     TemplateRenderer.render(
       () => TemplateRenderer.html`
-  <div class=${`${prefix}-popover-title`}>${heading}</div>
-  <div class=${`${prefix}-popover-content`}></div>
+  <div class="mst-help-popover-title">${heading}</div>
+  <div class="mst-help-popover-content"></div>
 `,
       popover
     );
     popover.hidden = true;
     container.appendChild(popover);
-    const trigger = triggerHost.querySelector(`.${prefix}-trigger`);
-    const contentElement = popover.querySelector(`.${prefix}-popover-content`);
+    const trigger = triggerHost.querySelector('.mst-help-trigger');
+    const contentElement = popover.querySelector('.mst-help-popover-content');
     const renderContent = (text) => {
       const paragraphs = String(text || '')
         .split(/\n+/)
         .filter(Boolean);
       TemplateRenderer.render(
         () => TemplateRenderer.html`
-  ${paragraphs.map((paragraph) => TemplateRenderer.html`<div class=${paragraphClass}>${paragraph}</div>`)}
+  ${paragraphs.map((paragraph) => TemplateRenderer.html`<div class="mst-help-popover-paragraph">${paragraph}</div>`)}
 `,
         contentElement
       );
@@ -197,8 +198,8 @@ export class CalculatorHelpPopover {
         positionPopover();
       },
       setError(isError) {
-        popover.classList.toggle(`${prefix}-popover-error`, isError);
-        trigger.classList.toggle(`${prefix}-trigger-error`, isError);
+        popover.classList.toggle('mst-help-popover-error', isError);
+        trigger.classList.toggle('mst-help-trigger-error', isError);
       },
       cleanup() {
         document.removeEventListener('pointerdown', onOutsidePointerDown);

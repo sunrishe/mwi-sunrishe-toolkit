@@ -1,0 +1,323 @@
+/* 强化物品价格计算器：沿用装备提升计算器的深色弹窗风格，选择器、路线与逐级表都在弹窗内部滚动。 */
+.mst-enhancement-cost {
+  position: relative;
+  display: flex;
+  min-height: 0;
+  box-sizing: border-box;
+  flex-direction: column;
+  gap: 0.65rem;
+  color: var(--color-text-dark-mode, #e7e7e7);
+  font-family: Roboto, Helvetica, Arial, sans-serif;
+  font-size: var(--font-size-base, 0.875rem);
+  text-align: left;
+}
+
+.mst-enhancement-cost.mst-picker-open {
+  /* 选择面板打开时把弹窗撑到能容纳 4 行物品卡片：4 × 6rem 卡片 + 间距 + 筛选行 + 关闭按钮 + 内边距 ≈ 31rem。 */
+  min-height: min(31rem, calc(100vh - 10rem));
+  min-height: min(31rem, calc(100dvh - 10rem));
+  max-height: calc(100vh - 10rem);
+  max-height: calc(100dvh - 10rem);
+  overflow: hidden;
+}
+
+/* 配置区、已选物品卡片、物品选择浮层与涨跌配色（mst-config-* / mst-item-* /
+   mst-picker-* / mst-positive）都是跨模块共用组件，统一样式见 common/styles/components.css。 */
+.mst-enhancement-cost-line-hint {
+  color: var(--color-neutral-400, #999baa);
+  font-size: var(--font-size-tiny, 0.6875rem);
+}
+
+/* 模块自己的控件行与提示行隐藏时整块移除，物品卡片的隐藏规则随组件一起。 */
+.mst-enhancement-cost-controls[hidden],
+.mst-enhancement-cost-line-hint[hidden] {
+  display: none;
+}
+
+.mst-enhancement-cost-controls {
+  display: flex;
+  min-width: 0;
+  grid-column: 2;
+  grid-row: 2;
+  align-items: flex-end;
+  gap: 0.4rem;
+}
+
+.mst-enhancement-cost-modes {
+  display: flex;
+  justify-content: center;
+  gap: 0.65rem;
+}
+
+.mst-enhancement-cost-mode {
+  display: grid;
+  width: 8rem;
+  min-width: 0;
+  grid-template-rows: auto 1fr;
+  gap: 0.35rem;
+  color: var(--color-neutral-200, #d2d3dc);
+  font-weight: var(--font-weight-semibold, 600);
+  text-align: center;
+}
+
+.mst-enhancement-cost-mode select {
+  width: 100%;
+  min-width: 0;
+  height: var(--button-height-normal, 1.875rem);
+  box-sizing: border-box;
+  padding: 0.2rem 0.45rem;
+  border: 1px solid var(--color-midnight-100, #454771);
+  border-radius: var(--radius-sm, 0.25rem);
+  background: var(--color-midnight-700, #20212f);
+  color: var(--color-text-dark-mode, #e7e7e7);
+  font: inherit;
+}
+
+.mst-enhancement-cost select:focus {
+  border-color: var(--color-space-300, #98a7e9);
+  outline: none;
+}
+
+.mst-enhancement-cost-results {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.mst-enhancement-cost-result {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.mst-enhancement-cost-hint {
+  padding: 0.5rem 0.6rem;
+  border: 1px dashed var(--color-midnight-100, #454771);
+  border-radius: var(--radius-sm, 0.25rem);
+  color: var(--color-neutral-400, #999baa);
+  font-size: var(--font-size-small, 0.75rem);
+}
+
+.mst-enhancement-cost-warning {
+  border-left: 3px solid var(--color-orange-400, #f0a24b);
+  color: var(--color-text-dark-mode, #e7e7e7);
+}
+
+.mst-enhancement-cost-warning small {
+  display: block;
+  margin-top: 0.25rem;
+  color: var(--color-neutral-300, #b9bbca);
+}
+
+.mst-enhancement-cost-section {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+
+.mst-enhancement-cost-section-title {
+  display: flex;
+  align-items: baseline;
+  gap: 0.4rem;
+  color: var(--color-neutral-300, #b9bbca);
+  font-size: var(--font-size-small, 0.75rem);
+}
+
+.mst-enhancement-cost-section-title small {
+  color: var(--color-neutral-400, #999baa);
+  font-size: var(--font-size-tiny, 0.6875rem);
+}
+
+.mst-enhancement-cost-route {
+  display: flex;
+  margin: 0;
+  padding: 0;
+  flex-direction: column;
+  gap: 0.25rem;
+  list-style: none;
+}
+
+.mst-enhancement-cost-route li {
+  display: grid;
+  grid-template-columns: 1.5rem 3.5rem minmax(0, 1fr) 5.5rem 5.5rem;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.3rem 0.45rem;
+  border: 1px solid var(--color-midnight-100, #454771);
+  border-radius: var(--radius-sm, 0.25rem);
+  background: var(--color-midnight-600, #27283b);
+}
+
+.mst-enhancement-cost-route-gain {
+  border-color: var(--color-green-400, #5ac28b);
+}
+
+.mst-enhancement-cost-route-index {
+  color: var(--color-neutral-400, #999baa);
+  font-size: var(--font-size-tiny, 0.6875rem);
+  text-align: center;
+}
+
+.mst-enhancement-cost-route-op {
+  color: var(--color-space-300, #98a7e9);
+  font-size: var(--font-size-small, 0.75rem);
+  white-space: nowrap;
+}
+
+.mst-enhancement-cost-route-desc {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 0.1rem;
+}
+
+.mst-enhancement-cost-route-desc strong {
+  overflow-wrap: anywhere;
+  font-size: var(--font-size-small, 0.75rem);
+  font-weight: 400;
+}
+
+.mst-enhancement-cost-route-desc small {
+  color: var(--color-neutral-300, #b9bbca);
+  font-size: var(--font-size-tiny, 0.6875rem);
+  overflow-wrap: anywhere;
+}
+
+.mst-enhancement-cost-route-cost,
+.mst-enhancement-cost-route-total {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0.1rem;
+  text-align: right;
+}
+
+.mst-enhancement-cost-route-cost small,
+.mst-enhancement-cost-route-total small {
+  color: var(--color-neutral-400, #999baa);
+  font-size: var(--font-size-tiny, 0.6875rem);
+}
+
+.mst-enhancement-cost-route-cost strong,
+.mst-enhancement-cost-route-total strong {
+  font-size: var(--font-size-small, 0.75rem);
+}
+
+.mst-enhancement-cost-table-wrap {
+  max-height: 16rem;
+  overflow: auto;
+  border: 1px solid var(--color-midnight-100, #454771);
+  border-radius: var(--radius-sm, 0.25rem);
+  scrollbar-color: var(--color-space-300, #98a7e9) transparent;
+  scrollbar-width: thin;
+}
+
+.mst-enhancement-cost-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--font-size-small, 0.75rem);
+}
+
+.mst-enhancement-cost-table th,
+.mst-enhancement-cost-table td {
+  padding: 0.28rem 0.45rem;
+  border-bottom: 1px solid var(--color-midnight-100, #454771);
+  text-align: right;
+  white-space: nowrap;
+}
+
+.mst-enhancement-cost-table thead th {
+  position: sticky;
+  top: 0;
+  background: var(--color-midnight-700, #20212f);
+  color: var(--color-neutral-300, #b9bbca);
+  font-weight: 400;
+}
+
+.mst-enhancement-cost-table tbody th {
+  color: var(--color-text-dark-mode, #e7e7e7);
+  font-weight: 400;
+  text-align: left;
+}
+
+/* 获取方式与最优路线两列是文字，左对齐并允许换行。 */
+.mst-enhancement-cost-table tbody td:nth-child(4),
+.mst-enhancement-cost-table thead th:nth-child(4),
+.mst-enhancement-cost-table tbody td:last-child,
+.mst-enhancement-cost-table thead th:last-child {
+  text-align: left;
+  white-space: normal;
+}
+
+.mst-enhancement-cost-table tbody tr:last-child th,
+.mst-enhancement-cost-table tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+/* 全部方案表：行数少、每格都是短文本，宽度按内容分配，最佳方案整行高亮。 */
+.mst-enhancement-cost-plans-wrap {
+  max-height: none;
+}
+
+.mst-enhancement-cost-plans tbody td {
+  text-align: right;
+}
+
+.mst-enhancement-cost-plans tbody td:last-child,
+.mst-enhancement-cost-plans thead th:last-child {
+  text-align: left;
+}
+
+.mst-enhancement-cost-plan-best th,
+.mst-enhancement-cost-plan-best td {
+  color: var(--color-green-400, #5ac28b);
+}
+
+.mst-enhancement-cost-summary {
+  display: grid;
+  /* 5 个指标格（总花费 / 最佳方案 / 直接买入 / 节省 / 市场数据时间）在桌面宽度下保持同一行。 */
+  grid-template-columns: repeat(auto-fit, minmax(7.5rem, 1fr));
+  gap: 0.35rem;
+}
+
+.mst-enhancement-cost-metric {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 0.15rem;
+  padding: 0.35rem 0.45rem;
+  border: 1px solid var(--color-midnight-100, #454771);
+  border-radius: var(--radius-sm, 0.25rem);
+  background: var(--color-midnight-600, #27283b);
+}
+
+.mst-enhancement-cost-metric small {
+  color: var(--color-neutral-300, #b9bbca);
+  font-size: var(--font-size-tiny, 0.6875rem);
+}
+
+.mst-enhancement-cost-metric strong {
+  overflow-wrap: anywhere;
+  font-size: var(--font-size-small, 0.75rem);
+}
+
+.mst-enhancement-cost-notes {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
+.mst-enhancement-cost-note {
+  color: var(--color-neutral-400, #999baa);
+  font-size: var(--font-size-tiny, 0.6875rem);
+}
+
+.mst-enhancement-cost-missing {
+  margin: 0;
+  padding-left: 1.1rem;
+  color: var(--color-neutral-300, #b9bbca);
+  font-size: var(--font-size-tiny, 0.6875rem);
+}

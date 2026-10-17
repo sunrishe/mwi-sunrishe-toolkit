@@ -1,6 +1,7 @@
 import {StyleService} from '../common/runtime.js';
 import {PACKAGE_VERSION} from '../common/build-flags.js';
 import MST_APP_BASE_CSS from '../common/styles/app-base.css';
+import MST_COMPONENTS_CSS from '../common/styles/components.css';
 import MST_INTEGRATED_CSS from '../common/styles/integrated.css';
 import MST_LANGUAGE_TOGGLE_CSS from '../common/styles/language-toggle.css';
 import MST_SWAL_THEME_CSS from '../common/styles/swal-theme.css';
@@ -9,7 +10,7 @@ import {HouseCalculatorLauncher} from '../modules/house-calculator/index.js';
 // app-styles
 export function installAppStyles() {
   // 所有样式在构建期转成字符串，运行时只注入一次，避免重复覆盖游戏页面。
-  const css = MST_APP_BASE_CSS + MST_LANGUAGE_TOGGLE_CSS + MST_SWAL_THEME_CSS + MST_INTEGRATED_CSS;
+  const css = MST_APP_BASE_CSS + MST_LANGUAGE_TOGGLE_CSS + MST_SWAL_THEME_CSS + MST_INTEGRATED_CSS + MST_COMPONENTS_CSS;
   StyleService.ensure('mst-integrated-style', css);
 }
 
@@ -162,6 +163,7 @@ export class AppController {
       CombatSimulationService,
       EquipmentComparisonService,
       EquipmentComparisonFeature,
+      EnhancementCostCalculatorFeature,
       ToolkitMenuFeature,
       ChangelogFeature,
       UpdateCheckerFeature,
@@ -182,6 +184,7 @@ export class AppController {
     const combatSimulationService = new CombatSimulationService(this.ctx);
     const equipmentComparisonService = new EquipmentComparisonService(marketDataService, combatSimulationService);
     const equipmentComparison = new EquipmentComparisonFeature(this.ctx, marketDataService, equipmentComparisonService);
+    const enhancementCost = new EnhancementCostCalculatorFeature(this.ctx, marketDataService);
     const subscribeNotification = new SubscribeNotificationFeature(this.ctx);
     const marketHistory = new MarketHistoryFeature();
     const changelog = new ChangelogFeature(this.ctx);
@@ -192,6 +195,7 @@ export class AppController {
       combatCalculator,
       abilityCalculator,
       equipmentComparison,
+      enhancementCost,
       dungeonCalculator,
       subscribeNotification,
       marketHistory,
@@ -207,6 +211,7 @@ export class AppController {
       combatCalculator,
       abilityCalculator,
       equipmentComparison,
+      enhancementCost,
       dungeonCalculator,
       subscribeNotification,
       marketHistory,
@@ -218,6 +223,7 @@ export class AppController {
     abilityCalculator.init();
     dungeonCalculator.init();
     equipmentComparison.init();
+    enhancementCost.init();
     toolkitMenu.init();
     changelog.init();
     updateChecker.init();

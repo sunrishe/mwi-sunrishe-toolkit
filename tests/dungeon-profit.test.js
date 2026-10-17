@@ -21,6 +21,11 @@ const integratedCssSource = fs.readFileSync(
   path.resolve(__dirname, '..', 'src', 'common', 'styles', 'integrated.css'),
   'utf8'
 );
+// 涨跌配色等跨模块共用组件样式统一放在 components.css。
+const componentsCssSource = fs.readFileSync(
+  path.resolve(__dirname, '..', 'src', 'common', 'styles', 'components.css'),
+  'utf8'
+);
 const headerSource = fs.readFileSync(path.resolve(__dirname, '..', 'userscript-header.txt'), 'utf8');
 const usageSource = fs.readFileSync(path.resolve(__dirname, '..', 'docs', 'usage.md'), 'utf8');
 const analysisSource = fs.readFileSync(
@@ -1626,8 +1631,8 @@ test('地下城收益用页签切换批量模拟并按三行布局展示', () =>
     /twoLineHeader\(\s*'dailyConsumablesCostLine1',\s*'dailyConsumablesCostLine2'\s*\)/
   );
   // 价格格分两行：上行每日总成本、下行每日期望收益；期望数量两行展示普通/精炼，无精炼时只一行。
-  assert.match(dungeonFeatureSource, /mst-dungeon-batch-cost/);
-  assert.match(dungeonFeatureSource, /mst-dungeon-batch-profit/);
+  assert.match(dungeonFeatureSource, /mst-negative/);
+  assert.match(dungeonFeatureSource, /mst-positive/);
   assert.match(dungeonFeatureSource, /i18n\.t\('totalDailyCost'\)/);
   assert.match(dungeonFeatureSource, /title="\$\{escapeHtmlText\(i18n\.t\('netProfit'\)\)\}"/);
   assert.match(dungeonFeatureSource, /getExpectedQuantityCellHtml/);
@@ -1671,8 +1676,8 @@ test('地下城收益用页签切换批量模拟并按三行布局展示', () =>
   assert.match(integratedCssSource, /\.mst-dungeon-map-picker\s*\{\s*display:\s*contents;\s*\}/s);
   assert.match(integratedCssSource, /\.mst-dungeon-market-tile\s*\{/);
   assert.match(integratedCssSource, /\.mst-dungeon-batch-table\s*\{[^}]*table-layout:\s*auto/s);
-  assert.match(integratedCssSource, /\.mst-dungeon-batch-cost\s*\{[^}]*--color-scarlet-300/s);
-  assert.match(integratedCssSource, /\.mst-dungeon-batch-profit\s*\{[^}]*--color-jade-300/s);
+  assert.match(componentsCssSource, /\.mst-negative\s*\{[^}]*--color-scarlet-300/s);
+  assert.match(componentsCssSource, /\.mst-positive\s*\{[^}]*--color-jade-300/s);
   assert.match(integratedCssSource, /\.mst-dungeon-batch-expected\s*\{/);
   assert.match(integratedCssSource, /\.mst-dungeon-batch-table\s+input\[type='number'\]\s*\{[^}]*width:\s*3\.6rem/s);
   assert.match(integratedCssSource, /\.mst-dungeon-batch-table\s+select\s*\{[^}]*min-width:\s*3\.2rem/s);
@@ -1882,17 +1887,17 @@ test('工具箱及中英文文档按计算流程排列装备提升和地下城�
   ].map((match) => match[1]);
   assert.deepEqual(actionKeys, [
     'userCharacterCard', 'subscribeNotification', 'marketHistory', 'abilityUpgradeCalculator', 'houseUpgradeCalculator',
-    'combatUpgradeCalculator', 'equipmentComparison', 'dungeonProfitCalculator', 'combatSimAiwwb', 'changelog',
-    'checkUpdate', 'switchCharacter'
+    'combatUpgradeCalculator', 'equipmentComparison', 'enhancementCostCalculator', 'dungeonProfitCalculator', 'combatSimAiwwb',
+    'changelog', 'checkUpdate', 'switchCharacter'
   ]);
 
   [
     [
-      '## 技能升级计算器', '## 房屋升级材料计算器', '## 战斗升级计算器', '## 装备提升计算器', '## 地下城收益计算器',
-      '## 切换角色'
+      '## 技能升级计算器', '## 房屋升级材料计算器', '## 战斗升级计算器', '## 装备提升计算器', '## 强化物品价格计算器',
+      '## 地下城收益计算器', '## 切换角色'
     ], [
-      '## Ability Upgrade Calculator', '## House Upgrade Material Calculator', '## Combat Upgrade Calculator', '## Equipment Comparison', '## Dungeon Profit Calculator',
-      '## Switch Character'
+      '## Ability Upgrade Calculator', '## House Upgrade Material Calculator', '## Combat Upgrade Calculator', '## Equipment Comparison', '## Enhancement Cost Calculator',
+      '## Dungeon Profit Calculator', '## Switch Character'
     ]
   ].forEach((headings) => {
     const positions = headings.map((heading) => usageSource.indexOf(heading));

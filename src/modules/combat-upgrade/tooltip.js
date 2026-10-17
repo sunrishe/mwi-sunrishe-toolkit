@@ -1,5 +1,6 @@
 // combat-upgrade-tooltip
-// 导航栏悬浮升级时间：战斗技能在「升级所需经验」后拼接速率行与 4 行时间；「战斗」项在说明之后追加技能块。
+// 导航栏悬浮升级时间：战斗技能在「升级所需经验」后拼接速率行与 4 行时间；「战斗」项在说明之后追加技能块
+// （标题为「技能名 Lv.等级 经验百分比」）。
 // 游戏结构与口径见 `docs/analysis/战斗升级悬浮时间与交战入口需求说明书.md` §2.1 / §3.2 / §4.4。
 import {COMBAT_SKILL_HRIDS, MAX_SKILL_LEVEL} from './planner.js';
 
@@ -171,7 +172,7 @@ export const combatUpgradeTooltip = {
       const linesHtml = this.getTimeLinesHtml(feature, state.level, state.experience, rates.get(skillHrid));
       // 满级技能没有可显示的时间，与「没有数据的技能不显示」同口径。
       if (!linesHtml) return;
-      blocks.push({skillHrid, level: state.level, linesHtml});
+      blocks.push({skillHrid, level: state.level, experience: state.experience, linesHtml});
     });
     if (!blocks.length) {
       this.removeContainer(tooltip, COMBAT_BLOCK_CLASS);
@@ -182,10 +183,20 @@ export const combatUpgradeTooltip = {
     container.innerHTML = blocks
       .map((block, index) => {
         const divider = index > 0 ? '<div class="mst-combat-tooltip-divider"></div>' : '';
-        const skillName = feature.ctx.utils.escapeHtml(`${feature.getSkillName(block.skillHrid)} Lv.${block.level}`);
-        return `${divider}<div class="mst-combat-tooltip-skill">${skillName}</div>${block.linesHtml}`;
+        const skillTitle = feature.ctx.utils.escapeHtml(this.getSkillBlockTitle(feature, block));
+        return `${divider}<div class="mst-combat-tooltip-skill">${skillTitle}</div>${block.linesHtml}`;
       })
       .join('');
+  },
+
+  // 技能块标题：专业 + 等级 + 当前经验百分比（最多两位小数、去掉多余的 0，与计算器「当前等级」列同口径）。
+  getSkillBlockTitle(feature, block) {
+    const {CharacterDataService, i18n} = feature.ctx;
+    const percentText = CharacterDataService.getLevelExperiencePercent(block.level, block.experience).toLocaleString(
+      i18n.locale,
+      {maximumFractionDigits: 2, minimumFractionDigits: 0}
+    );
+    return `${feature.getSkillName(block.skillHrid)} Lv.${block.level} ${percentText}%`;
   },
 
   getSortedSkillHrids(feature, skillHrids) {
