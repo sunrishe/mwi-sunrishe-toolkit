@@ -766,6 +766,14 @@
   pointer-events: none;
 }
 
+/* 速览的层级（1100）高于 MST 弹窗（--mst-z-popup 1000），弹窗打开期间不降下来文字会盖在
+   弹窗与遮罩之上。MST 的 SweetAlert2 弹窗（市场记录、提示框、各计算器）都带统一弹窗类
+   mst-swal2-popup，而弹窗节点只在打开期间存在于 DOM（关闭即被移除），所以按这个统一类名
+   把速览改成正常文档流的层高，不额外维护状态类；Toast 用的是 mst-swal2-toast，不受影响。 */
+body:has(.mst-swal2-popup) .mst-market-history-listing-hint {
+  z-index: auto;
+}
+
 .mst-market-history-listing-hint-sell {
   left: 0;
 }
@@ -974,14 +982,6 @@
 .mst-market-history-stat-value {
   font-size: 1rem;
   font-weight: 600;
-}
-
-.mst-market-history-stat-positive {
-  color: var(--color-jade-300, #86d7b1);
-}
-
-.mst-market-history-stat-negative {
-  color: var(--color-scarlet-300, #ef8f98);
 }
 
 .mst-market-history-aux-body {

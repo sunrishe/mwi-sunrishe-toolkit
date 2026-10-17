@@ -74,14 +74,15 @@ const PAGE_SIZE_OPTIONS = [
   1000
 ];
 // 记录与统计两个页签共用同一套时间范围选项（口径都是创建时间）：
-// 下拉默认项即「创建时间」（兼作控件标题、不再另加标签），不给「今天」（当天数据通常只有几笔，趋势图看不出东西）。
+// 下拉默认项即「创建时间」（兼作控件标题、不再另加标签），后面是「今天」与近 N 天、自定义起止。
 const TIME_PRESETS = [
-  'all', '7d', '15d', '30d', '60d',
-  '90d', '180d', 'custom'
+  'all', 'today', '7d', '15d', '30d',
+  '60d', '90d', '180d', 'custom'
 ];
 const TIME_PRESET_DAYS = {'7d': 7, '15d': 15, '30d': 30, '60d': 60, '90d': 90, '180d': 180};
 const TIME_PRESET_LABEL_KEYS = {
   all: 'marketHistoryTimeAll',
+  today: 'marketHistoryTimeToday',
   '7d': 'marketHistoryTime7d',
   '15d': 'marketHistoryTime15d',
   '30d': 'marketHistoryTime30d',
@@ -264,7 +265,16 @@ function parseDateInput(value, endOfDay = false) {
 // 时间范围预设 → 筛选起止时间：记录与统计两个页签共用（口径都是创建时间）。
 function applyTimePreset(filters, now) {
   const days = TIME_PRESET_DAYS[filters.timePreset];
-  if (days) {
+  if (filters.timePreset === 'today') {
+    // 「今天」按本地自然日算：今天 0 点到明天 0 点。上界用 setDate 推、不加减 24 小时，
+    // 夏令时切换日也能跟住自然日边界。
+    const from = new Date(now);
+    from.setHours(0, 0, 0, 0);
+    const to = new Date(from);
+    to.setDate(to.getDate() + 1);
+    filters.timeFrom = from.getTime();
+    filters.timeTo = to.getTime() - 1;
+  } else if (days) {
     filters.timeFrom = now - days * DAY_MS;
     filters.timeTo = null;
   } else if (filters.timePreset === 'custom') {
@@ -2378,7 +2388,7 @@ export class MarketHistoryFeature {
       ], [
         i18n.t(
           'marketHistoryStatsNet'
-        ), (net > 0 ? '+' : '') + this.formatMoney(net), this.rawValueText(net), net > 0 ? ' mst-market-history-stat-positive' : net < 0 ? ' mst-market-history-stat-negative' : ''
+        ), (net > 0 ? '+' : '') + this.formatMoney(net), this.rawValueText(net), net > 0 ? ' mst-positive' : net < 0 ? ' mst-negative' : ''
       ]
     ].map(
       ([

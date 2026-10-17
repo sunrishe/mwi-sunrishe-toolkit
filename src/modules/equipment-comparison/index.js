@@ -198,7 +198,7 @@ const equipmentComparisonSelectionController = {
     feature.pickerQuery = '';
     feature.pickerEquipmentType = '';
     feature.render();
-    feature.root?.querySelector('.mst-equipment-compare-picker-search')?.focus();
+    feature.root?.querySelector('.mst-picker-search')?.focus();
   },
 
   closePicker(feature) {
@@ -261,15 +261,15 @@ const equipmentComparisonDerivedView = {
     </span>
     <span class="mst-equipment-compare-metric">
       <small>${i18n.t('roughDpsChange')}</small>
-      <strong class=${`mst-equipment-compare-${dpsTone}`}>${dpsText}</strong>
+      <strong class=${`mst-${dpsTone}`}>${dpsText}</strong>
     </span>
     <span class="mst-equipment-compare-metric">
       <small>${i18n.t('priceDifference')}</small>
-      <strong class=${`mst-equipment-compare-${priceTone}`}>${hasPrice ? feature.formatSignedCompactNumber(result.priceDifference) : i18n.t('marketPriceUnavailable')}</strong>
+      <strong class=${`mst-${priceTone}`}>${hasPrice ? feature.formatSignedCompactNumber(result.priceDifference) : i18n.t('marketPriceUnavailable')}</strong>
     </span>
     <span class="mst-equipment-compare-metric" title=${hasEfficiency ? '' : i18n.t('dpsPerTenMillionHint')}>
       <small>${i18n.t('dpsPerTenMillion')}</small>
-      <strong class="mst-equipment-compare-positive">${hasEfficiency ? feature.formatSignedPercent(result.dpsPerTenMillion, 3) : '—'}</strong>
+      <strong class="mst-positive">${hasEfficiency ? feature.formatSignedPercent(result.dpsPerTenMillion, 3) : '—'}</strong>
     </span>
   </div>`;
   }
@@ -294,33 +294,33 @@ const equipmentComparisonPickerView = {
     );
     return TemplateRenderer.html`
   <div role="button"
-    class=${`mst-equipment-compare-select-button${itemHrid ? '' : ' mst-equipment-compare-select-empty'}`}
+    class=${`mst-item-select-button${itemHrid ? '' : ' mst-item-select-empty'}`}
     tabindex=${disabled ? '-1' : '0'}
     aria-disabled=${String(disabled)}
     aria-label=${placeholder}
     @click=${(event) => {
-      if (!disabled && !event.target.closest('.mst-equipment-compare-enhancement')) {
+      if (!disabled && !event.target.closest('.mst-item-select-level')) {
         feature.openPicker(mode);
       }
     }}
     @keydown=${(event) => {
       if (
         !disabled &&
-        !event.target.closest('.mst-equipment-compare-enhancement') &&
+        !event.target.closest('.mst-item-select-level') &&
         (event.key === 'Enter' || event.key === ' ')
       ) {
         event.preventDefault();
         feature.openPicker(mode);
       }
     }}>
-    <span class="mst-equipment-compare-icon" .hidden=${!itemHrid}>
+    <span class="mst-item-icon" .hidden=${!itemHrid}>
       <svg aria-hidden="true"><use href=${itemHrid ? feature.getItemIconHref(itemHrid) : ''}></use></svg>
     </span>
-    <span class="mst-equipment-compare-summary-text" .hidden=${!itemHrid}>
+    <span class="mst-item-summary" .hidden=${!itemHrid}>
       <strong>${itemHrid ? feature.getItemName(itemHrid) : ''}</strong>
       <small>${secondaryText}</small>
     </span>
-    <label class="mst-equipment-compare-enhancement" .hidden=${!itemHrid}>
+    <label class="mst-item-select-level" .hidden=${!itemHrid}>
       <span>${i18n.t('enhancementLevel')}</span>
       <select
         .value=${String(enhancementLevel)}
@@ -330,7 +330,7 @@ const equipmentComparisonPickerView = {
         ${enhancementOptions}
       </select>
     </label>
-    <span class="mst-equipment-compare-placeholder" .hidden=${Boolean(itemHrid)}>${placeholder}</span>
+    <span class="mst-item-placeholder" .hidden=${Boolean(itemHrid)}>${placeholder}</span>
   </div>`;
   },
 
@@ -356,20 +356,20 @@ const equipmentComparisonPickerView = {
       const selected = itemHrid === selectedValue;
       return TemplateRenderer.html`
     <button type="button"
-      class=${`mst-equipment-compare-picker-option${selected ? ' mst-equipment-compare-picker-option-selected' : ''}`}
+      class=${`mst-picker-option${selected ? ' mst-picker-option-selected' : ''}`}
       title=${feature.getItemName(itemHrid)}
       .disabled=${selected}
       @click=${() => feature.selectPickerOption(itemHrid)}>
-      <span class="mst-equipment-compare-picker-level">+${level}</span>
-      <span class="mst-equipment-compare-picker-item-level">Lv.${Number(itemDetail.itemLevel || 0)}</span>
+      <span class="mst-picker-level">+${level}</span>
+      <span class="mst-picker-item-level">Lv.${Number(itemDetail.itemLevel || 0)}</span>
       <svg aria-hidden="true"><use href=${feature.getItemIconHref(itemHrid)}></use></svg>
       <strong>${feature.getItemName(itemHrid)}</strong>
     </button>`;
     });
     return TemplateRenderer.html`
-  <div class="mst-equipment-compare-picker-options">
+  <div class="mst-picker-options">
     ${pickerOptions}
-    <div class="mst-equipment-compare-picker-empty" .hidden=${options.length > 0}>${i18n.t('noEquipmentMatch')}</div>
+    <div class="mst-picker-empty" .hidden=${options.length > 0}>${i18n.t('noEquipmentMatch')}</div>
   </div>`;
   },
 
@@ -382,11 +382,11 @@ const equipmentComparisonPickerView = {
           TemplateRenderer.html`<option value=${detail.hrid}>${DataHub.getLocalizedGameName('equipmentTypeNames', detail.hrid)}</option>`
       );
     return TemplateRenderer.html`
-  <div class="mst-equipment-compare-picker" .hidden=${!feature.pickerMode}>
-    <div class="mst-equipment-compare-picker-panel">
-      <div class="mst-equipment-compare-picker-filters">
+  <div class="mst-picker" .hidden=${!feature.pickerMode}>
+    <div class="mst-picker-panel">
+      <div class="mst-picker-filters">
         <select
-          class="mst-equipment-compare-picker-type"
+          class="mst-picker-type"
           .value=${feature.pickerEquipmentType}
           @change=${(event) => {
             feature.pickerEquipmentType = event.currentTarget.value;
@@ -397,7 +397,7 @@ const equipmentComparisonPickerView = {
           ${renderTypeOptions(equipmentTypes)}
         </select>
         <input
-          class="mst-equipment-compare-picker-search"
+          class="mst-picker-search"
           type="search"
           placeholder=${i18n.t('searchEquipment')}
           autocomplete="off"
@@ -411,7 +411,7 @@ const equipmentComparisonPickerView = {
       ${this.renderPickerOptions(feature)}
       <button
         type="button"
-        class="mst-equipment-compare-picker-close"
+        class="mst-picker-close"
         @click=${() => feature.closePicker()}
       >${i18n.t('close')}</button>
     </div>
@@ -437,7 +437,7 @@ const equipmentComparisonTableView = {
     <th scope="row">${feature.getStatName(row.category, row.key)}</th>
     <td>${feature.formatStatValue(row.key, row.ownedValue)}</td>
     <td>${feature.formatStatValue(row.key, row.comparisonValue)}</td>
-    <td class=${`mst-equipment-compare-difference mst-equipment-compare-${feature.getDifferenceTone(row)}`}>
+    <td class=${`mst-equipment-compare-difference mst-${feature.getDifferenceTone(row)}`}>
       ${row.isNumeric ? feature.formatStatValue(row.key, row.difference, true) : row.isEqual ? '—' : '≠'}
     </td>
   </tr>`)
@@ -544,10 +544,10 @@ const equipmentComparisonView = {
             !baselineItem
           );
     return TemplateRenderer.html`
-  <div class=${`mst-equipment-compare-view${feature.pickerMode ? ' mst-equipment-compare-picker-open' : ''}`}>
+  <div class=${`mst-equipment-compare-view${feature.pickerMode ? ' mst-picker-open' : ''}`}>
     <div class="mst-equipment-compare-notice">${i18n.t('equipmentComparisonNotice')}</div>
-    <div class="mst-equipment-compare-config-scroll">
-      <div class="mst-equipment-compare-config-row">
+    <div class="mst-config-scroll">
+      <div class="mst-config-row">
         <label class="mst-equipment-compare-preset">
           <span>${i18n.t('combatPreset')}</span>
           <select
@@ -557,14 +557,14 @@ const equipmentComparisonView = {
             ${presetGroups}
           </select>
         </label>
-        <section class="mst-equipment-compare-selector">
-          <span class="mst-equipment-compare-selector-title">${i18n.t('ownedEquipment')}</span>
+        <section class="mst-item-selector">
+          <span class="mst-item-selector-title">${i18n.t('ownedEquipment')}</span>
           <div class="mst-equipment-compare-target-controls">
             ${baselinePicker}
           </div>
         </section>
-        <section class="mst-equipment-compare-selector">
-          <span class="mst-equipment-compare-selector-title">${i18n.t('comparisonEquipment')}</span>
+        <section class="mst-item-selector">
+          <span class="mst-item-selector-title">${i18n.t('comparisonEquipment')}</span>
           <div class="mst-equipment-compare-target-controls">
             ${comparisonPicker}
           </div>
@@ -797,7 +797,6 @@ const equipmentComparisonFeatureLifecycle = {
     this.helpController?.cleanup();
     this.helpController = CalculatorHelpPopover.mount({
       popup,
-      moduleName: 'equipment',
       title: i18n.t('equipmentComparisonHelpTitle'),
       heading: i18n.t('equipmentComparisonTitle'),
       content: i18n.t('equipmentComparisonHelp')

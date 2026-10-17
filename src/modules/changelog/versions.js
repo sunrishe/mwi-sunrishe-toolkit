@@ -1,8 +1,29 @@
 // 更新日志数据：与 docs/changelog.md 保持同步（版本、顺序、中文说明逐条一致，测试会校验）。
 // 发布日期取自 GreasyFork 发布记录（脚本 574037）；`legacy: true` 表示 MST 融合前的 EDS 历史线。
-// 版本说明只写用户可感知的变化，更新版本时先改 docs/changelog.md，再同步这里并补英文。
+// 版本说明只写用户可感知的变化，按模块合并（同一模块的改动合并为一条），更新版本时先改 docs/changelog.md，再同步这里并补英文。
 export const CHANGELOG_VERSIONS = [
   {
+    version: '2.22.0',
+    date: '2026-10-16',
+    notes: [
+      {
+        zh: '新增「强化物品价格计算器」：先选目标装备、再按需选已有装备，列出直接买、自己做、用已有装备当主件或垫子等全部做法并标出最省的一种，逐级对比每一级买与做哪种便宜；买价与卖价可分别选自动、左一或右一，缺价的做法自动跳过。',
+        en: 'New Enhancement Cost Calculator: pick the target item and optionally the item you already have, see every plan (buying it, building it, enhancing it up, or using it as a pad) with the cheapest one marked, and compare buying vs. making at each level; buying and selling can each use Auto, Left, or Right pricing, and plans without market prices are skipped.'
+      }, {
+        zh: '战斗升级计算器：修复从队友的战斗单位打开时经验百分比一律显示 0% 的问题（等级与经验都取自游戏里看过的名片，旧名片需重新查看一次）；悬浮「战斗」时每个专业在等级后显示当前经验百分比。',
+        en: "Combat Upgrade Calculator: fixed every skill showing 0% XP when opening the calculator from a party member's battle unit (levels and XP now both come from a profile you have viewed in game — view older profiles once again), and hovering the Combat nav entry now shows each skill's current XP percentage after its level."
+      }, {
+        zh: '市场交易记录：创建时间下拉新增「今天」，记录与统计两个页签都能用；挂牌页的最近成交价不再浮在弹窗之上。',
+        en: "Market Trade History: the Created dropdown now has a Today option on both the Records and Stats tabs, and the recent fill prices on an item's listing page no longer float above dialogs."
+      }, {
+        zh: '技能升级计算器：「添加技能」列表改为按游戏里的物品顺序排列。',
+        en: 'Ability Upgrade Calculator: the Add Ability list now follows the in-game item order.'
+      }, {
+        zh: '角色名片：修复自己的名片点击技能图标报错、技能选择浮层打不开的问题；更换技能时的技能列表改为按游戏里的物品顺序排列。',
+        en: 'Character Card: fixed the error when clicking a skill icon on your own card and the skill picker not opening, and the skill list shown when changing a skill now follows the in-game item order.'
+      }
+    ]
+  }, {
     version: '2.21.0',
     date: '2026-10-13',
     notes: [
@@ -78,7 +99,8 @@ export const CHANGELOG_VERSIONS = [
         en: 'The Dungeon Profit Calculator now switches between a single map and batch mode with tabs at the top, opening on the first tab, Batch Simulation; parameters of both modes are still saved automatically.'
       }
     ]
-  }, {
+  },
+  {
     version: '2.18.0',
     date: '2026-10-01',
     notes: [
@@ -96,8 +118,7 @@ export const CHANGELOG_VERSIONS = [
         en: 'New "Check for Updates": it checks in the background and, when a new version is found, shows a hint on the Toolkit entry and turns the button into "Update to vX" for one-click install; with no new version, click it to view the installed and latest versions.'
       }
     ]
-  },
-  {
+  }, {
     version: '2.17.2',
     date: '2026-09-24',
     notes: [
@@ -170,7 +191,8 @@ export const CHANGELOG_VERSIONS = [
         en: 'Every Toolkit dialog now shows the same icon as its menu entry, making dialogs and menu entries easy to match.'
       }
     ]
-  }, {
+  },
+  {
     version: '2.15.0',
     date: '2026-08-28',
     notes: [
@@ -182,8 +204,7 @@ export const CHANGELOG_VERSIONS = [
         en: "Combat Upgrade Calculator can now plan upgrades without a major profession, estimating duration and completion time from each row's XP."
       }
     ]
-  },
-  {
+  }, {
     version: '2.14.0',
     date: '2026-08-26',
     notes: [
@@ -234,7 +255,8 @@ export const CHANGELOG_VERSIONS = [
         en: 'When several copies of this script are installed (e.g. the release and a local dev build), the Add to Cart button now appears consistently without the copies interfering with each other.'
       }
     ]
-  }, {
+  },
+  {
     version: '2.11.0',
     date: '2026-08-18',
     notes: [
@@ -246,8 +268,7 @@ export const CHANGELOG_VERSIONS = [
         en: 'Marketplace adds an "Add to cart" button next to "Refresh" that adds the currently viewed item to the MWITools cart, 1 per click; a specific enhancement level is kept and unenhanced items are added as +0 (cart only, never orders).'
       }
     ]
-  },
-  {
+  }, {
     version: '2.10.2',
     date: '2026-08-17',
     notes: [
@@ -305,7 +326,8 @@ export const CHANGELOG_VERSIONS = [
         en: 'Character profile caching optimized: only the fields needed by the card are cached, greatly reducing cache size, and the oldest profiles are cleaned up when the limit is exceeded or browser storage is low.'
       }
     ]
-  }, {
+  },
+  {
     version: '2.9.0',
     date: '2026-08-05',
     notes: [
@@ -314,8 +336,7 @@ export const CHANGELOG_VERSIONS = [
         en: 'Dungeon Profit adds a party size option (1-5): chest quantity uses the official formula `5 ÷ party size`, so with the default 5 members a standard chest is still 1.295 per run, and tickets, keys, and profit adjust automatically.'
       }
     ]
-  },
-  {
+  }, {
     version: '2.8.3',
     date: '2026-08-04',
     notes: [
@@ -373,7 +394,8 @@ export const CHANGELOG_VERSIONS = [
         en: 'Overall experience: the interface language follows the game in real time, and dialogs, mobile display, official Chinese terms, and market price directions are unified; best sell/buy prices display as 左一/右一 in Chinese, following game conventions.'
       }
     ]
-  }, {
+  },
+  {
     version: '1.2.7',
     date: '2026-05-07',
     legacy: true,
@@ -386,8 +408,7 @@ export const CHANGELOG_VERSIONS = [
         en: 'Fixed missing personal achievement bonuses when copying Milkonomy data.'
       }
     ]
-  },
-  {
+  }, {
     version: '1.2.5',
     date: '2026-04-17',
     legacy: true,
@@ -431,7 +452,8 @@ export const CHANGELOG_VERSIONS = [
         en: 'Fixed the Chinese mirror site being unusable.'
       }
     ]
-  }, {
+  },
+  {
     version: '1.0.0',
     date: '2026-04-15',
     legacy: true,

@@ -317,6 +317,7 @@ export const TOOLKIT_MENU_MESSAGES = {
   switchLanguage: {zh: '切换为英文', en: 'Switch to Chinese'},
   userCharacterCard: {zh: '用户名片', en: 'Character Card'},
   equipmentComparison: {zh: '装备提升计算器', en: 'Equipment Comparison'},
+  enhancementCostCalculator: {zh: '强化物品价格计算器', en: 'Enhancement Cost Calculator'},
   dungeonProfitCalculator: {zh: '地下城收益计算器', en: 'Dungeon Profit Calculator'},
   houseUpgradeCalculator: {zh: '房屋升级材料计算器', en: 'House Upgrade Calculator'},
   combatUpgradeCalculator: {zh: '战斗升级计算器', en: 'Combat Upgrade Calculator'},
@@ -590,6 +591,141 @@ export const EQUIPMENT_COMPARISON_MESSAGES = {
   }
 };
 
+// enhancement-cost-messages
+export const ENHANCEMENT_COST_MESSAGES = {
+  enhancementCostTitle: {zh: '强化物品价格计算器', en: 'Enhancement Cost Calculator'},
+  enhancementCostHelpTitle: {zh: '查看强化物品价格计算器说明', en: 'View enhancement cost calculator instructions'},
+  enhancementCostHelp: {
+    zh: '使用：先选择目标装备与目标强化等级（必选），再按需选择已有装备——它只能是目标物品本身或它的普通版，也可以不选（直接比较「买」和「自己做」）；购买方式与出售方式作用于计算里的每一次买入和卖出。\n\n计算：只采用必定成功的操作——① 贤者之镜合成：用低一级的主件、低两级的普通版垫子和 1 个贤者之镜做出高一级；② 精炼：消耗精炼碎片（按工匠茶生效折算数量，比官方数量少 10%），保留强化等级；③ 解精炼：把精炼版拆回普通版并拿回一半碎片；④ 市场直接买卖。计算器先按等级从小到大算出每个等级最便宜的获取方式（主件与垫子也按最便宜方式获取），再列出全部做法并标出最佳：直接买成品、自己从零做出来、用已有装备当主件往上做、用已有装备当垫子；不用已有装备的做法按把它卖掉算净花费。同一方案里解精炼拿回的碎片会先顶掉后面精炼要用的量，只补买不够的部分，多出来的才按卖出价折钱。路线里不会中途卖出再买入，买卖价差不会被当成可重复的收益。\n\n价格：自动方式买入取更便宜的一侧、卖出取到手更高的一侧；左一取挂单（出售）价，右一取收购（求购）价；指定的一侧缺价时回退最近成交价与官方市场价值。卖出到手价按当前市场税率扣税（默认 4%）并向下取整。\n\n限制：不含普通强化与失败概率（普通强化失败会掉级，不属于必成路线），所以结果都是确定花费；某件装备或某个等级缺价时相关操作不可用，会列出缺少价格的物品。价格来自当前游戏页面的市场数据，请留意数据时间。',
+    en: "Usage: Pick the target item and target enhancement level first (required), then optionally pick an item you already have — it can only be the target item itself or its original version, or nothing at all (to compare buying against building it yourself). The buying and selling options apply to every purchase and sale in the calculation.\n\nCalculation: only guaranteed-success steps are used — (1) Philosopher's Mirror enhancement: one main item one level lower, one original-version pad two levels lower and one mirror make the next level; (2) refining: consumes refinement shards and keeps the enhancement level; (3) un-refining: turns a refined item back into the original version and returns half of the shards; (4) buying and selling finished items. The calculator first works out, level by level, the cheapest way to obtain each level (main items and pads are also obtained the cheapest way), then lists every plan and marks the best: buy the finished item, build it from scratch, keep the item you have as the main item and enhance it up, or use it as a pad; plans that do not use it count selling it. Routes never sell and re-buy in the middle, so bid/ask spreads are not treated as repeatable profit.\n\nPrices: Auto buys at the cheaper side and sells at the higher net price; Left uses the best ask (sell order) price and Right uses the best bid (buy order) price; when the chosen side has no price, the last trade price and the official market value are used instead. Sell proceeds are taxed at the current market tax rate (4% by default) and rounded down.\n\nLimits: normal enhancement and failure chances are excluded (a failed enhancement loses levels, so it is not a guaranteed route), which keeps every result deterministic. Steps with missing prices are unavailable and the items missing prices are listed. Prices come from the market data loaded on the current game page — check the market data time."
+  },
+  enhancementCostTarget: {zh: '目标装备', en: 'Target Item'},
+  enhancementCostExisting: {zh: '已有装备', en: 'Item You Have'},
+  enhancementCostChooseTarget: {zh: '请选择目标装备', en: 'Choose the target item'},
+  enhancementCostChooseTargetFirst: {zh: '请先选择目标装备', en: 'Choose the target item first'},
+  enhancementCostExistingNone: {zh: '无', en: 'None'},
+  enhancementCostExistingNoneHint: {zh: '不用已有装备', en: 'No existing item'},
+  enhancementCostExistingHint: {
+    zh: '可选：目标物品本身或它的普通版',
+    en: 'Optional: the target item itself or its original version'
+  },
+  enhancementCostLineOriginal: {zh: '基础版', en: 'Original'},
+  enhancementCostLineRefined: {zh: '精炼版', en: 'Refined'},
+  enhancementCostToolType: {zh: '工具', en: 'Tools'},
+  enhancementCostBuyMode: {zh: '购买方式', en: 'Buying'},
+  enhancementCostSellMode: {zh: '出售方式', en: 'Selling'},
+  enhancementCostPriceAuto: {zh: '自动', en: 'Auto'},
+  enhancementCostPriceAsk: {zh: '左一', en: 'Left'},
+  enhancementCostPriceBid: {zh: '右一', en: 'Right'},
+  enhancementCostPriceAutoHint: {
+    zh: '自动：买入取成本更低的一侧，卖出取到手价更高的一侧',
+    en: 'Auto: buy at the cheaper side and sell at the higher net price'
+  },
+  enhancementCostPriceAskHint: {zh: '左一：按挂单（出售）价买卖', en: 'Left: use the best ask (sell order) price'},
+  enhancementCostPriceBidHint: {zh: '右一：按收购（求购）价买卖', en: 'Right: use the best bid (buy order) price'},
+  enhancementCostSummaryTitle: {zh: '方案汇总', en: 'Plan Summary'},
+  enhancementCostRouteTitle: {zh: '最优路线', en: 'Best Plan'},
+  enhancementCostPlansTitle: {zh: '全部方案', en: 'All Plans'},
+  enhancementCostPlansHint: {
+    zh: '不用已有装备的做法已抵扣卖掉它的到手价',
+    en: 'Plans that do not use your item count selling it'
+  },
+  enhancementCostColumnPlan: {zh: '方案', en: 'Plan'},
+  enhancementCostColumnPlanCost: {zh: '花费', en: 'Cost'},
+  enhancementCostColumnPlanCostHint: {
+    zh: '该做法的净花费：不用已有装备的两条（直接买 / 自己做）已抵扣卖掉它的到手价',
+    en: 'Net cost of the plan: the two plans that do not use your item already count selling it'
+  },
+  enhancementCostColumnMirrors: {zh: '镜子', en: 'Mirrors'},
+  enhancementCostColumnRefines: {zh: '精炼', en: 'Refines'},
+  enhancementCostColumnNote: {zh: '说明', en: 'Note'},
+  enhancementCostPlanBest: {zh: '最佳', en: 'Best'},
+  enhancementCostPlanNoMarket: {zh: '市场没有这个等级', en: 'Nobody lists this level'},
+  enhancementCostPlanMissingPrice: {zh: '缺价，不可用', en: 'Missing prices, unavailable'},
+  enhancementCostCompareTitle: {zh: '逐级方案对比', en: 'Level-by-Level Comparison'},
+  enhancementCostCompareHint: {
+    zh: '目标：{0}；每级列出直接买与自己做哪个更便宜',
+    en: 'Target: {0}; each level compares buying it against making it'
+  },
+  enhancementCostColumnLevel: {zh: '等级', en: 'Level'},
+  enhancementCostColumnMarket: {zh: '市场买价', en: 'Market Price'},
+  enhancementCostColumnMarketHint: {
+    zh: '按当前购买方式买入该等级目标版本的花费；市场没人挂这个等级时为空',
+    en: 'Cost of buying the target version at that level with the selected price side; empty when nobody lists that level'
+  },
+  enhancementCostColumnAcquire: {zh: '最低获取成本', en: 'Cheapest Cost'},
+  enhancementCostColumnAcquireHint: {
+    zh: '自己做出来的最便宜花费：市场买、镜子合成、买普通版精炼、买精炼版解精炼四者取最低；绿色表示比市场买便宜',
+    en: 'Cheapest way to make it: the lowest of market buy, mirror enhancement, buy the original version and refine, buy the refined version and un-refine; green means cheaper than buying it'
+  },
+  enhancementCostColumnKind: {zh: '获取方式', en: 'How'},
+  enhancementCostColumnKindHint: {
+    zh: '最低获取成本的来源：市场买 / 镜子合成 / 买普通版精炼 / 买精炼版解精炼',
+    en: 'Where the cheapest cost comes from: market, mirror enhancement, refine from the original version, or un-refine from the refined version'
+  },
+  enhancementCostOpCombine: {zh: '合成', en: 'Enhance'},
+  enhancementCostOpRefine: {zh: '精炼', en: 'Refine'},
+  enhancementCostOpUnrefine: {zh: '解精炼', en: 'Un-refine'},
+  enhancementCostOpBuy: {zh: '买入', en: 'Buy'},
+  enhancementCostOpNotUsed: {zh: '未采用', en: 'Not used'},
+  enhancementCostKindMarket: {zh: '市场买', en: 'Buy from market'},
+  enhancementCostKindMirror: {zh: '镜子合成', en: 'Mirror enhancement'},
+  enhancementCostKindRefine: {zh: '买普通版精炼', en: 'Refine the original'},
+  enhancementCostKindUnrefine: {zh: '买精炼版解精炼', en: 'Un-refine the refined'},
+  enhancementCostKindPad: {zh: '垫子 {0}', en: 'pad {0}'},
+  enhancementCostStepKeep: {zh: '起点', en: 'Start'},
+  enhancementCostStepSellOp: {zh: '卖出', en: 'Sell'},
+  enhancementCostStepSellResult: {zh: '到手 {0}', en: 'net {0}'},
+  enhancementCostStepPad: {zh: '{0} 当垫子', en: '{0} as pad'},
+  enhancementCostStepHeldPad: {zh: '手上的 {0} 当垫子', en: 'held {0} as pad'},
+  enhancementCostStepUnrefineResult: {zh: '拿回 {0} ×{1}', en: 'get back {0} ×{1}'},
+  enhancementCostStepShardCovered: {zh: '（其中 ×{0} 用解精炼拿回的）', en: ' ({0} of them come from un-refining)'},
+  enhancementCostStepShardKept: {zh: '×{0} 留作后面的精炼', en: '{0} kept for the refining step'},
+  enhancementCostStepShardSold: {zh: '×{0} 卖出', en: '{0} sold'},
+  enhancementCostStepCost: {zh: '花费', en: 'Cost'},
+  enhancementCostStepTotal: {zh: '累计', en: 'Subtotal'},
+  enhancementCostTotalCost: {zh: '总花费', en: 'Total Cost'},
+  enhancementCostTotalCostHint: {
+    zh: '净花费：不用已有装备的做法已抵扣卖掉它的到手价，用已有装备当主件或垫子的做法不抵扣',
+    en: 'Net cost: plans that do not use your item already count selling it; plans that use it as the main item or pad do not'
+  },
+  enhancementCostBestPlan: {zh: '最佳方案', en: 'Best Plan'},
+  enhancementCostPlanDirect: {zh: '直接买成品', en: 'buy the finished item'},
+  enhancementCostPlanSelf: {zh: '自己做', en: 'build it yourself'},
+  enhancementCostPlanMain: {zh: '用已有装备当主件升级', en: 'Enhance your item as the main item'},
+  enhancementCostPlanPad: {zh: '用已有装备当垫子', en: 'Use your item as a pad'},
+  enhancementCostPlanSellPrefix: {zh: '卖掉已有装备后{0}', en: 'Sell your item, then {0}'},
+  enhancementCostDirectBuy: {zh: '直接买入目标成品', en: 'Buy the Target Directly'},
+  enhancementCostDirectBuyHint: {
+    zh: '按当前买卖方式直接买入目标成品、并卖出已有装备的净花费（没有已有装备时就是买入价）',
+    en: 'Net cost of buying the target item and selling your item at the selected price sides (just the buy price when you have none)'
+  },
+  enhancementCostSaved: {zh: '比直接买省', en: 'Saved vs. Direct Buy'},
+  enhancementCostSavedBest: {zh: '最划算', en: 'Best'},
+  enhancementCostUnreachable: {
+    zh: '无法用必成路线到达目标',
+    en: 'The target cannot be reached with guaranteed-success steps'
+  },
+  enhancementCostUnreachableHint: {
+    zh: '只采用必定成功的操作（贤者之镜合成、精炼、解精炼、市场买卖），缺价的相关操作不可用。',
+    en: "Only guaranteed-success steps are used (Philosopher's Mirror enhancement, refining, un-refining, market buy and sell); steps with missing prices are unavailable."
+  },
+  enhancementCostMissingPrice: {zh: '{0} 没有可用买价', en: 'No available buy price for {0}'},
+  enhancementCostExistingNoSell: {
+    zh: '已有装备 {0} 没有可用卖价，不用它的做法不抵扣',
+    en: 'Your item {0} has no sell price, so plans that do not use it count no credit.'
+  },
+  enhancementCostLevelInvalid: {
+    zh: '已有装备的强化等级不能高于目标强化等级',
+    en: 'Your item cannot be at a higher enhancement level than the target'
+  },
+  enhancementCostMarketLoading: {zh: '市场数据加载中…', en: 'Loading market data…'},
+  enhancementCostMarketHint: {
+    zh: '金额单位：金币，卖出到手价已扣 {0}% 市场税',
+    en: 'Amounts are in coins; sell proceeds are already taxed ({0}%)'
+  }
+};
+
 // combat-calculator-messages
 export const COMBAT_CALCULATOR_MESSAGES = {
   primaryXpRate: {zh: '主修经验 (K/h)', en: 'Primary XP (K/h)'},
@@ -608,12 +744,16 @@ export const COMBAT_CALCULATOR_MESSAGES = {
   combatUpgradeUnitEntry: {zh: '战斗升级计算器（{0}）', en: 'Combat upgrade calculator ({0})'},
   combatUpgradePlayerName: {zh: '玩家：{0}', en: 'Player: {0}'},
   combatUpgradeLevelsCached: {
-    zh: '技能等级来自 {0} 查看的名片缓存（非实时）',
-    en: 'Skill levels come from the profile viewed at {0} (not live)'
+    zh: '技能等级与经验来自 {0} 查看的名片缓存（非实时）',
+    en: 'Skill levels and XP come from the profile viewed at {0} (not live)'
   },
   combatUpgradeLevelsCachedNoTime: {
-    zh: '技能等级来自名片缓存（非实时，缓存未记录查看时间）',
-    en: 'Skill levels come from the profile cache (not live; the cache has no timestamp)'
+    zh: '技能等级与经验来自名片缓存（非实时，缓存未记录查看时间）',
+    en: 'Skill levels and XP come from the profile cache (not live; the cache has no timestamp)'
+  },
+  combatUpgradeLevelsNoExperience: {
+    zh: '名片缓存没有经验数据，起始经验按各等级 0% 计算',
+    en: 'The cached profile has no XP data, so rows start at 0% of each level'
   },
   combatUpgradeLevelsMissing: {
     zh: '未获取到技能等级（需先在游戏内点开该玩家资料），列表起始等级按 0 计算，请手动调整',
@@ -814,6 +954,7 @@ export const MARKET_HISTORY_MESSAGES = {
   marketHistoryCategoryAccessories: {zh: '饰品', en: 'Accessories'},
   marketHistoryCategoryTools: {zh: '工具', en: 'Tools'},
   marketHistoryTimeAll: {zh: '创建时间', en: 'Created'},
+  marketHistoryTimeToday: {zh: '今天', en: 'Today'},
   marketHistoryTime7d: {zh: '近 7 天', en: 'Last 7 days'},
   marketHistoryTime15d: {zh: '近 15 天', en: 'Last 15 days'},
   marketHistoryTime30d: {zh: '近 30 天', en: 'Last 30 days'},
@@ -1058,6 +1199,7 @@ export const I18N_MESSAGE_GROUPS = {
   toolkitMenu: TOOLKIT_MENU_MESSAGES,
   dungeonCalculator: DUNGEON_CALCULATOR_MESSAGES,
   equipmentComparison: EQUIPMENT_COMPARISON_MESSAGES,
+  enhancementCost: ENHANCEMENT_COST_MESSAGES,
   combatCalculator: COMBAT_CALCULATOR_MESSAGES,
   abilityCalculator: ABILITY_CALCULATOR_MESSAGES,
   combatSimImport: COMBAT_SIM_IMPORT_MESSAGES,

@@ -612,12 +612,20 @@ export class CharacterCardSkillSelector {
     this.i18n = deps.ctx.i18n;
   }
 
+  // 技能列表按游戏的物品顺序（技能书物品的 itemDetailMap.sortIndex）排列，与游戏里的物品列表一致；
+  // 不能改用技能自身的 abilityDetailMap.sortIndex——它在 frenzy 与 elemental_affinity 上与物品序号相反。
+  // 取不到技能书时排到列表末尾。
+  getAbilityItemIndex(abilityHrid) {
+    const book = this.DataHub.clientData.indexes?.abilityBookByAbilityHrid?.get(abilityHrid);
+    return Number(book?.sortIndex ?? Number.MAX_SAFE_INTEGER);
+  }
+
   showSkillSelector(skillIndex) {
     if (!this.state.activeCard?.isMyCharacter) return;
     const allSkills = this.DataHub.characterData.raw?.characterAbilities || [];
     const availableSkills = allSkills
       .filter((ability) => ability.abilityHrid && ability.abilityHrid.startsWith('/abilities/'))
-      .sort((a, b) => (a.slotNumber || 0) - (b.slotNumber || 0));
+      .sort((a, b) => this.getAbilityItemIndex(a.abilityHrid) - this.getAbilityItemIndex(b.abilityHrid));
 
     const selectedHrid = this.state.customSkills.selectedSkills[skillIndex]?.abilityHrid || '';
     const optionTemplates = availableSkills.map((skill) => {
@@ -983,13 +991,14 @@ export class CharacterCardStandaloneRefresh {
     if (activeCard.isMyCharacter && newCharacterCard) {
       const skillSlots = newCharacterCard.querySelectorAll('.mst-skill-slot, .mst-empty-skill-slot');
       skillSlots.forEach((slot) => {
-        slot.addEventListener(
-          'click',
-          function () {
-            const skillIndex = parseInt(this.getAttribute('data-skill-index'));
-            this.skillSelector.showSkillSelector(skillIndex);
-          }.bind(this)
-        );
+        // uhtml 增量更新会复用技能格节点，每次刷新再绑一次会让一次点击弹出多个选择框，因此只绑一次；
+        // 槽位号在处理时从属性读，节点被复用后也能拿到当前值。
+        if (slot.dataset.skillSelectorBound) return;
+        slot.dataset.skillSelectorBound = 'true';
+        slot.addEventListener('click', () => {
+          const skillIndex = parseInt(slot.getAttribute('data-skill-index'));
+          this.skillSelector.showSkillSelector(skillIndex);
+        });
       });
     }
     this.updateStandaloneCharacterControls(modal);

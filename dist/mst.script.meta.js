@@ -3,7 +3,7 @@
 // @name:zh-CN         MWI Sunrishe 工具箱
 // @name:en            MWI Sunrishe Toolkit
 // @namespace          http://tampermonkey.net/
-// @version            2.21.0
+// @version            2.22.0
 // @description        MWI Sunrishe 综合工具箱：提供角色/队伍名片、技能/房屋/战斗升级规划、装备提升计算器、地下城收益、配装同步和市场伴侣增强。
 // @description:zh-CN  MWI Sunrishe 综合工具箱：提供角色/队伍名片、技能/房屋/战斗升级规划、装备提升计算器、地下城收益、配装同步和市场伴侣增强。
 // @description:en     MST toolkit for character/party cards, ability/house/combat upgrade planning, equipment comparison, dungeon profit, loadout sync, and Market Mate enhancements.

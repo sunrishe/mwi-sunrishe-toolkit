@@ -260,7 +260,9 @@ test('装备提升使用单一 uhtml 渲染边界，并已移除旧粗略 DPS �
   const featureSource = source.slice(start, end);
   assert.equal((lifecycleSource.match(/TemplateRenderer\.render\(/g) || []).length, 1);
   assert.doesNotMatch(featureSource, /calculateDpsDifference|getEquipmentCombatStyle/);
-  assert.match(lifecycleSource, /moduleName: 'equipment'/);
+  // 帮助提示浮层用跨模块共用的 mst-help-* 组件，挂载不再需要模块前缀。
+  assert.match(lifecycleSource, /CalculatorHelpPopover\.mount\(\{/);
+  assert.doesNotMatch(lifecycleSource, /moduleName:/);
   assert.match(equipmentMessagesSource, /equipmentComparisonHelpTitle:/);
   assert.match(equipmentMessagesSource, /equipmentComparisonHelp:/);
   assert.doesNotMatch(featureSource, /comparisonHint|simulationSource/);
@@ -372,6 +374,30 @@ test('基准装备覆盖全部同职业战斗装备，角色已有装备优先�
   assert.equal(unowned.count, 0);
   assert.equal(unowned.enhancementLevel, 10);
   assert.ok(options.some((item) => item.detail.equipmentDetail.type === '/equipment_types/head'));
+});
+
+test('两处装备选择列表都按游戏顺序：基准装备与同部位装备按 itemDetailMap.sortIndex 升序', () => {
+  const feature = new EquipmentComparisonFeature();
+  const sortIndexOf = (hrid) => Number(clientData.itemDetailMap[hrid]?.sortIndex ?? 9999);
+  for (const key of Object.keys(EquipmentComparisonFeature.PRESETS)) {
+    feature.presetKey = key;
+    const baselineOptions = feature.getBaselineEquipment();
+    assert.ok(baselineOptions.length > 0, `${key} 没有基准装备候选`);
+    for (let index = 1; index < baselineOptions.length; index += 1) {
+      assert.ok(
+        sortIndexOf(baselineOptions[index - 1].itemHrid) <= sortIndexOf(baselineOptions[index].itemHrid),
+        `${key} 基准装备列表乱序：${baselineOptions[index - 1].itemHrid} 排在 ${baselineOptions[index].itemHrid} 之前`
+      );
+    }
+    const compatibleOptions = feature.getCompatibleEquipment(baselineOptions[0]);
+    assert.ok(compatibleOptions.length > 0, `${key} 没有同部位候选装备`);
+    for (let index = 1; index < compatibleOptions.length; index += 1) {
+      assert.ok(
+        sortIndexOf(compatibleOptions[index - 1].hrid) <= sortIndexOf(compatibleOptions[index].hrid),
+        `${key} 同部位列表乱序：${compatibleOptions[index - 1].hrid} 排在 ${compatibleOptions[index].hrid} 之前`
+      );
+    }
+  }
 });
 
 test('市场位置物品不视为已穿戴，同名装备可比较不同强化等级', () => {

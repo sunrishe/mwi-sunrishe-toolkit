@@ -674,7 +674,6 @@ export class SubscribeNotificationFeature {
         this.helpController?.cleanup();
         this.helpController = this.ctx.CalculatorHelpPopover?.mount({
           popup,
-          moduleName: 'subscribe',
           title: i18n.t('subscribeNotificationTitle'),
           heading: i18n.t('subscribeNotificationTitle'),
           content: i18n.t('subscribeNotificationHint')
@@ -708,7 +707,6 @@ export class SubscribeNotificationFeature {
     this.helpController =
       CalculatorHelpPopover?.mount({
         popup,
-        moduleName: 'subscribe',
         title: i18n.t('subscribeNotificationTitle'),
         heading: i18n.t('subscribeNotificationTitle'),
         content: i18n.t('subscribeNotificationHint')

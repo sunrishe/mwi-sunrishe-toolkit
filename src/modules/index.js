@@ -8,6 +8,7 @@ import {DungeonProfitCalculatorService} from './dungeon-profit/calculator.js';
 import {DungeonProfitCalculatorFeature} from './dungeon-profit/index.js';
 import {CombatSimulatorConverter} from './eds-milkonomy/converter.js';
 import {EdsMilkonomyFeature} from './eds-milkonomy/index.js';
+import {EnhancementCostCalculatorFeature} from './enhancement-cost/index.js';
 import {EquipmentComparisonService} from './equipment-comparison/comparison.js';
 import {EquipmentComparisonFeature} from './equipment-comparison/index.js';
 import {CombatSimulationService} from './equipment-comparison/simulator.js';
@@ -46,6 +47,7 @@ export function installModules(ctx) {
   ctx.DungeonProfitCalculatorFeature = DungeonProfitCalculatorFeature;
   ctx.DungeonProfitCalculatorService = DungeonProfitCalculatorService;
   ctx.EdsMilkonomyFeature = EdsMilkonomyFeature;
+  ctx.EnhancementCostCalculatorFeature = EnhancementCostCalculatorFeature;
   ctx.EquipmentComparisonFeature = EquipmentComparisonFeature;
   ctx.EquipmentComparisonService = EquipmentComparisonService;
   ctx.HouseCalculator = HouseCalculator;

@@ -560,10 +560,10 @@ const dungeonProfitBatchView = {
   getTwoLineCellHtml(feature, values) {
     const {i18n} = DungeonProfitCalculatorFeature.ctx;
     if (!values) return '-';
-    return `<div class="mst-dungeon-batch-line mst-dungeon-batch-cost" title="${escapeHtmlText(
+    return `<div class="mst-dungeon-batch-line mst-negative" title="${escapeHtmlText(
       i18n.t('totalDailyCost')
     )}"><small>${escapeHtmlText(i18n.t('batchCostShort'))}</small>${feature.formatMoney(values.cost)}</div>
-  <div class="mst-dungeon-batch-line mst-dungeon-batch-profit" title="${escapeHtmlText(i18n.t('netProfit'))}"><small>${escapeHtmlText(
+  <div class="mst-dungeon-batch-line mst-positive" title="${escapeHtmlText(i18n.t('netProfit'))}"><small>${escapeHtmlText(
     i18n.t('batchProfitShort')
   )}</small>${feature.formatMoney(values.profit)}</div>`;
   },
@@ -1544,7 +1544,6 @@ export class DungeonProfitCalculatorFeature {
     this.helpController?.cleanup();
     this.helpController = CalculatorHelpPopover.mount({
       popup: this.popup,
-      moduleName: 'dungeon',
       title: i18n.t('dungeonCalculatorHelpTitle'),
       heading: i18n.t('dungeonProfitCalculator'),
       content: i18n.t('dungeonCalculatorHelp', marketTaxPercent, cowbellTaxPercent)

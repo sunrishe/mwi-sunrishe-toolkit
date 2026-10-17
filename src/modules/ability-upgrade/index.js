@@ -392,7 +392,6 @@ const abilityUpgradeDialogEvents = {
     feature.helpController?.cleanup();
     feature.helpController = CalculatorHelpPopover.mount({
       popup,
-      moduleName: 'ability',
       title: i18n.t('abilityCalculatorHelpTitle'),
       heading: i18n.t('abilityUpgradeCalculator'),
       content: i18n.t('abilityCalculatorHelp')

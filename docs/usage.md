@@ -40,6 +40,10 @@ MST 是独立脚本，以下项目提供了参考或公开接口；参考类功�
 
 比较两件装备的属性、价格差和模拟伤害。
 
+## 强化物品价格计算器
+
+先选目标装备与目标强化等级，再按需选择已有装备，列出直接买、自己做等全部做法并标出最省的一种。
+
 ## 地下城收益计算器
 
 估算地下城每日和每车收益，支持批量对比多个地下城。
@@ -129,6 +133,10 @@ Hover a party member in the battle screen to open the calculator with that playe
 ## Equipment Comparison
 
 Compare two items by stats, price difference, and simulated DPS.
+
+## Enhancement Cost Calculator
+
+Pick the target item and level first, then optionally the item you already have, and see every plan — buying, building and more — with the cheapest one marked.
 
 ## Dungeon Profit Calculator
 

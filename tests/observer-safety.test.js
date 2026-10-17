@@ -8,6 +8,7 @@ const rollupPath = path.join(__dirname, '..', 'rollup.config.mjs');
 const styleServicePath = path.join(__dirname, '..', 'src', 'common', 'runtime.js');
 const appBaseCssPath = path.join(__dirname, '..', 'src', 'common', 'styles', 'app-base.css');
 const characterCardCssPath = path.join(__dirname, '..', 'src', 'modules', 'character-card', 'styles.css');
+const componentsCssPath = path.join(__dirname, '..', 'src', 'common', 'styles', 'components.css');
 const houseCalculatorCssPath = path.join(__dirname, '..', 'src', 'modules', 'house-calculator', 'styles.css');
 const integratedCssPath = path.join(__dirname, '..', 'src', 'common', 'styles', 'integrated.css');
 const languageToggleCssPath = path.join(__dirname, '..', 'src', 'common', 'styles', 'language-toggle.css');
@@ -17,6 +18,7 @@ const rollupSource = fs.readFileSync(rollupPath, 'utf8');
 const styleServiceSource = fs.readFileSync(styleServicePath, 'utf8');
 const appBaseCss = fs.readFileSync(appBaseCssPath, 'utf8');
 const characterCardCss = fs.readFileSync(characterCardCssPath, 'utf8');
+const componentsCss = fs.readFileSync(componentsCssPath, 'utf8');
 const houseCalculatorCss = fs.readFileSync(houseCalculatorCssPath, 'utf8');
 const integratedCss = fs.readFileSync(integratedCssPath, 'utf8');
 const languageToggleCss = fs.readFileSync(languageToggleCssPath, 'utf8');
@@ -202,12 +204,17 @@ test('开发专用语言切换样式通过 raw CSS 构建插件注入', () => {
   assert.match(rollupSource, /function rawCssPlugin\(\)/);
   assert.match(rollupSource, /name: 'mst-raw-css'/);
   assert.match(source, /import MST_APP_BASE_CSS from ['"]\.\.\/common\/styles\/app-base\.css['"];/);
+  assert.match(source, /import MST_COMPONENTS_CSS from ['"]\.\.\/common\/styles\/components\.css['"];/);
   assert.match(source, /import MST_HOUSE_CALCULATOR_CSS from ['"]\.\/styles\.css['"];/);
   assert.match(source, /import MST_INTEGRATED_CSS from ['"]\.\.\/common\/styles\/integrated\.css['"];/);
   assert.match(source, /import MST_LANGUAGE_TOGGLE_CSS from ['"]\.\.\/common\/styles\/language-toggle\.css['"];/);
   assert.match(source, /import MST_SWAL_THEME_CSS from ['"]\.\.\/common\/styles\/swal-theme\.css['"];/);
-  assert.match(source, /MST_APP_BASE_CSS \+ MST_LANGUAGE_TOGGLE_CSS \+ MST_SWAL_THEME_CSS \+ MST_INTEGRATED_CSS/);
+  assert.match(
+    source,
+    /MST_APP_BASE_CSS \+\s*MST_LANGUAGE_TOGGLE_CSS \+\s*MST_SWAL_THEME_CSS \+\s*MST_INTEGRATED_CSS \+\s*MST_COMPONENTS_CSS/
+  );
   assert.match(appBaseCss, /\.mst-eds-profit-menu/);
+  assert.match(componentsCss, /\.mst-help-trigger/);
   assert.match(houseCalculatorCss, /#mst-hccp-house-calculator/);
   assert.match(integratedCss, /#mst-toolkit-character-dropdown/);
   assert.match(languageToggleCss, /#mst-language-toggle/);

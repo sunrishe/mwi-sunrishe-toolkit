@@ -946,7 +946,18 @@ const dataHubProfileMethods = {
     this.characterData.profiles = Object.fromEntries(entries);
   },
 
-  // 存储裁剪：把完整 profile 压缩成名片渲染所需的最小字段集，避免占用 localStorage 配额。
+  // 技能经验是否要写进缓存：只要战斗技能（官方 skillDetailMap 的 isCombat，含耐力/智力）；
+  // 客户端字典还没就绪、判定不了时返回 true，宁可多留也不要丢计算器要用的经验。
+  keepsSkillExperience(skillHrid) {
+    const skillDetailMap = this.getClientDataMap('skillDetailMap');
+    if (!skillDetailMap || !Object.keys(skillDetailMap).length) return true;
+    return Boolean(skillDetailMap[skillHrid]?.isCombat);
+  },
+
+  // 存储裁剪：把完整 profile 压缩成名片渲染与战斗升级计算器所需的最小字段集，避免占用 localStorage 配额。
+  // 技能经验只保留战斗技能（官方 skillDetailMap 的 isCombat）：名片本身带各技能经验，
+  // 但计算器只在战斗专业上用得到，生活技能的经验是白占体积。
+  // 客户端字典还没就绪时（首次打开的加载期）判定不了，此时一律保留，等下一次写入再裁剪。
   compactProfile(profile) {
     if (!profile || typeof profile !== 'object') return profile;
     const pick = (item, fields) => {
@@ -1028,9 +1039,14 @@ const dataHubProfileMethods = {
       wearableItemMap,
       characterSkills: (profile.characterSkills || [])
         .map((skill) =>
-          pick(skill, [
-            'skillHrid', 'level'
-          ])
+          pick(
+            skill,
+            this.keepsSkillExperience(skill?.skillHrid) ? [
+                  'skillHrid', 'level', 'experience'
+                ] : [
+                  'skillHrid', 'level'
+                ]
+          )
         )
         .filter((skill) => skill.skillHrid),
       equippedAbilities: (profile.equippedAbilities || [])
@@ -1152,8 +1168,10 @@ export function createDataHub(ctx, STORAGE_KEYS) {
     clientDataCacheSource: '',
 
     init() {
-      this.loadStoredProfiles();
+      // 先加载客户端字典：名片缓存的存储裁剪要按 skillDetailMap 的 isCombat 决定技能经验留不留；
+      // 字典没就位时加载期的重写认不出战斗技能、只能整份保留，先加载字典才能一次裁到位。
       this.initClientDataFromCache();
+      this.loadStoredProfiles();
       this.refreshI18nIndexes();
       this.startI18nResourceWatcher();
     }
@@ -1246,15 +1264,19 @@ export function createCharacterDataService(ctx, DataHub) {
 
     getAbilityBooks() {
       const abilityMap = DataHub.getClientDataMap('abilityDetailMap');
-      return [
-        ...(DataHub.clientData.indexes.abilityBookByAbilityHrid?.values() || [])
-      ]
-        .map((book) => ({book, ability: abilityMap[book.abilityBookDetail.abilityHrid] || null}))
-        .sort(
-          (left, right) =>
-            Number(left.ability?.sortIndex || left.book?.sortIndex || 0) -
-            Number(right.ability?.sortIndex || right.book?.sortIndex || 0)
-        );
+      return (
+        [
+          ...(DataHub.clientData.indexes.abilityBookByAbilityHrid?.values() || [])
+        ]
+          .map((book) => ({book, ability: abilityMap[book.abilityBookDetail.abilityHrid] || null}))
+          // 按游戏的物品顺序（技能书物品的 itemDetailMap.sortIndex）排列，与游戏里的物品列表一致；
+          // 技能自身的 abilityDetailMap.sortIndex 在 frenzy 与 elemental_affinity 上与物品序号相反，不能用它排序。
+          .sort(
+            (left, right) =>
+              Number(left.book?.sortIndex ?? left.ability?.sortIndex ?? 0) -
+              Number(right.book?.sortIndex ?? right.ability?.sortIndex ?? 0)
+          )
+      );
     },
 
     getAbilityBook(abilityHrid) {

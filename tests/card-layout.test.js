@@ -298,3 +298,220 @@ test('评分块按内容模式只渲染对应的评分行', () => {
     /\.mst-card-build-score:has\(\.mst-card-build-score-row\[hidden\]\)\s*\{[^}]*justify-content:\s*flex-end;/
   );
 });
+
+test('自己名片的技能格点击能打开技能选择器且不会重复绑定', () => {
+  const openedSkillIndexes = [];
+  const createSlot = (skillIndex) => {
+    const handlers = [];
+    return {
+      dataset: {},
+      handlers,
+      getAttribute(name) {
+        return name === 'data-skill-index' ? String(skillIndex) : null;
+      },
+      addEventListener(type, handler) {
+        if (type === 'click') handlers.push(handler);
+      }
+    };
+  };
+  let slots = [
+    createSlot(0), createSlot(1)
+  ];
+  const cardRoot = {
+    querySelectorAll() {
+      return slots.slice();
+    }
+  };
+  const modal = {
+    querySelector(selector) {
+      if (selector === '.mst-standalone-card-host') return {};
+      if (selector === '#mst-character-card') return cardRoot;
+      return null;
+    }
+  };
+  const context = {
+    state: {activeCard: {data: {}, name: '我', isMyCharacter: true, options: {}}},
+    CardRenderer: {character() {}},
+    layoutController: {updateCardLayoutSelect() {}, updateModalLayoutClass() {}},
+    skillSelector: {
+      showSkillSelector(skillIndex) {
+        openedSkillIndexes.push(skillIndex);
+      }
+    },
+    hydrateBuildScores() {},
+    updateCharacterCardDataTime() {},
+    updateStandaloneCharacterControls() {},
+    TemplateRenderer: {
+      render(view) {
+        view();
+      }
+    }
+  };
+  const refresh = vm.runInNewContext(
+    `${readVmSource('src/modules/character-card/index.js')}
+        const refresh = new CharacterCardStandaloneRefresh({
+            ctx: {TemplateRenderer},
+            state,
+            CardRenderer,
+            layoutController,
+            skillSelector,
+            hydrateBuildScores,
+            updateCharacterCardDataTime,
+            updateStandaloneCharacterControls
+        });
+        (modal) => refresh.refreshCharacterCard(modal);`,
+    context
+  );
+
+  refresh(modal);
+  assert.equal(slots[0].handlers.length, 1);
+  assert.equal(slots[1].handlers.length, 1);
+
+  // 浏览器里监听函数的 this 是元素本身，处理函数不能依赖被改写成控制器的 this。
+  slots[1].handlers[0].call(slots[1], {type: 'click'});
+  assert.deepEqual(
+    openedSkillIndexes,
+    [
+      1
+    ]
+  );
+
+  // uhtml 复用技能格节点：重渲染不能再绑一次，否则一次点击弹出多个选择框。
+  refresh(modal);
+  assert.equal(slots[0].handlers.length, 1);
+  slots[0].handlers[0].call(slots[0], {type: 'click'});
+  assert.deepEqual(
+    openedSkillIndexes,
+    [
+      1, 0
+    ]
+  );
+
+  // 技能面板被整段替换（新节点）时要重新绑定，点击照旧可用。
+  slots = [
+    createSlot(2)
+  ];
+  refresh(modal);
+  assert.equal(slots[0].handlers.length, 1);
+  slots[0].handlers[0].call(slots[0], {type: 'click'});
+  assert.deepEqual(
+    openedSkillIndexes,
+    [
+      1, 0, 2
+    ]
+  );
+
+  // 别人的名片只读，不绑定技能编辑。
+  context.state.activeCard.isMyCharacter = false;
+  slots = [
+    createSlot(0)
+  ];
+  refresh(modal);
+  assert.equal(slots[0].handlers.length, 0);
+
+  // 绑定挑的是卡片 id 与技能格上的槽位号，真实渲染结果里必须存在。
+  const myCard = loadGenerateCharacterCard().generateCharacterCard(
+    {
+      player: {},
+      abilities: [
+        {abilityHrid: '/abilities/fireball', level: 3, slotNumber: 1}
+      ],
+      dataTimestamp: 1
+    },
+    '我',
+    null,
+    true
+  );
+  assert.match(myCard, /id=mst-character-card/);
+  assert.match(myCard, /class="Ability_ability__1njrh Ability_clickable__w9HcM mst-skill-slot" data-skill-index="0"/);
+  assert.match(
+    myCard,
+    /class="Ability_ability__1njrh Ability_clickable__w9HcM mst-empty-skill-slot" data-skill-index="1"/
+  );
+});
+
+test('名片技能选择浮层按游戏的物品顺序列出技能', () => {
+  // 「选择技能」列表与游戏物品列表同序：技能书物品的 itemDetailMap.sortIndex（技能升级计算器添加技能列表同一口径）。
+  const skillClientData = JSON.parse(
+    fs.readFileSync(path.resolve(__dirname, '..', 'references', 'game-data', 'init_client_data.json'), 'utf8')
+  );
+  const skillCharacterData = JSON.parse(
+    fs.readFileSync(path.resolve(__dirname, '..', 'references', 'game-data', 'init_character_data.json'), 'utf8')
+  );
+  const abilityBookByAbilityHrid = new Map();
+  Object.values(skillClientData.itemDetailMap).forEach((item) => {
+    const abilityHrid = item?.abilityBookDetail?.abilityHrid;
+    if (abilityHrid) abilityBookByAbilityHrid.set(abilityHrid, item);
+  });
+  const optionHrids = [];
+  const createFakeElement = () => ({
+    className: '',
+    hidden: false,
+    dataset: {},
+    style: {},
+    setAttribute() {},
+    addEventListener() {},
+    appendChild() {},
+    focus() {},
+    querySelector: () => createFakeElement(),
+    querySelectorAll: () => [],
+    removeChild() {}
+  });
+  const context = {
+    skillCharacterData,
+    abilityBookByAbilityHrid,
+    optionHrids,
+    document: {
+      createElement: () => createFakeElement(),
+      body: {appendChild() {}, removeChild() {}},
+      querySelector: () => null
+    },
+    TemplateRenderer: {
+      raw: (value) => value,
+      render: (view) => view(),
+      // 生成技能卡片时第一个 /abilities/ 字符串值就是 data-ability-hrid 上的技能，按生成顺序收集即可得到列表顺序。
+      html: (strings, ...values) => {
+        const abilityHrid = values.find((value) => typeof value === 'string' && value.startsWith('/abilities/'));
+        if (abilityHrid) optionHrids.push(abilityHrid);
+        return '';
+      }
+    }
+  };
+  const result = vm.runInNewContext(
+    `${readVmSource('src/modules/character-card/index.js')}
+        const makeSelector = (DataHub) =>
+            new CharacterCardSkillSelector({
+                state: {activeCard: {isMyCharacter: true}, customSkills: {selectedSkills: {}}},
+                createSvgIcon: () => '',
+                getAbilityDisplayNames: (hrid) => ({zh: 'zh', en: 'en'}),
+                refreshCharacterCard: () => {},
+                ctx: {DataHub, TemplateRenderer, i18n: {t: (key) => key, pick: (names) => names.zh}}
+            });
+        makeSelector({
+            clientData: {indexes: {abilityBookByAbilityHrid}},
+            characterData: {raw: skillCharacterData}
+        }).showSkillSelector(0);
+        const withBooks = optionHrids.length;
+        // 客户端字典还没建索引（取不到技能书）时按序号末位排：不报错、也不丢条目。
+        makeSelector({clientData: {indexes: {}}, characterData: {raw: skillCharacterData}}).showSkillSelector(0);
+        ({withBooks, total: optionHrids.length});`,
+    context
+  );
+  const order = optionHrids.slice(0, result.withBooks);
+  const expectedCount = skillCharacterData.characterAbilities.filter((ability) =>
+    String(ability?.abilityHrid || '').startsWith('/abilities/')
+  ).length;
+  assert.equal(order.length, expectedCount);
+  // 兜底分支（取不到技能书）同样把全部技能列出来。
+  assert.equal(result.total - result.withBooks, expectedCount);
+  const itemIndex = (abilityHrid) => Number(abilityBookByAbilityHrid.get(abilityHrid)?.sortIndex);
+  for (let index = 1; index < order.length; index += 1) {
+    assert.ok(
+      itemIndex(order[index - 1]) <= itemIndex(order[index]),
+      `${order[index - 1]} 排在了 ${order[index]} 之前，与游戏物品顺序相反`
+    );
+  }
+  // 旧行为按槽位号排，未装配的技能（slotNumber 0）排在最前，首项是 pestilent_shot；物品顺序首项是 poke。
+  assert.equal(order[0], '/abilities/poke');
+  assert.ok(order.indexOf('/abilities/poke') < order.indexOf('/abilities/pestilent_shot'));
+});

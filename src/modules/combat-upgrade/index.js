@@ -71,7 +71,6 @@ const combatUpgradeDialogView = {
     feature.helpController?.cleanup();
     feature.helpController = CalculatorHelpPopover.mount({
       popup,
-      moduleName: 'combat',
       title: i18n.t('combatCalculatorHelpTitle'),
       heading: i18n.t('combatUpgradeCalculator'),
       content: i18n.t('combatCalculatorHelp')
@@ -633,7 +632,7 @@ const combatUpgradeState = {
   },
 
   // 打开弹窗时的数据源：自己 = 实时角色数据；队友 = 名片缓存快照 + 本场战斗速率。
-  // {characterId, isSelf, levels: Map<skillHrid, level> | null, levelsTimestamp, name}
+  // {characterId, isSelf, skills: Map<skillHrid, {level, experience|null}> | null, levelsTimestamp, name}
   buildPlayerContext(feature, player) {
     const {DataHub} = feature.ctx;
     if (!player || player.characterId == null) return null;
@@ -641,17 +640,24 @@ const combatUpgradeState = {
     const name = String(player.name || '');
     const selfCharacterId = this.getSelfCharacterId(feature);
     if (selfCharacterId != null && characterId === String(selfCharacterId)) {
-      return {characterId, isSelf: true, levels: null, levelsTimestamp: 0, name};
+      return {characterId, isSelf: true, skills: null, levelsTimestamp: 0, name};
     }
     const stored = DataHub.getProfile?.(characterId) || null;
-    const levels = new Map();
+    const skills = new Map();
     (stored?.profile?.characterSkills || []).forEach((skill) => {
-      if (skill?.skillHrid) levels.set(skill.skillHrid, Number(skill.level) || 0);
+      if (!skill?.skillHrid) return;
+      const experience = Number(skill.experience);
+      skills.set(skill.skillHrid, {
+        level: Math.max(0, Number(skill.level) || 0),
+        // 官方名片带技能经验；更早版本裁剪掉经验、或资料里没有该字段时为 null，
+        // 由 getCharacterSkill 退回该等级 0% 起算，提示行会说明。
+        experience: Number.isFinite(experience) ? Math.max(0, experience) : null
+      });
     });
     return {
       characterId,
       isSelf: false,
-      levels: levels.size ? levels : null,
+      skills: skills.size ? skills : null,
       // 名片缓存的数据时间：脚本收到该资料的毫秒时间戳，展示在提示行里。
       levelsTimestamp: Number(stored?.timestamp) || 0,
       name
@@ -662,14 +668,24 @@ const combatUpgradeState = {
     return feature.playerContext?.characterId ?? this.getSelfCharacterId(feature);
   },
 
-  // 队友的名片缓存只有等级、没有经验：按该等级 0% 起算（提示行会写明非实时）。
+  // 队友用名片缓存的等级与经验；缓存里没有经验时按该等级 0% 起算（提示行会写明）。
   getCharacterSkill(feature, skillHrid, context = feature.playerContext) {
     const {CharacterDataService} = feature.ctx;
     if (!context || context.isSelf)
       return CharacterDataService.getCharacterSkill(skillHrid) || {level: 0, experience: 0};
-    const level = context.levels?.get(skillHrid);
-    if (level == null) return {level: 0, experience: 0};
-    return {level, experience: CharacterDataService.getLevelExperience(level)};
+    const cached = context.skills?.get(skillHrid);
+    if (!cached) return {level: 0, experience: 0};
+    return {
+      level: cached.level,
+      experience: cached.experience ?? CharacterDataService.getLevelExperience(cached.level)
+    };
+  },
+
+  hasCachedExperience(context) {
+    for (const skill of context.skills?.values() || []) {
+      if (skill.experience != null) return true;
+    }
+    return false;
   },
 
   // 自己在当前战斗里的逐技能经验速率（原始经验 / 小时）；不足 60 秒或没有数据时返回 null。
@@ -743,15 +759,19 @@ const combatUpgradeState = {
       i18n.t('combatUpgradePlayerName', context.name || '')
     ];
     if (!context.isSelf) {
-      // 队友的等级只能来自名片缓存：必须写出资料的查看时间；没有记录时间时退化为通用提示，
+      // 队友的等级与经验只能来自名片缓存：必须写出资料的查看时间；没有记录时间时退化为通用提示，
       // 绝不显示一个算出来的时间（避免用户以为缓存数据是当下的）。
       parts.push(
-        context.levels
+        context.skills
           ? context.levelsTimestamp > 0
             ? i18n.t('combatUpgradeLevelsCached', utils.formatDateTime(context.levelsTimestamp))
             : i18n.t('combatUpgradeLevelsCachedNoTime')
           : i18n.t('combatUpgradeLevelsMissing')
       );
+      // 旧版缓存只有等级、没有经验：按各等级 0% 起算必须写明，不能默默当成 0%。
+      if (context.skills && !this.hasCachedExperience(context)) {
+        parts.push(i18n.t('combatUpgradeLevelsNoExperience'));
+      }
     }
     parts.push(
       this.getCurrentBattleExperienceFill(feature)
@@ -832,7 +852,7 @@ const combatUpgradeState = {
 
   createRow(feature, skillHrid, defaultPrimarySkillHrid = feature.planner.getDefaultPrimarySkillHrid()) {
     const {utils} = feature.ctx;
-    // 起始等级跟随当前玩家上下文：自己是实时等级，队友是名片缓存等级（经验按该等级 0% 起算）。
+    // 起始等级跟随当前玩家上下文：自己是实时等级与经验，队友是名片缓存的等级与经验。
     const current = feature.getCharacterSkill(skillHrid);
     const startLevel = utils.clampLevel(current.level, 0, 199);
     const trainingTypeMode = feature.planner.getTrainingTypeMode(skillHrid);

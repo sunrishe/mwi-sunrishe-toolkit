@@ -3,7 +3,7 @@
 // @name:zh-CN         MWI Sunrishe 工具箱
 // @name:en            MWI Sunrishe Toolkit
 // @namespace          http://tampermonkey.net/
-// @version            2.21.0
+// @version            2.22.0
 // @description        MWI Sunrishe 综合工具箱：提供角色/队伍名片、技能/房屋/战斗升级规划、装备提升计算器、地下城收益、配装同步和市场伴侣增强。
 // @description:zh-CN  MWI Sunrishe 综合工具箱：提供角色/队伍名片、技能/房屋/战斗升级规划、装备提升计算器、地下城收益、配装同步和市场伴侣增强。
 // @description:en     MST toolkit for character/party cards, ability/house/combat upgrade planning, equipment comparison, dungeon profit, loadout sync, and Market Mate enhancements.
@@ -55,7 +55,7 @@
   'use strict';
 
   // 构建脚本会静态替换这个占位符，业务代码不直接读取 Node 环境变量。
-  const PACKAGE_VERSION = "2.21.0";
+  const PACKAGE_VERSION = "2.22.0";
 
   const BUILD_FLAGS = Object.freeze({
     // 目前只有语言切换按钮需要区分 dev/prod：正式包不展示该调试入口。
@@ -1039,7 +1039,18 @@
       this.characterData.profiles = Object.fromEntries(entries);
     },
 
-    // 存储裁剪：把完整 profile 压缩成名片渲染所需的最小字段集，避免占用 localStorage 配额。
+    // 技能经验是否要写进缓存：只要战斗技能（官方 skillDetailMap 的 isCombat，含耐力/智力）；
+    // 客户端字典还没就绪、判定不了时返回 true，宁可多留也不要丢计算器要用的经验。
+    keepsSkillExperience(skillHrid) {
+      const skillDetailMap = this.getClientDataMap('skillDetailMap');
+      if (!skillDetailMap || !Object.keys(skillDetailMap).length) return true;
+      return Boolean(skillDetailMap[skillHrid]?.isCombat);
+    },
+
+    // 存储裁剪：把完整 profile 压缩成名片渲染与战斗升级计算器所需的最小字段集，避免占用 localStorage 配额。
+    // 技能经验只保留战斗技能（官方 skillDetailMap 的 isCombat）：名片本身带各技能经验，
+    // 但计算器只在战斗专业上用得到，生活技能的经验是白占体积。
+    // 客户端字典还没就绪时（首次打开的加载期）判定不了，此时一律保留，等下一次写入再裁剪。
     compactProfile(profile) {
       if (!profile || typeof profile !== 'object') return profile;
       const pick = (item, fields) => {
@@ -1121,9 +1132,14 @@
         wearableItemMap,
         characterSkills: (profile.characterSkills || [])
           .map((skill) =>
-            pick(skill, [
-              'skillHrid', 'level'
-            ])
+            pick(
+              skill,
+              this.keepsSkillExperience(skill?.skillHrid) ? [
+                    'skillHrid', 'level', 'experience'
+                  ] : [
+                    'skillHrid', 'level'
+                  ]
+            )
           )
           .filter((skill) => skill.skillHrid),
         equippedAbilities: (profile.equippedAbilities || [])
@@ -1245,8 +1261,10 @@
       clientDataCacheSource: '',
 
       init() {
-        this.loadStoredProfiles();
+        // 先加载客户端字典：名片缓存的存储裁剪要按 skillDetailMap 的 isCombat 决定技能经验留不留；
+        // 字典没就位时加载期的重写认不出战斗技能、只能整份保留，先加载字典才能一次裁到位。
         this.initClientDataFromCache();
+        this.loadStoredProfiles();
         this.refreshI18nIndexes();
         this.startI18nResourceWatcher();
       }
@@ -1339,15 +1357,19 @@
 
       getAbilityBooks() {
         const abilityMap = DataHub.getClientDataMap('abilityDetailMap');
-        return [
-          ...(DataHub.clientData.indexes.abilityBookByAbilityHrid?.values() || [])
-        ]
-          .map((book) => ({book, ability: abilityMap[book.abilityBookDetail.abilityHrid] || null}))
-          .sort(
-            (left, right) =>
-              Number(left.ability?.sortIndex || left.book?.sortIndex || 0) -
-              Number(right.ability?.sortIndex || right.book?.sortIndex || 0)
-          );
+        return (
+          [
+            ...(DataHub.clientData.indexes.abilityBookByAbilityHrid?.values() || [])
+          ]
+            .map((book) => ({book, ability: abilityMap[book.abilityBookDetail.abilityHrid] || null}))
+            // 按游戏的物品顺序（技能书物品的 itemDetailMap.sortIndex）排列，与游戏里的物品列表一致；
+            // 技能自身的 abilityDetailMap.sortIndex 在 frenzy 与 elemental_affinity 上与物品序号相反，不能用它排序。
+            .sort(
+              (left, right) =>
+                Number(left.book?.sortIndex ?? left.ability?.sortIndex ?? 0) -
+                Number(right.book?.sortIndex ?? right.ability?.sortIndex ?? 0)
+            )
+        );
       },
 
       getAbilityBook(abilityHrid) {
@@ -2129,6 +2151,7 @@
     switchLanguage: {zh: '切换为英文', en: 'Switch to Chinese'},
     userCharacterCard: {zh: '用户名片', en: 'Character Card'},
     equipmentComparison: {zh: '装备提升计算器', en: 'Equipment Comparison'},
+    enhancementCostCalculator: {zh: '强化物品价格计算器', en: 'Enhancement Cost Calculator'},
     dungeonProfitCalculator: {zh: '地下城收益计算器', en: 'Dungeon Profit Calculator'},
     houseUpgradeCalculator: {zh: '房屋升级材料计算器', en: 'House Upgrade Calculator'},
     combatUpgradeCalculator: {zh: '战斗升级计算器', en: 'Combat Upgrade Calculator'},
@@ -2402,6 +2425,141 @@
     }
   };
 
+  // enhancement-cost-messages
+  const ENHANCEMENT_COST_MESSAGES = {
+    enhancementCostTitle: {zh: '强化物品价格计算器', en: 'Enhancement Cost Calculator'},
+    enhancementCostHelpTitle: {zh: '查看强化物品价格计算器说明', en: 'View enhancement cost calculator instructions'},
+    enhancementCostHelp: {
+      zh: '使用：先选择目标装备与目标强化等级（必选），再按需选择已有装备——它只能是目标物品本身或它的普通版，也可以不选（直接比较「买」和「自己做」）；购买方式与出售方式作用于计算里的每一次买入和卖出。\n\n计算：只采用必定成功的操作——① 贤者之镜合成：用低一级的主件、低两级的普通版垫子和 1 个贤者之镜做出高一级；② 精炼：消耗精炼碎片（按工匠茶生效折算数量，比官方数量少 10%），保留强化等级；③ 解精炼：把精炼版拆回普通版并拿回一半碎片；④ 市场直接买卖。计算器先按等级从小到大算出每个等级最便宜的获取方式（主件与垫子也按最便宜方式获取），再列出全部做法并标出最佳：直接买成品、自己从零做出来、用已有装备当主件往上做、用已有装备当垫子；不用已有装备的做法按把它卖掉算净花费。同一方案里解精炼拿回的碎片会先顶掉后面精炼要用的量，只补买不够的部分，多出来的才按卖出价折钱。路线里不会中途卖出再买入，买卖价差不会被当成可重复的收益。\n\n价格：自动方式买入取更便宜的一侧、卖出取到手更高的一侧；左一取挂单（出售）价，右一取收购（求购）价；指定的一侧缺价时回退最近成交价与官方市场价值。卖出到手价按当前市场税率扣税（默认 4%）并向下取整。\n\n限制：不含普通强化与失败概率（普通强化失败会掉级，不属于必成路线），所以结果都是确定花费；某件装备或某个等级缺价时相关操作不可用，会列出缺少价格的物品。价格来自当前游戏页面的市场数据，请留意数据时间。',
+      en: "Usage: Pick the target item and target enhancement level first (required), then optionally pick an item you already have — it can only be the target item itself or its original version, or nothing at all (to compare buying against building it yourself). The buying and selling options apply to every purchase and sale in the calculation.\n\nCalculation: only guaranteed-success steps are used — (1) Philosopher's Mirror enhancement: one main item one level lower, one original-version pad two levels lower and one mirror make the next level; (2) refining: consumes refinement shards and keeps the enhancement level; (3) un-refining: turns a refined item back into the original version and returns half of the shards; (4) buying and selling finished items. The calculator first works out, level by level, the cheapest way to obtain each level (main items and pads are also obtained the cheapest way), then lists every plan and marks the best: buy the finished item, build it from scratch, keep the item you have as the main item and enhance it up, or use it as a pad; plans that do not use it count selling it. Routes never sell and re-buy in the middle, so bid/ask spreads are not treated as repeatable profit.\n\nPrices: Auto buys at the cheaper side and sells at the higher net price; Left uses the best ask (sell order) price and Right uses the best bid (buy order) price; when the chosen side has no price, the last trade price and the official market value are used instead. Sell proceeds are taxed at the current market tax rate (4% by default) and rounded down.\n\nLimits: normal enhancement and failure chances are excluded (a failed enhancement loses levels, so it is not a guaranteed route), which keeps every result deterministic. Steps with missing prices are unavailable and the items missing prices are listed. Prices come from the market data loaded on the current game page — check the market data time."
+    },
+    enhancementCostTarget: {zh: '目标装备', en: 'Target Item'},
+    enhancementCostExisting: {zh: '已有装备', en: 'Item You Have'},
+    enhancementCostChooseTarget: {zh: '请选择目标装备', en: 'Choose the target item'},
+    enhancementCostChooseTargetFirst: {zh: '请先选择目标装备', en: 'Choose the target item first'},
+    enhancementCostExistingNone: {zh: '无', en: 'None'},
+    enhancementCostExistingNoneHint: {zh: '不用已有装备', en: 'No existing item'},
+    enhancementCostExistingHint: {
+      zh: '可选：目标物品本身或它的普通版',
+      en: 'Optional: the target item itself or its original version'
+    },
+    enhancementCostLineOriginal: {zh: '基础版', en: 'Original'},
+    enhancementCostLineRefined: {zh: '精炼版', en: 'Refined'},
+    enhancementCostToolType: {zh: '工具', en: 'Tools'},
+    enhancementCostBuyMode: {zh: '购买方式', en: 'Buying'},
+    enhancementCostSellMode: {zh: '出售方式', en: 'Selling'},
+    enhancementCostPriceAuto: {zh: '自动', en: 'Auto'},
+    enhancementCostPriceAsk: {zh: '左一', en: 'Left'},
+    enhancementCostPriceBid: {zh: '右一', en: 'Right'},
+    enhancementCostPriceAutoHint: {
+      zh: '自动：买入取成本更低的一侧，卖出取到手价更高的一侧',
+      en: 'Auto: buy at the cheaper side and sell at the higher net price'
+    },
+    enhancementCostPriceAskHint: {zh: '左一：按挂单（出售）价买卖', en: 'Left: use the best ask (sell order) price'},
+    enhancementCostPriceBidHint: {zh: '右一：按收购（求购）价买卖', en: 'Right: use the best bid (buy order) price'},
+    enhancementCostSummaryTitle: {zh: '方案汇总', en: 'Plan Summary'},
+    enhancementCostRouteTitle: {zh: '最优路线', en: 'Best Plan'},
+    enhancementCostPlansTitle: {zh: '全部方案', en: 'All Plans'},
+    enhancementCostPlansHint: {
+      zh: '不用已有装备的做法已抵扣卖掉它的到手价',
+      en: 'Plans that do not use your item count selling it'
+    },
+    enhancementCostColumnPlan: {zh: '方案', en: 'Plan'},
+    enhancementCostColumnPlanCost: {zh: '花费', en: 'Cost'},
+    enhancementCostColumnPlanCostHint: {
+      zh: '该做法的净花费：不用已有装备的两条（直接买 / 自己做）已抵扣卖掉它的到手价',
+      en: 'Net cost of the plan: the two plans that do not use your item already count selling it'
+    },
+    enhancementCostColumnMirrors: {zh: '镜子', en: 'Mirrors'},
+    enhancementCostColumnRefines: {zh: '精炼', en: 'Refines'},
+    enhancementCostColumnNote: {zh: '说明', en: 'Note'},
+    enhancementCostPlanBest: {zh: '最佳', en: 'Best'},
+    enhancementCostPlanNoMarket: {zh: '市场没有这个等级', en: 'Nobody lists this level'},
+    enhancementCostPlanMissingPrice: {zh: '缺价，不可用', en: 'Missing prices, unavailable'},
+    enhancementCostCompareTitle: {zh: '逐级方案对比', en: 'Level-by-Level Comparison'},
+    enhancementCostCompareHint: {
+      zh: '目标：{0}；每级列出直接买与自己做哪个更便宜',
+      en: 'Target: {0}; each level compares buying it against making it'
+    },
+    enhancementCostColumnLevel: {zh: '等级', en: 'Level'},
+    enhancementCostColumnMarket: {zh: '市场买价', en: 'Market Price'},
+    enhancementCostColumnMarketHint: {
+      zh: '按当前购买方式买入该等级目标版本的花费；市场没人挂这个等级时为空',
+      en: 'Cost of buying the target version at that level with the selected price side; empty when nobody lists that level'
+    },
+    enhancementCostColumnAcquire: {zh: '最低获取成本', en: 'Cheapest Cost'},
+    enhancementCostColumnAcquireHint: {
+      zh: '自己做出来的最便宜花费：市场买、镜子合成、买普通版精炼、买精炼版解精炼四者取最低；绿色表示比市场买便宜',
+      en: 'Cheapest way to make it: the lowest of market buy, mirror enhancement, buy the original version and refine, buy the refined version and un-refine; green means cheaper than buying it'
+    },
+    enhancementCostColumnKind: {zh: '获取方式', en: 'How'},
+    enhancementCostColumnKindHint: {
+      zh: '最低获取成本的来源：市场买 / 镜子合成 / 买普通版精炼 / 买精炼版解精炼',
+      en: 'Where the cheapest cost comes from: market, mirror enhancement, refine from the original version, or un-refine from the refined version'
+    },
+    enhancementCostOpCombine: {zh: '合成', en: 'Enhance'},
+    enhancementCostOpRefine: {zh: '精炼', en: 'Refine'},
+    enhancementCostOpUnrefine: {zh: '解精炼', en: 'Un-refine'},
+    enhancementCostOpBuy: {zh: '买入', en: 'Buy'},
+    enhancementCostOpNotUsed: {zh: '未采用', en: 'Not used'},
+    enhancementCostKindMarket: {zh: '市场买', en: 'Buy from market'},
+    enhancementCostKindMirror: {zh: '镜子合成', en: 'Mirror enhancement'},
+    enhancementCostKindRefine: {zh: '买普通版精炼', en: 'Refine the original'},
+    enhancementCostKindUnrefine: {zh: '买精炼版解精炼', en: 'Un-refine the refined'},
+    enhancementCostKindPad: {zh: '垫子 {0}', en: 'pad {0}'},
+    enhancementCostStepKeep: {zh: '起点', en: 'Start'},
+    enhancementCostStepSellOp: {zh: '卖出', en: 'Sell'},
+    enhancementCostStepSellResult: {zh: '到手 {0}', en: 'net {0}'},
+    enhancementCostStepPad: {zh: '{0} 当垫子', en: '{0} as pad'},
+    enhancementCostStepHeldPad: {zh: '手上的 {0} 当垫子', en: 'held {0} as pad'},
+    enhancementCostStepUnrefineResult: {zh: '拿回 {0} ×{1}', en: 'get back {0} ×{1}'},
+    enhancementCostStepShardCovered: {zh: '（其中 ×{0} 用解精炼拿回的）', en: ' ({0} of them come from un-refining)'},
+    enhancementCostStepShardKept: {zh: '×{0} 留作后面的精炼', en: '{0} kept for the refining step'},
+    enhancementCostStepShardSold: {zh: '×{0} 卖出', en: '{0} sold'},
+    enhancementCostStepCost: {zh: '花费', en: 'Cost'},
+    enhancementCostStepTotal: {zh: '累计', en: 'Subtotal'},
+    enhancementCostTotalCost: {zh: '总花费', en: 'Total Cost'},
+    enhancementCostTotalCostHint: {
+      zh: '净花费：不用已有装备的做法已抵扣卖掉它的到手价，用已有装备当主件或垫子的做法不抵扣',
+      en: 'Net cost: plans that do not use your item already count selling it; plans that use it as the main item or pad do not'
+    },
+    enhancementCostBestPlan: {zh: '最佳方案', en: 'Best Plan'},
+    enhancementCostPlanDirect: {zh: '直接买成品', en: 'buy the finished item'},
+    enhancementCostPlanSelf: {zh: '自己做', en: 'build it yourself'},
+    enhancementCostPlanMain: {zh: '用已有装备当主件升级', en: 'Enhance your item as the main item'},
+    enhancementCostPlanPad: {zh: '用已有装备当垫子', en: 'Use your item as a pad'},
+    enhancementCostPlanSellPrefix: {zh: '卖掉已有装备后{0}', en: 'Sell your item, then {0}'},
+    enhancementCostDirectBuy: {zh: '直接买入目标成品', en: 'Buy the Target Directly'},
+    enhancementCostDirectBuyHint: {
+      zh: '按当前买卖方式直接买入目标成品、并卖出已有装备的净花费（没有已有装备时就是买入价）',
+      en: 'Net cost of buying the target item and selling your item at the selected price sides (just the buy price when you have none)'
+    },
+    enhancementCostSaved: {zh: '比直接买省', en: 'Saved vs. Direct Buy'},
+    enhancementCostSavedBest: {zh: '最划算', en: 'Best'},
+    enhancementCostUnreachable: {
+      zh: '无法用必成路线到达目标',
+      en: 'The target cannot be reached with guaranteed-success steps'
+    },
+    enhancementCostUnreachableHint: {
+      zh: '只采用必定成功的操作（贤者之镜合成、精炼、解精炼、市场买卖），缺价的相关操作不可用。',
+      en: "Only guaranteed-success steps are used (Philosopher's Mirror enhancement, refining, un-refining, market buy and sell); steps with missing prices are unavailable."
+    },
+    enhancementCostMissingPrice: {zh: '{0} 没有可用买价', en: 'No available buy price for {0}'},
+    enhancementCostExistingNoSell: {
+      zh: '已有装备 {0} 没有可用卖价，不用它的做法不抵扣',
+      en: 'Your item {0} has no sell price, so plans that do not use it count no credit.'
+    },
+    enhancementCostLevelInvalid: {
+      zh: '已有装备的强化等级不能高于目标强化等级',
+      en: 'Your item cannot be at a higher enhancement level than the target'
+    },
+    enhancementCostMarketLoading: {zh: '市场数据加载中…', en: 'Loading market data…'},
+    enhancementCostMarketHint: {
+      zh: '金额单位：金币，卖出到手价已扣 {0}% 市场税',
+      en: 'Amounts are in coins; sell proceeds are already taxed ({0}%)'
+    }
+  };
+
   // combat-calculator-messages
   const COMBAT_CALCULATOR_MESSAGES = {
     primaryXpRate: {zh: '主修经验 (K/h)', en: 'Primary XP (K/h)'},
@@ -2420,12 +2578,16 @@
     combatUpgradeUnitEntry: {zh: '战斗升级计算器（{0}）', en: 'Combat upgrade calculator ({0})'},
     combatUpgradePlayerName: {zh: '玩家：{0}', en: 'Player: {0}'},
     combatUpgradeLevelsCached: {
-      zh: '技能等级来自 {0} 查看的名片缓存（非实时）',
-      en: 'Skill levels come from the profile viewed at {0} (not live)'
+      zh: '技能等级与经验来自 {0} 查看的名片缓存（非实时）',
+      en: 'Skill levels and XP come from the profile viewed at {0} (not live)'
     },
     combatUpgradeLevelsCachedNoTime: {
-      zh: '技能等级来自名片缓存（非实时，缓存未记录查看时间）',
-      en: 'Skill levels come from the profile cache (not live; the cache has no timestamp)'
+      zh: '技能等级与经验来自名片缓存（非实时，缓存未记录查看时间）',
+      en: 'Skill levels and XP come from the profile cache (not live; the cache has no timestamp)'
+    },
+    combatUpgradeLevelsNoExperience: {
+      zh: '名片缓存没有经验数据，起始经验按各等级 0% 计算',
+      en: 'The cached profile has no XP data, so rows start at 0% of each level'
     },
     combatUpgradeLevelsMissing: {
       zh: '未获取到技能等级（需先在游戏内点开该玩家资料），列表起始等级按 0 计算，请手动调整',
@@ -2626,6 +2788,7 @@
     marketHistoryCategoryAccessories: {zh: '饰品', en: 'Accessories'},
     marketHistoryCategoryTools: {zh: '工具', en: 'Tools'},
     marketHistoryTimeAll: {zh: '创建时间', en: 'Created'},
+    marketHistoryTimeToday: {zh: '今天', en: 'Today'},
     marketHistoryTime7d: {zh: '近 7 天', en: 'Last 7 days'},
     marketHistoryTime15d: {zh: '近 15 天', en: 'Last 15 days'},
     marketHistoryTime30d: {zh: '近 30 天', en: 'Last 30 days'},
@@ -2870,6 +3033,7 @@
     toolkitMenu: TOOLKIT_MENU_MESSAGES,
     dungeonCalculator: DUNGEON_CALCULATOR_MESSAGES,
     equipmentComparison: EQUIPMENT_COMPARISON_MESSAGES,
+    enhancementCost: ENHANCEMENT_COST_MESSAGES,
     combatCalculator: COMBAT_CALCULATOR_MESSAGES,
     abilityCalculator: ABILITY_CALCULATOR_MESSAGES,
     combatSimImport: COMBAT_SIM_IMPORT_MESSAGES,
@@ -3931,27 +4095,28 @@
   };
 
   // calculator-help-popover
+  let helpPopoverSequence = 0;
+
   class CalculatorHelpPopover {
     constructor(ctx) {
       this.ctx = ctx;
     }
 
-    mount({popup, moduleName, title, heading, content}) {
+    mount({popup, title, heading, content}) {
       const {TemplateRenderer, utils} = this.ctx;
       const titleElement = popup.querySelector('.swal2-title');
       const container = popup.closest('.swal2-container');
       if (!titleElement || !container) return null;
 
-      const prefix = `mst-${moduleName}-help`;
-      const popoverId = `${prefix}-popover`;
-      const triggerClass = `${prefix}-trigger`;
-      const paragraphClass = `${prefix}-popover-paragraph`;
+      // 帮助提示浮层是跨模块共用的同一个组件，类名不带模块前缀；
+      // 浮层 id 只用于 aria-controls 关联，用递增序号保证同页多个弹窗不重号。
+      const popoverId = `mst-help-popover-${++helpPopoverSequence}`;
       const miscSprite = utils.getSpriteUrl('misc') || '/static/media/misc_sprite.02869244.svg';
       const triggerHost = document.createElement('span');
-      triggerHost.className = `${prefix}-anchor`;
+      triggerHost.className = 'mst-help-anchor';
       TemplateRenderer.render(
         () => TemplateRenderer.html`
-  <button type="button" class=${triggerClass} aria-haspopup="true" aria-expanded="false" aria-controls=${popoverId} title=${title}>
+  <button type="button" class="mst-help-trigger" aria-haspopup="true" aria-expanded="false" aria-controls=${popoverId} title=${title}>
     <svg aria-hidden="true"><use href=${`${miscSprite}#info`}></use></svg>
   </button>
 `,
@@ -3961,26 +4126,26 @@
 
       const popover = document.createElement('div');
       popover.id = popoverId;
-      popover.className = `${prefix}-popover`;
+      popover.className = 'mst-help-popover';
       popover.setAttribute('role', 'tooltip');
       TemplateRenderer.render(
         () => TemplateRenderer.html`
-  <div class=${`${prefix}-popover-title`}>${heading}</div>
-  <div class=${`${prefix}-popover-content`}></div>
+  <div class="mst-help-popover-title">${heading}</div>
+  <div class="mst-help-popover-content"></div>
 `,
         popover
       );
       popover.hidden = true;
       container.appendChild(popover);
-      const trigger = triggerHost.querySelector(`.${prefix}-trigger`);
-      const contentElement = popover.querySelector(`.${prefix}-popover-content`);
+      const trigger = triggerHost.querySelector('.mst-help-trigger');
+      const contentElement = popover.querySelector('.mst-help-popover-content');
       const renderContent = (text) => {
         const paragraphs = String(text || '')
           .split(/\n+/)
           .filter(Boolean);
         TemplateRenderer.render(
           () => TemplateRenderer.html`
-  ${paragraphs.map((paragraph) => TemplateRenderer.html`<div class=${paragraphClass}>${paragraph}</div>`)}
+  ${paragraphs.map((paragraph) => TemplateRenderer.html`<div class="mst-help-popover-paragraph">${paragraph}</div>`)}
 `,
           contentElement
         );
@@ -4036,8 +4201,8 @@
           positionPopover();
         },
         setError(isError) {
-          popover.classList.toggle(`${prefix}-popover-error`, isError);
-          trigger.classList.toggle(`${prefix}-trigger-error`, isError);
+          popover.classList.toggle('mst-help-popover-error', isError);
+          trigger.classList.toggle('mst-help-trigger-error', isError);
         },
         cleanup() {
           document.removeEventListener('pointerdown', onOutsidePointerDown);
@@ -4975,7 +5140,6 @@
       feature.helpController?.cleanup();
       feature.helpController = CalculatorHelpPopover.mount({
         popup,
-        moduleName: 'ability',
         title: i18n.t('abilityCalculatorHelpTitle'),
         heading: i18n.t('abilityUpgradeCalculator'),
         content: i18n.t('abilityCalculatorHelp')
@@ -7299,9 +7463,30 @@
 
   // 更新日志数据：与 docs/changelog.md 保持同步（版本、顺序、中文说明逐条一致，测试会校验）。
   // 发布日期取自 GreasyFork 发布记录（脚本 574037）；`legacy: true` 表示 MST 融合前的 EDS 历史线。
-  // 版本说明只写用户可感知的变化，更新版本时先改 docs/changelog.md，再同步这里并补英文。
+  // 版本说明只写用户可感知的变化，按模块合并（同一模块的改动合并为一条），更新版本时先改 docs/changelog.md，再同步这里并补英文。
   const CHANGELOG_VERSIONS = [
     {
+      version: '2.22.0',
+      date: '2026-10-16',
+      notes: [
+        {
+          zh: '新增「强化物品价格计算器」：先选目标装备、再按需选已有装备，列出直接买、自己做、用已有装备当主件或垫子等全部做法并标出最省的一种，逐级对比每一级买与做哪种便宜；买价与卖价可分别选自动、左一或右一，缺价的做法自动跳过。',
+          en: 'New Enhancement Cost Calculator: pick the target item and optionally the item you already have, see every plan (buying it, building it, enhancing it up, or using it as a pad) with the cheapest one marked, and compare buying vs. making at each level; buying and selling can each use Auto, Left, or Right pricing, and plans without market prices are skipped.'
+        }, {
+          zh: '战斗升级计算器：修复从队友的战斗单位打开时经验百分比一律显示 0% 的问题（等级与经验都取自游戏里看过的名片，旧名片需重新查看一次）；悬浮「战斗」时每个专业在等级后显示当前经验百分比。',
+          en: "Combat Upgrade Calculator: fixed every skill showing 0% XP when opening the calculator from a party member's battle unit (levels and XP now both come from a profile you have viewed in game — view older profiles once again), and hovering the Combat nav entry now shows each skill's current XP percentage after its level."
+        }, {
+          zh: '市场交易记录：创建时间下拉新增「今天」，记录与统计两个页签都能用；挂牌页的最近成交价不再浮在弹窗之上。',
+          en: "Market Trade History: the Created dropdown now has a Today option on both the Records and Stats tabs, and the recent fill prices on an item's listing page no longer float above dialogs."
+        }, {
+          zh: '技能升级计算器：「添加技能」列表改为按游戏里的物品顺序排列。',
+          en: 'Ability Upgrade Calculator: the Add Ability list now follows the in-game item order.'
+        }, {
+          zh: '角色名片：修复自己的名片点击技能图标报错、技能选择浮层打不开的问题；更换技能时的技能列表改为按游戏里的物品顺序排列。',
+          en: 'Character Card: fixed the error when clicking a skill icon on your own card and the skill picker not opening, and the skill list shown when changing a skill now follows the in-game item order.'
+        }
+      ]
+    }, {
       version: '2.21.0',
       date: '2026-10-13',
       notes: [
@@ -7377,7 +7562,8 @@
           en: 'The Dungeon Profit Calculator now switches between a single map and batch mode with tabs at the top, opening on the first tab, Batch Simulation; parameters of both modes are still saved automatically.'
         }
       ]
-    }, {
+    },
+    {
       version: '2.18.0',
       date: '2026-10-01',
       notes: [
@@ -7395,8 +7581,7 @@
           en: 'New "Check for Updates": it checks in the background and, when a new version is found, shows a hint on the Toolkit entry and turns the button into "Update to vX" for one-click install; with no new version, click it to view the installed and latest versions.'
         }
       ]
-    },
-    {
+    }, {
       version: '2.17.2',
       date: '2026-09-24',
       notes: [
@@ -7469,7 +7654,8 @@
           en: 'Every Toolkit dialog now shows the same icon as its menu entry, making dialogs and menu entries easy to match.'
         }
       ]
-    }, {
+    },
+    {
       version: '2.15.0',
       date: '2026-08-28',
       notes: [
@@ -7481,8 +7667,7 @@
           en: "Combat Upgrade Calculator can now plan upgrades without a major profession, estimating duration and completion time from each row's XP."
         }
       ]
-    },
-    {
+    }, {
       version: '2.14.0',
       date: '2026-08-26',
       notes: [
@@ -7533,7 +7718,8 @@
           en: 'When several copies of this script are installed (e.g. the release and a local dev build), the Add to Cart button now appears consistently without the copies interfering with each other.'
         }
       ]
-    }, {
+    },
+    {
       version: '2.11.0',
       date: '2026-08-18',
       notes: [
@@ -7545,8 +7731,7 @@
           en: 'Marketplace adds an "Add to cart" button next to "Refresh" that adds the currently viewed item to the MWITools cart, 1 per click; a specific enhancement level is kept and unenhanced items are added as +0 (cart only, never orders).'
         }
       ]
-    },
-    {
+    }, {
       version: '2.10.2',
       date: '2026-08-17',
       notes: [
@@ -7604,7 +7789,8 @@
           en: 'Character profile caching optimized: only the fields needed by the card are cached, greatly reducing cache size, and the oldest profiles are cleaned up when the limit is exceeded or browser storage is low.'
         }
       ]
-    }, {
+    },
+    {
       version: '2.9.0',
       date: '2026-08-05',
       notes: [
@@ -7613,8 +7799,7 @@
           en: 'Dungeon Profit adds a party size option (1-5): chest quantity uses the official formula `5 ÷ party size`, so with the default 5 members a standard chest is still 1.295 per run, and tickets, keys, and profit adjust automatically.'
         }
       ]
-    },
-    {
+    }, {
       version: '2.8.3',
       date: '2026-08-04',
       notes: [
@@ -7672,7 +7857,8 @@
           en: 'Overall experience: the interface language follows the game in real time, and dialogs, mobile display, official Chinese terms, and market price directions are unified; best sell/buy prices display as 左一/右一 in Chinese, following game conventions.'
         }
       ]
-    }, {
+    },
+    {
       version: '1.2.7',
       date: '2026-05-07',
       legacy: true,
@@ -7685,8 +7871,7 @@
           en: 'Fixed missing personal achievement bonuses when copying Milkonomy data.'
         }
       ]
-    },
-    {
+    }, {
       version: '1.2.5',
       date: '2026-04-17',
       legacy: true,
@@ -7730,7 +7915,8 @@
           en: 'Fixed the Chinese mirror site being unusable.'
         }
       ]
-    }, {
+    },
+    {
       version: '1.0.0',
       date: '2026-04-15',
       legacy: true,
@@ -10842,12 +11028,20 @@
       this.i18n = deps.ctx.i18n;
     }
 
+    // 技能列表按游戏的物品顺序（技能书物品的 itemDetailMap.sortIndex）排列，与游戏里的物品列表一致；
+    // 不能改用技能自身的 abilityDetailMap.sortIndex——它在 frenzy 与 elemental_affinity 上与物品序号相反。
+    // 取不到技能书时排到列表末尾。
+    getAbilityItemIndex(abilityHrid) {
+      const book = this.DataHub.clientData.indexes?.abilityBookByAbilityHrid?.get(abilityHrid);
+      return Number(book?.sortIndex ?? Number.MAX_SAFE_INTEGER);
+    }
+
     showSkillSelector(skillIndex) {
       if (!this.state.activeCard?.isMyCharacter) return;
       const allSkills = this.DataHub.characterData.raw?.characterAbilities || [];
       const availableSkills = allSkills
         .filter((ability) => ability.abilityHrid && ability.abilityHrid.startsWith('/abilities/'))
-        .sort((a, b) => (a.slotNumber || 0) - (b.slotNumber || 0));
+        .sort((a, b) => this.getAbilityItemIndex(a.abilityHrid) - this.getAbilityItemIndex(b.abilityHrid));
 
       const selectedHrid = this.state.customSkills.selectedSkills[skillIndex]?.abilityHrid || '';
       const optionTemplates = availableSkills.map((skill) => {
@@ -11213,13 +11407,14 @@
       if (activeCard.isMyCharacter && newCharacterCard) {
         const skillSlots = newCharacterCard.querySelectorAll('.mst-skill-slot, .mst-empty-skill-slot');
         skillSlots.forEach((slot) => {
-          slot.addEventListener(
-            'click',
-            function () {
-              const skillIndex = parseInt(this.getAttribute('data-skill-index'));
-              this.skillSelector.showSkillSelector(skillIndex);
-            }.bind(this)
-          );
+          // uhtml 增量更新会复用技能格节点，每次刷新再绑一次会让一次点击弹出多个选择框，因此只绑一次；
+          // 槽位号在处理时从属性读，节点被复用后也能拿到当前值。
+          if (slot.dataset.skillSelectorBound) return;
+          slot.dataset.skillSelectorBound = 'true';
+          slot.addEventListener('click', () => {
+            const skillIndex = parseInt(slot.getAttribute('data-skill-index'));
+            this.skillSelector.showSkillSelector(skillIndex);
+          });
         });
       }
       this.updateStandaloneCharacterControls(modal);
@@ -13311,7 +13506,8 @@
   }
 
   // combat-upgrade-tooltip
-  // 导航栏悬浮升级时间：战斗技能在「升级所需经验」后拼接速率行与 4 行时间；「战斗」项在说明之后追加技能块。
+  // 导航栏悬浮升级时间：战斗技能在「升级所需经验」后拼接速率行与 4 行时间；「战斗」项在说明之后追加技能块
+  // （标题为「技能名 Lv.等级 经验百分比」）。
   // 游戏结构与口径见 `docs/analysis/战斗升级悬浮时间与交战入口需求说明书.md` §2.1 / §3.2 / §4.4。
 
   const COMBAT_TOOLTIP_SELECTOR = '[class*="NavigationBar_navigationSkillTooltip"]';
@@ -13482,7 +13678,7 @@
         const linesHtml = this.getTimeLinesHtml(feature, state.level, state.experience, rates.get(skillHrid));
         // 满级技能没有可显示的时间，与「没有数据的技能不显示」同口径。
         if (!linesHtml) return;
-        blocks.push({skillHrid, level: state.level, linesHtml});
+        blocks.push({skillHrid, level: state.level, experience: state.experience, linesHtml});
       });
       if (!blocks.length) {
         this.removeContainer(tooltip, COMBAT_BLOCK_CLASS);
@@ -13493,10 +13689,20 @@
       container.innerHTML = blocks
         .map((block, index) => {
           const divider = index > 0 ? '<div class="mst-combat-tooltip-divider"></div>' : '';
-          const skillName = feature.ctx.utils.escapeHtml(`${feature.getSkillName(block.skillHrid)} Lv.${block.level}`);
-          return `${divider}<div class="mst-combat-tooltip-skill">${skillName}</div>${block.linesHtml}`;
+          const skillTitle = feature.ctx.utils.escapeHtml(this.getSkillBlockTitle(feature, block));
+          return `${divider}<div class="mst-combat-tooltip-skill">${skillTitle}</div>${block.linesHtml}`;
         })
         .join('');
+    },
+
+    // 技能块标题：专业 + 等级 + 当前经验百分比（最多两位小数、去掉多余的 0，与计算器「当前等级」列同口径）。
+    getSkillBlockTitle(feature, block) {
+      const {CharacterDataService, i18n} = feature.ctx;
+      const percentText = CharacterDataService.getLevelExperiencePercent(block.level, block.experience).toLocaleString(
+        i18n.locale,
+        {maximumFractionDigits: 2, minimumFractionDigits: 0}
+      );
+      return `${feature.getSkillName(block.skillHrid)} Lv.${block.level} ${percentText}%`;
     },
 
     getSortedSkillHrids(feature, skillHrids) {
@@ -13712,7 +13918,6 @@
       feature.helpController?.cleanup();
       feature.helpController = CalculatorHelpPopover.mount({
         popup,
-        moduleName: 'combat',
         title: i18n.t('combatCalculatorHelpTitle'),
         heading: i18n.t('combatUpgradeCalculator'),
         content: i18n.t('combatCalculatorHelp')
@@ -14274,7 +14479,7 @@
     },
 
     // 打开弹窗时的数据源：自己 = 实时角色数据；队友 = 名片缓存快照 + 本场战斗速率。
-    // {characterId, isSelf, levels: Map<skillHrid, level> | null, levelsTimestamp, name}
+    // {characterId, isSelf, skills: Map<skillHrid, {level, experience|null}> | null, levelsTimestamp, name}
     buildPlayerContext(feature, player) {
       const {DataHub} = feature.ctx;
       if (!player || player.characterId == null) return null;
@@ -14282,17 +14487,24 @@
       const name = String(player.name || '');
       const selfCharacterId = this.getSelfCharacterId(feature);
       if (selfCharacterId != null && characterId === String(selfCharacterId)) {
-        return {characterId, isSelf: true, levels: null, levelsTimestamp: 0, name};
+        return {characterId, isSelf: true, skills: null, levelsTimestamp: 0, name};
       }
       const stored = DataHub.getProfile?.(characterId) || null;
-      const levels = new Map();
+      const skills = new Map();
       (stored?.profile?.characterSkills || []).forEach((skill) => {
-        if (skill?.skillHrid) levels.set(skill.skillHrid, Number(skill.level) || 0);
+        if (!skill?.skillHrid) return;
+        const experience = Number(skill.experience);
+        skills.set(skill.skillHrid, {
+          level: Math.max(0, Number(skill.level) || 0),
+          // 官方名片带技能经验；更早版本裁剪掉经验、或资料里没有该字段时为 null，
+          // 由 getCharacterSkill 退回该等级 0% 起算，提示行会说明。
+          experience: Number.isFinite(experience) ? Math.max(0, experience) : null
+        });
       });
       return {
         characterId,
         isSelf: false,
-        levels: levels.size ? levels : null,
+        skills: skills.size ? skills : null,
         // 名片缓存的数据时间：脚本收到该资料的毫秒时间戳，展示在提示行里。
         levelsTimestamp: Number(stored?.timestamp) || 0,
         name
@@ -14303,14 +14515,24 @@
       return feature.playerContext?.characterId ?? this.getSelfCharacterId(feature);
     },
 
-    // 队友的名片缓存只有等级、没有经验：按该等级 0% 起算（提示行会写明非实时）。
+    // 队友用名片缓存的等级与经验；缓存里没有经验时按该等级 0% 起算（提示行会写明）。
     getCharacterSkill(feature, skillHrid, context = feature.playerContext) {
       const {CharacterDataService} = feature.ctx;
       if (!context || context.isSelf)
         return CharacterDataService.getCharacterSkill(skillHrid) || {level: 0, experience: 0};
-      const level = context.levels?.get(skillHrid);
-      if (level == null) return {level: 0, experience: 0};
-      return {level, experience: CharacterDataService.getLevelExperience(level)};
+      const cached = context.skills?.get(skillHrid);
+      if (!cached) return {level: 0, experience: 0};
+      return {
+        level: cached.level,
+        experience: cached.experience ?? CharacterDataService.getLevelExperience(cached.level)
+      };
+    },
+
+    hasCachedExperience(context) {
+      for (const skill of context.skills?.values() || []) {
+        if (skill.experience != null) return true;
+      }
+      return false;
     },
 
     // 自己在当前战斗里的逐技能经验速率（原始经验 / 小时）；不足 60 秒或没有数据时返回 null。
@@ -14384,15 +14606,19 @@
         i18n.t('combatUpgradePlayerName', context.name || '')
       ];
       if (!context.isSelf) {
-        // 队友的等级只能来自名片缓存：必须写出资料的查看时间；没有记录时间时退化为通用提示，
+        // 队友的等级与经验只能来自名片缓存：必须写出资料的查看时间；没有记录时间时退化为通用提示，
         // 绝不显示一个算出来的时间（避免用户以为缓存数据是当下的）。
         parts.push(
-          context.levels
+          context.skills
             ? context.levelsTimestamp > 0
               ? i18n.t('combatUpgradeLevelsCached', utils.formatDateTime(context.levelsTimestamp))
               : i18n.t('combatUpgradeLevelsCachedNoTime')
             : i18n.t('combatUpgradeLevelsMissing')
         );
+        // 旧版缓存只有等级、没有经验：按各等级 0% 起算必须写明，不能默默当成 0%。
+        if (context.skills && !this.hasCachedExperience(context)) {
+          parts.push(i18n.t('combatUpgradeLevelsNoExperience'));
+        }
       }
       parts.push(
         this.getCurrentBattleExperienceFill(feature)
@@ -14473,7 +14699,7 @@
 
     createRow(feature, skillHrid, defaultPrimarySkillHrid = feature.planner.getDefaultPrimarySkillHrid()) {
       const {utils} = feature.ctx;
-      // 起始等级跟随当前玩家上下文：自己是实时等级，队友是名片缓存等级（经验按该等级 0% 起算）。
+      // 起始等级跟随当前玩家上下文：自己是实时等级与经验，队友是名片缓存的等级与经验。
       const current = feature.getCharacterSkill(skillHrid);
       const startLevel = utils.clampLevel(current.level, 0, 199);
       const trainingTypeMode = feature.planner.getTrainingTypeMode(skillHrid);
@@ -16014,10 +16240,10 @@
     getTwoLineCellHtml(feature, values) {
       const {i18n} = DungeonProfitCalculatorFeature.ctx;
       if (!values) return '-';
-      return `<div class="mst-dungeon-batch-line mst-dungeon-batch-cost" title="${escapeHtmlText(
+      return `<div class="mst-dungeon-batch-line mst-negative" title="${escapeHtmlText(
       i18n.t('totalDailyCost')
     )}"><small>${escapeHtmlText(i18n.t('batchCostShort'))}</small>${feature.formatMoney(values.cost)}</div>
-  <div class="mst-dungeon-batch-line mst-dungeon-batch-profit" title="${escapeHtmlText(i18n.t('netProfit'))}"><small>${escapeHtmlText(
+  <div class="mst-dungeon-batch-line mst-positive" title="${escapeHtmlText(i18n.t('netProfit'))}"><small>${escapeHtmlText(
     i18n.t('batchProfitShort')
   )}</small>${feature.formatMoney(values.profit)}</div>`;
     },
@@ -16998,7 +17224,6 @@
       this.helpController?.cleanup();
       this.helpController = CalculatorHelpPopover.mount({
         popup: this.popup,
-        moduleName: 'dungeon',
         title: i18n.t('dungeonCalculatorHelpTitle'),
         heading: i18n.t('dungeonProfitCalculator'),
         content: i18n.t('dungeonCalculatorHelp', marketTaxPercent, cowbellTaxPercent)
@@ -17939,6 +18164,1732 @@
 
     init() {
       return this.constructor.lifecycle.init(this);
+    }
+  }
+
+  // 强化物品价格计算器：只算必定成功的路线（贤者之镜合成、精炼、解精炼、市场买卖）。
+  //
+  // 计算模型对照 mwi-fastsim 的「装备获取成本」（node/app/gear-cost.mjs、opt-upgrades.mjs 的 GearPrices）：
+  // 每个等级的「最低获取成本」按等级从小到大递推，来源只有四种——
+  //   ① 市场买成品；② 贤者之镜合成（低一级的主件 + 低两级的普通版垫子 + 镜子）；
+  //   ③ 买普通版自己精炼（碎片，保留等级）；④ 买精炼版解精炼（拆回普通版并拿回一半碎片）。
+  // 递推里不卖出任何中间件，因此路线不会把买卖价差当成可重复的收益；唯一允许的卖出是「卖掉手持的基准」，
+  // 作为「不用基准」那两类方案的抵扣。为什么这样做见 docs/analysis/强化物品价格计算器需求说明书.md §4.4。
+  const MAX_ENHANCEMENT_LEVEL = 20;
+  const PHILOSOPHERS_MIRROR_HRID = '/items/philosophers_mirror';
+  const PRICE_MODES = Object.freeze({AUTO: 'auto', ASK: 'ask', BID: 'bid'});
+  // 一个等级的四种获取来源。
+  const ACQUISITION_KINDS = Object.freeze({
+    MARKET: 'market',
+    MIRROR: 'mirror',
+    REFINE: 'refine',
+    UNREFINE: 'unrefine'
+  });
+  // 四个候选方案：直接买成品、自己从零获取、用基准当主件、用基准当垫子。
+  const PLAN_KEYS = Object.freeze({DIRECT: 'direct', SELF: 'self', MAIN: 'main', PAD: 'pad'});
+  // 路线步骤与递推深度上限（防御性上限，正常路线远小于它）。
+  const MAX_ROUTE_STEPS = 256;
+  const NORMAL_LINE_INDEX = 0;
+  const REFINED_LINE_INDEX = 1;
+
+  function toPositiveNumber(value) {
+    const number = Number(value);
+    return Number.isFinite(number) && number > 0 ? number : 0;
+  }
+
+  // enhancement-cost-data-methods
+  const enhancementCostDataMethods = {
+    getItemMap() {
+      const {DataHub} = this.ctx;
+      return DataHub.getClientDataMap('itemDetailMap') || {};
+    },
+
+    getEnhanceableItems() {
+      const itemMap = this.getItemMap();
+      return (
+        Object.values(itemMap)
+          .filter((detail) => Array.isArray(detail?.enhancementCosts) && detail.enhancementCosts.length > 0)
+          // 按游戏的物品顺序（itemDetailMap.sortIndex，游戏里的物品列表就是这个顺序；同序号时再按等级与名称）。
+          .sort((left, right) => {
+            const sortGap = Number(left.sortIndex ?? 9999) - Number(right.sortIndex ?? 9999);
+            if (sortGap) return sortGap;
+            const levelGap = Number(left.itemLevel || 0) - Number(right.itemLevel || 0);
+            if (levelGap) return levelGap;
+            return String(left.name || left.hrid).localeCompare(String(right.name || right.hrid));
+          })
+          .map((detail) => ({hrid: detail.hrid, detail}))
+      );
+    },
+
+    // 工匠茶默认生效：精炼材料按 1 - 工匠值 折算，工匠值取自游戏数据里工匠茶的 artisan buff（当前 10%）。
+    // 解精炼返还的 shardReturn 是物品详情里的固定值，不随工匠茶变化。
+    getArtisanMaterialMultiplier() {
+      const {DataHub} = this.ctx;
+      const tea = DataHub.getClientDataMap('itemDetailMap')?.['/items/artisan_tea'];
+      const buff = (tea?.consumableDetail?.buffs || []).find((entry) => entry?.typeHrid === '/buff_types/artisan');
+      const flatBoost = Number(buff?.flatBoost || 0);
+      if (!Number.isFinite(flatBoost) || flatBoost <= 0) return 1;
+      return Math.max(0, 1 - flatBoost);
+    },
+
+    // 精炼动作（retainAllEnhancement，输出 ★ 精炼物品）按基础物品 hrid 建索引：
+    // 精炼方案与「该装备有没有精炼版本」都以这套动作为准。
+    getRefinementRecipeMap() {
+      const {DataHub} = this.ctx;
+      const clientData = DataHub.getClientData();
+      if (this.recipeCache?.clientData === clientData) return this.recipeCache.map;
+      const map = new Map();
+      Object.values(clientData?.actionDetailMap || {}).forEach((action) => {
+        if (!action?.retainAllEnhancement) return;
+        const baseHrid = action.upgradeItemHrid;
+        const output = (action.outputItems || []).find((item) => String(item?.itemHrid || '').endsWith('_refined'));
+        if (!baseHrid || !output?.itemHrid || map.has(baseHrid)) return;
+        map.set(baseHrid, {
+          actionHrid: action.hrid,
+          refinedHrid: output.itemHrid,
+          inputs: (action.inputItems || []).map((input) => ({
+            itemHrid: input.itemHrid,
+            count: Number(input.count || 0)
+          }))
+        });
+      });
+      this.recipeCache = {clientData, map};
+      return map;
+    },
+
+    // 解精炼详情：精炼物品的 alchemyDetail.unrefineDetail（拆回基础物品，并拿回 shardReturn 个碎片）。
+    getUnrefineMap() {
+      const {DataHub} = this.ctx;
+      const clientData = DataHub.getClientData();
+      if (this.unrefineCache?.clientData === clientData) return this.unrefineCache.map;
+      const map = new Map();
+      Object.values(clientData?.itemDetailMap || {}).forEach((detail) => {
+        const unrefine = detail?.alchemyDetail?.unrefineDetail;
+        const shardReturn = unrefine?.shardReturn;
+        const shardCount = Number(shardReturn?.count || 0);
+        if (!detail?.hrid || !unrefine?.baseItemHrid || !shardReturn?.itemHrid || shardCount <= 0) return;
+        map.set(detail.hrid, {
+          baseItemHrid: unrefine.baseItemHrid,
+          shardHrid: shardReturn.itemHrid,
+          shardCount
+        });
+      });
+      this.unrefineCache = {clientData, map};
+      return map;
+    },
+
+    getLineInfo(itemHrid) {
+      const itemMap = this.getItemMap();
+      const detail = itemMap[itemHrid];
+      const baseHrid = detail?.baseItemHrids?.[0];
+      // 基准是精炼物品时，普通线取它的基础物品；目标线只能还是这件精炼物品。
+      const normalHrid = baseHrid && itemMap[baseHrid] ? baseHrid : itemHrid;
+      const recipe = this.getRefinementRecipe(normalHrid);
+      const refinedHrid = recipe?.refinedHrid && itemMap[recipe.refinedHrid] ? recipe.refinedHrid : '';
+      return {normalHrid, refinedHrid};
+    },
+
+    getRefinementRecipe(normalHrid) {
+      return this.getRefinementRecipeMap().get(normalHrid) || null;
+    }
+  };
+
+  // enhancement-cost-price-methods
+  const enhancementCostPriceMethods = {
+    hasMarketData() {
+      return Boolean(this.marketService && Object.keys(this.marketService.marketData || {}).length > 0);
+    },
+
+    getMarketQuote(itemHrid, level) {
+      // 金币按 1:1 计价，不走进市场数据。
+      if (itemHrid === '/items/coin') return {ask: 1, bid: 1, last: 1, official: 1};
+      const row = this.marketService?.getMarketRow(itemHrid, level) || null;
+      return {
+        ask: toPositiveNumber(row?.a),
+        bid: toPositiveNumber(row?.b),
+        last: toPositiveNumber(row?.p),
+        official: toPositiveNumber(this.marketService?.getMarketValue?.(itemHrid, level))
+      };
+    },
+
+    // 买入价：手选一侧只用该侧，缺价时回退最近成交 → 官方指导价；
+    // 自动取两侧中更低的一侧（用户确认「取成本最低的」）。
+    getBuyPrice(itemHrid, level, mode) {
+      return this.getUnitPrice(itemHrid, level, mode, 'buy');
+    },
+
+    // 卖出到手价：报价先按出售方式取值，再扣市场税并向下取整（到手 = floor(报价 × 96%)）。
+    getSellPrice(itemHrid, level, mode) {
+      return this.getUnitPrice(itemHrid, level, mode, 'sell');
+    },
+
+    getUnitPrice(itemHrid, level, mode, intent) {
+      const quote = this.getMarketQuote(itemHrid, level);
+      let price = 0;
+      if (mode === PRICE_MODES.ASK) price = quote.ask || quote.last || quote.official;
+      else if (mode === PRICE_MODES.BID) price = quote.bid || quote.last || quote.official;
+      else {
+        const sides = [
+          quote.ask, quote.bid
+        ].filter((value) => value > 0);
+        // 自动：买入取更低的可用一侧、卖出取更高的可用一侧；两侧都缺价时才回退。
+        price = sides.length
+          ? intent === 'buy'
+            ? Math.min(...sides)
+            : Math.max(...sides)
+          : quote.last || quote.official;
+      }
+      if (price <= 0) return 0;
+      return intent === 'sell' ? Math.floor(price * MARKET_TAX_MULTIPLIER) : price;
+    }
+  };
+
+  // enhancement-cost-acquisition-methods
+  const enhancementCostAcquisitionMethods = {
+    createLines(lineInfo) {
+      const lines = [
+        {key: 'normal', hrid: lineInfo.normalHrid}
+      ];
+      if (lineInfo.refinedHrid) lines.push({key: 'refined', hrid: lineInfo.refinedHrid});
+      return lines;
+    },
+
+    // 精炼方案：普通版 → 精炼版，保留强化等级，只消耗碎片（手持的基础物品不重复计价）。
+    // 碎片数量按工匠茶生效折算（1 - 工匠值），与游戏里生产动作的材料消耗一致。
+    createRefinePlan(normalHrid, options) {
+      const recipe = this.getRefinementRecipe(normalHrid);
+      if (!recipe?.inputs.length) return null;
+      const artisanMultiplier = this.getArtisanMaterialMultiplier();
+      const inputs = [];
+      let cost = 0;
+      for (const input of recipe.inputs) {
+        if (input.itemHrid === normalHrid) continue;
+        const unitPrice = this.getBuyPrice(input.itemHrid, 0, options.buyMode);
+        if (unitPrice <= 0) return null;
+        const count = input.count * artisanMultiplier;
+        const inputCost = unitPrice * count;
+        cost += inputCost;
+        inputs.push({itemHrid: input.itemHrid, count, unitPrice, cost: inputCost});
+      }
+      if (!inputs.length || cost <= 0) return null;
+      return {actionHrid: recipe.actionHrid, inputs, cost, artisanMultiplier};
+    },
+
+    // 解精炼方案：精炼版 → 普通版，保留强化等级，拿回 half 的碎片（数值取自游戏数据 shardReturn）。
+    createUnrefinePlan(normalHrid, refinedHrid, options) {
+      const detail = this.getUnrefineMap().get(refinedHrid);
+      if (!detail || detail.baseItemHrid !== normalHrid) return null;
+      // 拿回的碎片按「卖掉」计价（不需要它们时就是这笔钱），已扣税。
+      const unitPrice = this.getSellPrice(detail.shardHrid, 0, options.sellMode);
+      const credit = unitPrice * detail.shardCount;
+      if (unitPrice <= 0 || credit <= 0) return null;
+      return {
+        shardHrid: detail.shardHrid,
+        shardCount: detail.shardCount,
+        unitPrice,
+        credit
+      };
+    },
+
+    // 每个等级的最便宜获取成本：等级从小到大递推，同一等级内普通版与精炼版互相链接。
+    // 垫子永远是普通版（游戏 getPhilosophersMirrorCost 固定取 baseItemHrids[0]）。
+    buildAcquisition(lines, options) {
+      const baseHrid = lines[NORMAL_LINE_INDEX].hrid;
+      const refinedHrid = lines[REFINED_LINE_INDEX]?.hrid || '';
+      const mirrorPrice = this.getBuyPrice(PHILOSOPHERS_MIRROR_HRID, 0, options.buyMode);
+      const refinePlan = refinedHrid ? this.createRefinePlan(baseHrid, options) : null;
+      const unrefinePlan = refinedHrid ? this.createUnrefinePlan(baseHrid, refinedHrid, options) : null;
+      const base = new Array(MAX_ENHANCEMENT_LEVEL + 1).fill(null);
+      const refined = refinedHrid ? new Array(MAX_ENHANCEMENT_LEVEL + 1).fill(null) : null;
+      const better = (left, right) => (left && right ? (right.cost < left.cost ? right : left) : left || right);
+      const marketEntry = (hrid, level) => {
+        const price = this.getBuyPrice(hrid, level, options.buyMode);
+        return price > 0 ? {kind: ACQUISITION_KINDS.MARKET, level, cost: price, marketPrice: price} : null;
+      };
+      const mirrorEntry = (mainEntry, level) => {
+        const padLevel = Math.max(0, level - 2);
+        const padEntry = base[padLevel];
+        if (!mainEntry || !padEntry || mirrorPrice <= 0) return null;
+        return {
+          kind: ACQUISITION_KINDS.MIRROR,
+          level,
+          cost: mainEntry.cost + padEntry.cost + mirrorPrice,
+          padLevel,
+          padEntry,
+          mirrorPrice
+        };
+      };
+
+      for (let level = 0; level <= MAX_ENHANCEMENT_LEVEL; level += 1) {
+        base[level] = better(marketEntry(baseHrid, level), mirrorEntry(base[level - 1] || null, level));
+        if (!refined) continue;
+        let entry = better(marketEntry(refinedHrid, level), mirrorEntry(refined[level - 1] || null, level));
+        if (base[level] && refinePlan) {
+          entry = better(entry, {
+            kind: ACQUISITION_KINDS.REFINE,
+            level,
+            cost: base[level].cost + refinePlan.cost,
+            refinePlan
+          });
+        }
+        refined[level] = entry;
+        // 解精炼：买精炼版拆回普通版（拿回一半碎片）。「自己精炼来的」不再拆——
+        // 精炼材料按买入价、返还按卖出价，拆了必然更贵，跳过也能避免两条线互相引用成环。
+        if (entry && entry.kind !== ACQUISITION_KINDS.REFINE && unrefinePlan) {
+          base[level] = better(base[level], {
+            kind: ACQUISITION_KINDS.UNREFINE,
+            level,
+            cost: entry.cost - unrefinePlan.credit,
+            unrefinePlan
+          });
+        }
+      }
+      return {base, refined, mirrorPrice, refinePlan, unrefinePlan};
+    },
+
+    getAcquisitionTable(acquisition, lineIndex) {
+      return lineIndex === NORMAL_LINE_INDEX ? acquisition.base : acquisition.refined;
+    },
+
+    // 把一个「最低获取成本」条目展开成可展示的步骤（垫子、主件自己的获取方式一并展开）。
+    describeAcquisition(acquisition, lineIndex, level, depth = 0) {
+      if (depth > MAX_ROUTE_STEPS) return null;
+      const entry = this.getAcquisitionTable(acquisition, lineIndex)?.[level];
+      if (!entry) return null;
+      if (entry.kind === ACQUISITION_KINDS.MARKET) {
+        return [
+          {type: 'buy', lineIndex, level, cost: entry.cost}
+        ];
+      }
+      if (entry.kind === ACQUISITION_KINDS.MIRROR) {
+        const mainSteps = this.describeAcquisition(acquisition, lineIndex, level - 1, depth + 1);
+        const padSteps = this.describeAcquisition(acquisition, NORMAL_LINE_INDEX, entry.padLevel, depth + 1);
+        if (!mainSteps || !padSteps) return null;
+        // 垫子自己作为独立步骤列在前面，合成步骤只计贤者之镜的价格（步骤合计 = 条目成本）。
+        const steps = [
+          ...mainSteps, ...padSteps, {
+            type: 'mirror',
+            lineIndex,
+            level,
+            fromLevel: level - 1,
+            padLevel: entry.padLevel,
+            padCost: entry.padEntry.cost,
+            mirrorPrice: entry.mirrorPrice,
+            cost: entry.mirrorPrice
+          }
+        ];
+        return steps.length > MAX_ROUTE_STEPS ? null : steps;
+      }
+      const sourceSteps =
+        entry.kind === ACQUISITION_KINDS.REFINE
+          ? this.describeAcquisition(acquisition, NORMAL_LINE_INDEX, level, depth + 1)
+          : this.describeAcquisition(acquisition, REFINED_LINE_INDEX, level, depth + 1);
+      if (!sourceSteps) return null;
+      const step =
+        entry.kind === ACQUISITION_KINDS.REFINE
+          ? this.createRefineStep(entry.refinePlan, REFINED_LINE_INDEX, level)
+          : this.createUnrefineStep(entry.unrefinePlan, level);
+      return [
+        ...sourceSteps, step
+      ];
+    },
+
+    // 精炼步骤：碎片数量已经是工匠茶折算过的量，单价是买入价（方案结算时可能有一部分由解精炼退回的碎片顶掉）。
+    createRefineStep(refinePlan, lineIndex, level) {
+      const shard = refinePlan.inputs[0];
+      return {
+        type: 'refine',
+        lineIndex,
+        fromLineIndex: NORMAL_LINE_INDEX,
+        level,
+        plan: refinePlan,
+        cost: refinePlan.cost,
+        shardHrid: shard.itemHrid,
+        shardCount: shard.count,
+        shardUnitPrice: shard.unitPrice
+      };
+    },
+
+    // 解精炼步骤：返还的碎片按卖出价计钱（方案结算时被后面精炼用掉的部分不折钱）。
+    createUnrefineStep(unrefinePlan, level) {
+      return {
+        type: 'unrefine',
+        lineIndex: NORMAL_LINE_INDEX,
+        fromLineIndex: REFINED_LINE_INDEX,
+        level,
+        plan: unrefinePlan,
+        cost: -unrefinePlan.credit,
+        shardHrid: unrefinePlan.shardHrid,
+        shardReturned: unrefinePlan.shardCount,
+        shardUnitPrice: unrefinePlan.unitPrice
+      };
+    },
+
+    // 用「低一级的主件 + 低两级的普通版垫子 + 贤者之镜」做出该等级：垫子按最便宜方式获取。
+    // 垫子的获取步骤单列，合成步骤只计镜子的价格；返回的 cost 是这一级的全部花费。
+    buildMirrorStep(acquisition, lineIndex, level) {
+      const padLevel = Math.max(0, level - 2);
+      const padEntry = acquisition.base[padLevel];
+      const padSteps = this.describeAcquisition(acquisition, NORMAL_LINE_INDEX, padLevel);
+      if (!padEntry || !padSteps || acquisition.mirrorPrice <= 0) return null;
+      return {
+        cost: padEntry.cost + acquisition.mirrorPrice,
+        steps: [
+          ...padSteps, {
+            type: 'mirror',
+            lineIndex,
+            level,
+            fromLevel: level - 1,
+            padLevel,
+            padCost: padEntry.cost,
+            mirrorPrice: acquisition.mirrorPrice,
+            cost: acquisition.mirrorPrice
+          }
+        ]
+      };
+    },
+
+    // 已有装备的两种卖法：① 直接卖（精炼版就卖整件）；② 解精炼后卖普通版 + 卖回碎片。
+    // 两种都算出来交给方案去选——方案后面还要精炼时，返还的碎片值买入价（省下这笔买入），
+    // 不需要再精炼时才值卖出价，所以哪条更划算要按整条方案定，不能只看卖价。
+    buildExistingSaleVariants(lines, acquisition, selection) {
+      const {existingLineIndex} = selection;
+      if (!(existingLineIndex >= 0)) return {value: 0, viaUnrefine: false, steps: [], variants: []};
+      const level = selection.existingLevel;
+      const existingHrid = lines[existingLineIndex].hrid;
+      const sellPrice = this.getSellPrice(existingHrid, level, selection.sellMode);
+      const variants = [];
+      if (sellPrice > 0) {
+        variants.push({
+          value: sellPrice,
+          viaUnrefine: false,
+          steps: [
+            {
+              type: 'sell',
+              lineIndex: existingLineIndex,
+              level,
+              cost: -sellPrice
+            }
+          ]
+        });
+      }
+      const normalSell = this.getSellPrice(lines[NORMAL_LINE_INDEX].hrid, level, selection.sellMode);
+      if (existingLineIndex === REFINED_LINE_INDEX && acquisition.unrefinePlan) {
+        variants.push({
+          value: normalSell + acquisition.unrefinePlan.credit,
+          viaUnrefine: true,
+          steps: [
+            this.createUnrefineStep(acquisition.unrefinePlan, level), ...(normalSell > 0
+              ? [
+                  {
+                    type: 'sell',
+                    lineIndex: NORMAL_LINE_INDEX,
+                    level,
+                    cost: -normalSell
+                  }
+                ]
+              : [])
+          ]
+        });
+      }
+      if (!variants.length) return {value: 0, viaUnrefine: false, steps: [], variants: []};
+      // 默认变体（汇总与「直接买成品」用）：按卖价算更值钱的那条。
+      const best = variants.reduce((left, right) => (right.value > left.value ? right : left));
+      return {...best, variants};
+    },
+
+    // 方案内的碎片净额结算：一件装备的精炼与解精炼用的是同一种碎片，所以整条方案合起来算一次。
+    // 解精炼拿回的碎片先顶后面精炼要用的量（等于省下这笔买入），多出来的才按卖出价折钱；
+    // 这样「解精炼拿回 150 个」不会被当成卖掉 150 个、再原价买回 300 个（用户反馈的那笔重复计价）。
+    // 返回 {steps, delta}：delta 相对「碎片全额买入价买、返还全额卖出价卖」的差额。
+    settlePlanShards(steps) {
+      const hasShards = steps.some((step) => step.type === 'refine' || step.type === 'unrefine');
+      if (!hasShards) return {steps, delta: 0};
+      // 1) 按时间顺序算出每条精炼能从「之前拿回的碎片」里顶掉多少（之后的解精炼不能倒着用）。
+      const refineCoverage = new Map();
+      let pool = 0;
+      steps.forEach((step, index) => {
+        if (step.type === 'unrefine') {
+          pool += step.shardReturned;
+          return;
+        }
+        if (step.type !== 'refine') return;
+        const covered = Math.min(pool, step.shardCount);
+        pool -= covered;
+        refineCoverage.set(index, covered);
+      });
+      // 2) 把「被后面精炼用掉的量」按先拿回先用分摊回各条解精炼，剩下的就是卖掉的部分。
+      const needCovered = [
+        ...refineCoverage.values()
+      ].reduce((total, value) => total + value, 0);
+      const usedByUnrefine = new Map();
+      let remaining = needCovered;
+      steps.forEach((step, index) => {
+        if (step.type !== 'unrefine') return;
+        const take = Math.min(remaining, step.shardReturned);
+        usedByUnrefine.set(index, take);
+        remaining -= take;
+      });
+      // 3) 重写成本并记录顶掉的量，供路线步骤显示。
+      let delta = 0;
+      const pricedSteps = steps.map((step, index) => {
+        if (step.type === 'refine') {
+          const covered = refineCoverage.get(index) || 0;
+          const bought = step.shardCount - covered;
+          const cost = bought * step.shardUnitPrice;
+          delta += cost - step.cost;
+          return {...step, cost, shardCovered: covered, shardBought: bought};
+        }
+        if (step.type === 'unrefine') {
+          const kept = usedByUnrefine.get(index) || 0;
+          const surplus = step.shardReturned - kept;
+          const cost = surplus > 0 ? -surplus * step.shardUnitPrice : 0;
+          delta += cost - step.cost;
+          return {...step, cost, shardKept: kept, shardSurplus: surplus};
+        }
+        return step;
+      });
+      return {steps: pricedSteps, delta};
+    },
+
+    // 方案花费 = 步骤花费之和：原始步骤（碎片全额买入价、返还全额卖出价）加上碎片净额结算的差额。
+    // 不用已有装备的两条方案会把「两种卖法」都试一遍，取更便宜的那种（后面还要精炼时解精炼更值）。
+    // gross 只用于「直接买成品」那条的展示（买入价 − 卖掉已有装备的到手价）。
+    createPlan(key, gross, steps, heldSale, usesHeld, reason = '') {
+      const available = Number.isFinite(gross) && steps.length > 0;
+      if (!available) {
+        return {
+          key,
+          gross: null,
+          cost: Infinity,
+          steps: [],
+          usesHeld,
+          reason,
+          saleValue: 0,
+          viaUnrefine: false,
+          mirrors: 0,
+          refines: 0,
+          unrefines: 0
+        };
+      }
+      const saleVariants = usesHeld || !heldSale.variants?.length ? [
+              {value: 0, viaUnrefine: false, steps: []}
+            ] : heldSale.variants;
+      let best = null;
+      saleVariants.forEach((variant) => {
+        const rawSteps = [
+          ...variant.steps, ...steps
+        ];
+        const settled = this.settlePlanShards(rawSteps);
+        const rawSum = rawSteps.reduce((total, step) => total + step.cost, 0);
+        const cost = rawSum + settled.delta;
+        if (!best || cost < best.cost) best = {cost, steps: settled.steps, variant};
+      });
+      const planSteps = best.steps;
+      return {
+        key,
+        gross: best.cost + (usesHeld ? 0 : best.variant.value),
+        cost: best.cost,
+        steps: planSteps,
+        usesHeld,
+        reason: '',
+        saleValue: best.variant.value,
+        viaUnrefine: best.variant.viaUnrefine,
+        mirrors: planSteps.filter((step) => step.type === 'mirror').length,
+        refines: planSteps.filter((step) => step.type === 'refine').length,
+        unrefines: planSteps.filter((step) => step.type === 'unrefine').length
+      };
+    },
+
+    // 方案一：直接买成品；方案二：自己从零按最便宜获取路线做出来。两者的净花费都扣掉卖掉已有装备的到手价。
+    buildMarketPlans(acquisition, heldSale, selection) {
+      const targetHrid = selection.lines[selection.targetLineIndex].hrid;
+      const directPrice = this.getBuyPrice(targetHrid, selection.targetLevel, selection.buyMode);
+      const directSteps =
+        directPrice > 0
+          ? [
+              {
+                type: 'buy',
+                lineIndex: selection.targetLineIndex,
+                level: selection.targetLevel,
+                cost: directPrice
+              }
+            ]
+          : [];
+      const selfEntry = this.getAcquisitionTable(acquisition, selection.targetLineIndex)?.[selection.targetLevel];
+      const selfSteps = selfEntry
+        ? this.describeAcquisition(acquisition, selection.targetLineIndex, selection.targetLevel)
+        : null;
+      return [
+        this.createPlan(
+          PLAN_KEYS.DIRECT,
+          directPrice,
+          directSteps,
+          heldSale,
+          false,
+          'enhancementCostPlanNoMarket'
+        ), this.createPlan(PLAN_KEYS.SELF, selfEntry?.cost ?? Infinity, selfSteps || [], heldSale, false, 'enhancementCostPlanMissingPrice')
+      ];
+    },
+
+    // 方案三：用已有装备当主件，一路上镜子（目标为精炼版时最后再精炼），垫子按最便宜方式获取。
+    buildMainPlan(acquisition, selection) {
+      const {existingLineIndex, existingLevel, targetLineIndex, targetLevel} = selection;
+      const refineAtEnd = existingLineIndex === NORMAL_LINE_INDEX && targetLineIndex === REFINED_LINE_INDEX;
+      if (!(existingLineIndex === targetLineIndex || refineAtEnd)) return null;
+      const steps = [
+        {
+          type: 'keep',
+          lineIndex: existingLineIndex,
+          level: existingLevel,
+          cost: 0
+        }
+      ];
+      let cost = 0;
+      for (let level = existingLevel + 1; level <= targetLevel; level += 1) {
+        const chain = this.buildMirrorStep(acquisition, existingLineIndex, level);
+        if (!chain) return null;
+        steps.push(...chain.steps);
+        cost += chain.cost;
+      }
+      if (refineAtEnd) {
+        if (!acquisition.refinePlan) return null;
+        steps.push(this.createRefineStep(acquisition.refinePlan, REFINED_LINE_INDEX, targetLevel));
+        cost += acquisition.refinePlan.cost;
+      }
+      return {steps, cost};
+    },
+
+    // 方案四：用已有装备当垫子——先（可选）把它升到 heldLevel，再拿它当垫子做出 heldLevel+2，继续升到目标。
+    // 精炼版先解精炼才符合「垫子必须是普通版」的游戏规则。
+    buildPadPlan(acquisition, selection) {
+      const {existingLineIndex, existingLevel, targetLineIndex, targetLevel} = selection;
+      if (!(existingLineIndex >= 0) || targetLevel < existingLevel + 2) return null;
+      const prefixSteps = [];
+      let prefixCost = 0;
+      if (existingLineIndex === REFINED_LINE_INDEX) {
+        if (!acquisition.unrefinePlan) return null;
+        prefixSteps.push(this.createUnrefineStep(acquisition.unrefinePlan, existingLevel));
+        prefixCost -= acquisition.unrefinePlan.credit;
+      }
+      const mainLineIndexes = targetLineIndex === REFINED_LINE_INDEX ? [
+              REFINED_LINE_INDEX, NORMAL_LINE_INDEX
+            ] : [
+              NORMAL_LINE_INDEX
+            ];
+      let best = null;
+      for (let heldLevel = existingLevel; heldLevel <= targetLevel - 2; heldLevel += 1) {
+        const buildSteps = [];
+        let buildCost = 0;
+        let built = true;
+        for (let level = existingLevel + 1; level <= heldLevel; level += 1) {
+          const chain = this.buildMirrorStep(acquisition, NORMAL_LINE_INDEX, level);
+          if (!chain) {
+            built = false;
+            break;
+          }
+          buildSteps.push(...chain.steps);
+          buildCost += chain.cost;
+        }
+        if (!built) continue;
+        mainLineIndexes.forEach((mainLineIndex) => {
+          const mainEntry = this.getAcquisitionTable(acquisition, mainLineIndex)?.[heldLevel + 1];
+          const mainSteps = mainEntry ? this.describeAcquisition(acquisition, mainLineIndex, heldLevel + 1) : null;
+          if (!mainEntry || !mainSteps || acquisition.mirrorPrice <= 0) return;
+          const steps = [
+            {
+              type: 'keep',
+              lineIndex: existingLineIndex,
+              level: existingLevel,
+              cost: 0
+            }, ...prefixSteps, ...buildSteps, ...mainSteps, {
+              type: 'mirror',
+              lineIndex: mainLineIndex,
+              level: heldLevel + 2,
+              fromLevel: heldLevel + 1,
+              padLevel: heldLevel,
+              padIsHeld: true,
+              mirrorPrice: acquisition.mirrorPrice,
+              cost: acquisition.mirrorPrice
+            }
+          ];
+          let cost = prefixCost + buildCost + mainEntry.cost + acquisition.mirrorPrice;
+          let ok = true;
+          for (let level = heldLevel + 3; level <= targetLevel; level += 1) {
+            const chain = this.buildMirrorStep(acquisition, mainLineIndex, level);
+            if (!chain) {
+              ok = false;
+              break;
+            }
+            steps.push(...chain.steps);
+            cost += chain.cost;
+          }
+          if (!ok) return;
+          if (mainLineIndex === NORMAL_LINE_INDEX && targetLineIndex === REFINED_LINE_INDEX) {
+            if (!acquisition.refinePlan) return;
+            steps.push(this.createRefineStep(acquisition.refinePlan, REFINED_LINE_INDEX, targetLevel));
+            cost += acquisition.refinePlan.cost;
+          }
+          if (!best || cost < best.cost) best = {steps, cost};
+        });
+      }
+      return best;
+    },
+
+    // 四个方案都列出来（参考 fastsim 的方案列表）：没有已有装备时只有前两个，
+    // 有已有装备时后两个也参与比较（不可用时给出原因，界面照样列出来）。
+    buildPlans(acquisition, heldSale, selection) {
+      const plans = this.buildMarketPlans(acquisition, heldSale, selection);
+      if (selection.existingLineIndex >= 0) {
+        const main = this.buildMainPlan(acquisition, selection);
+        const pad = this.buildPadPlan(acquisition, selection);
+        plans.push(
+          this.createPlan(
+            PLAN_KEYS.MAIN,
+            main?.cost ?? Infinity,
+            main?.steps || [],
+            heldSale,
+            true,
+            'enhancementCostPlanMissingPrice'
+          ),
+          this.createPlan(
+            PLAN_KEYS.PAD,
+            pad?.cost ?? Infinity,
+            pad?.steps || [],
+            heldSale,
+            true,
+            'enhancementCostPlanMissingPrice'
+          )
+        );
+      }
+      return plans;
+    },
+
+    // 逐级表：从基准+1 到目标，每级给出目标版本的市场买价、最低获取成本与获取方式、最优路线在该级的做法。
+    buildLevelRows(acquisition, bestPlan, selection) {
+      const targetHrid = selection.lines[selection.targetLineIndex].hrid;
+      const table = this.getAcquisitionTable(acquisition, selection.targetLineIndex) || [];
+      const marks = this.buildRouteMarks(bestPlan.steps, selection);
+      const rows = [];
+      // 没有已有装备时从 +1 列起；有已有装备时从它高一级列起（它自己那一行不用再获取）。
+      const firstLevel = Math.max(1, selection.existingLineIndex >= 0 ? selection.existingLevel + 1 : 1);
+      for (let level = firstLevel; level <= selection.targetLevel; level += 1) {
+        const entry = table[level] || null;
+        rows.push({
+          level,
+          marketPrice: this.getBuyPrice(targetHrid, level, selection.buyMode) || null,
+          cost: entry ? entry.cost : null,
+          kind: entry ? entry.kind : null,
+          padLevel: entry?.kind === ACQUISITION_KINDS.MIRROR ? entry.padLevel : null,
+          mark: marks.get(level) || null
+        });
+      }
+      return rows;
+    },
+
+    // 最优路线在每一级做了什么：买入 / 镜子合成 / 精炼 / 解精炼（同级的垫子步骤让位给目标线步骤）。
+    buildRouteMarks(steps, selection) {
+      const marks = new Map();
+      steps.forEach((step) => {
+        if (step.type === 'keep' || step.type === 'sell') return;
+        const lineIndex = step.lineIndex;
+        const level = step.level;
+        const existing = marks.get(level);
+        if (existing && !(lineIndex === selection.targetLineIndex && existing.lineIndex !== selection.targetLineIndex))
+          return;
+        marks.set(level, {type: step.type, lineIndex, cost: step.cost});
+      });
+      return marks;
+    },
+
+    // 不可达时列出缺价：镜子、目标成品、递推里第一个断掉的等级、精炼碎片。
+    collectMissingPrices(acquisition, selection) {
+      const missing = new Map();
+      const push = (itemHrid, level) => {
+        if (!itemHrid || this.getBuyPrice(itemHrid, level, selection.buyMode) > 0) return;
+        const key = `${itemHrid}::${level}`;
+        if (!missing.has(key)) missing.set(key, {itemHrid, level});
+      };
+      push(PHILOSOPHERS_MIRROR_HRID, 0);
+      push(selection.lines[selection.targetLineIndex].hrid, selection.targetLevel);
+      [
+        [
+          NORMAL_LINE_INDEX, acquisition.base
+        ], [
+          REFINED_LINE_INDEX, acquisition.refined
+        ]
+      ].forEach(
+        ([
+          lineIndex, table
+        ]) => {
+          if (!table) return;
+          for (let level = 0; level <= selection.targetLevel; level += 1) {
+            if (table[level]) continue;
+            push(selection.lines[lineIndex].hrid, level);
+            break;
+          }
+        }
+      );
+      if (selection.lines.length > 1 && !acquisition.refinePlan) {
+        const recipe = this.getRefinementRecipe(selection.lines[NORMAL_LINE_INDEX].hrid);
+        (recipe?.inputs || []).forEach((input) => {
+          if (input.itemHrid !== selection.lines[NORMAL_LINE_INDEX].hrid) push(input.itemHrid, 0);
+        });
+      }
+      return [
+        ...missing.values()
+      ];
+    },
+
+    calculate(options) {
+      const {targetHrid, targetLevel, existingHrid = '', existingLevel = 0, buyMode, sellMode} = options;
+      // 目标装备是必选项，两条线（普通 / 精炼）由它决定；已有装备只能是目标物品本身或它的普通版。
+      const lineInfo = this.getLineInfo(targetHrid);
+      const lines = this.createLines(lineInfo);
+      const targetLineIndex = lines.findIndex((line) => line.hrid === targetHrid);
+      const existingLineIndex = existingHrid ? lines.findIndex((line) => line.hrid === existingHrid) : -1;
+      const selection = {
+        targetHrid,
+        targetLevel,
+        existingHrid,
+        existingLevel,
+        buyMode,
+        sellMode,
+        lines,
+        targetLineIndex,
+        existingLineIndex
+      };
+      if (targetLineIndex < 0) return {status: 'invalid', reason: 'item'};
+      // 已有装备只能是目标物品本身或它的普通版：目标为普通版时不允许拿精炼版当已有装备。
+      if (existingHrid && existingLineIndex < 0) return {status: 'invalid', reason: 'existing', ...selection};
+      if (existingLineIndex >= 0 && existingLineIndex !== targetLineIndex && existingLineIndex !== NORMAL_LINE_INDEX) {
+        return {status: 'invalid', reason: 'existing', ...selection};
+      }
+      if (existingLineIndex >= 0 && existingLevel > targetLevel)
+        return {status: 'invalid', reason: 'level', ...selection};
+
+      const acquisition = this.buildAcquisition(lines, selection);
+      const heldSale = this.buildExistingSaleVariants(lines, acquisition, selection);
+      const notes = [];
+      if (existingLineIndex >= 0 && heldSale.value <= 0) notes.push({key: 'enhancementCostExistingNoSell'});
+      const plans = this.buildPlans(acquisition, heldSale, selection);
+      const available = plans.filter((plan) => Number.isFinite(plan.cost));
+      if (!available.length) {
+        return {
+          status: 'unreachable',
+          missing: this.collectMissingPrices(acquisition, selection),
+          notes,
+          plans,
+          ...selection
+        };
+      }
+      const best = available.reduce((left, right) => (right.cost < left.cost ? right : left));
+      const direct = plans.find((plan) => plan.key === PLAN_KEYS.DIRECT);
+      const directAvailable = Number.isFinite(direct.cost);
+      return {
+        status: 'ok',
+        plans,
+        bestKey: best.key,
+        bestCost: best.cost,
+        route: best.steps,
+        routePlan: best,
+        heldSale,
+        directBuy: directAvailable ? {price: direct.gross, sell: direct.saleValue, net: direct.cost} : null,
+        savings: directAvailable ? direct.cost - best.cost : null,
+        levelRows: this.buildLevelRows(acquisition, best, selection),
+        notes,
+        ...selection
+      };
+    }
+  };
+
+  // enhancement-cost-calculator
+  class EnhancementCostCalculator {
+    constructor(ctx, marketService) {
+      this.ctx = ctx;
+      this.marketService = marketService;
+      this.recipeCache = null;
+      this.unrefineCache = null;
+      Object.assign(this, enhancementCostDataMethods, enhancementCostPriceMethods, enhancementCostAcquisitionMethods);
+    }
+  }
+
+  var MST_ENHANCEMENT_COST_CSS = String.raw`.mst-enhancement-cost{position:relative;display:flex;min-height:0;box-sizing:border-box;flex-direction:column;gap:.65rem;color:var(--color-text-dark-mode, #e7e7e7);font-family:Roboto,Helvetica,Arial,sans-serif;font-size:var(--font-size-base, .875rem);text-align:left}
+.mst-enhancement-cost.mst-picker-open{min-height:min(31rem,calc(100vh - 10rem));min-height:min(31rem,calc(100dvh - 10rem));max-height:calc(100vh - 10rem);max-height:calc(100dvh - 10rem);overflow:hidden}
+.mst-enhancement-cost-line-hint{color:var(--color-neutral-400, #999baa);font-size:var(--font-size-tiny, .6875rem)}
+.mst-enhancement-cost-controls[hidden],.mst-enhancement-cost-line-hint[hidden]{display:none}
+.mst-enhancement-cost-controls{display:flex;min-width:0;grid-column:2;grid-row:2;align-items:flex-end;gap:.4rem}
+.mst-enhancement-cost-modes{display:flex;justify-content:center;gap:.65rem}
+.mst-enhancement-cost-mode{display:grid;width:8rem;min-width:0;grid-template-rows:auto 1fr;gap:.35rem;color:var(--color-neutral-200, #d2d3dc);font-weight:var(--font-weight-semibold, 600);text-align:center}
+.mst-enhancement-cost-mode select{width:100%;min-width:0;height:var(--button-height-normal, 1.875rem);box-sizing:border-box;padding:.2rem .45rem;border:1px solid var(--color-midnight-100, #454771);border-radius:var(--radius-sm, .25rem);background:var(--color-midnight-700, #20212f);color:var(--color-text-dark-mode, #e7e7e7);font:inherit}
+.mst-enhancement-cost select:focus{border-color:var(--color-space-300, #98a7e9);outline:none}
+.mst-enhancement-cost-results,.mst-enhancement-cost-result{display:flex;min-width:0;flex-direction:column;gap:.6rem}
+.mst-enhancement-cost-hint{padding:.5rem .6rem;border:1px dashed var(--color-midnight-100, #454771);border-radius:var(--radius-sm, .25rem);color:var(--color-neutral-400, #999baa);font-size:var(--font-size-small, .75rem)}
+.mst-enhancement-cost-warning{border-left:3px solid var(--color-orange-400, #f0a24b);color:var(--color-text-dark-mode, #e7e7e7)}
+.mst-enhancement-cost-warning small{display:block;margin-top:.25rem;color:var(--color-neutral-300, #b9bbca)}
+.mst-enhancement-cost-section{display:flex;min-width:0;flex-direction:column;gap:.3rem}
+.mst-enhancement-cost-section-title{display:flex;align-items:baseline;gap:.4rem;color:var(--color-neutral-300, #b9bbca);font-size:var(--font-size-small, .75rem)}
+.mst-enhancement-cost-section-title small{color:var(--color-neutral-400, #999baa);font-size:var(--font-size-tiny, .6875rem)}
+.mst-enhancement-cost-route{display:flex;margin:0;padding:0;flex-direction:column;gap:.25rem;list-style:none}
+.mst-enhancement-cost-route li{display:grid;grid-template-columns:1.5rem 3.5rem minmax(0,1fr) 5.5rem 5.5rem;align-items:center;gap:.35rem;padding:.3rem .45rem;border:1px solid var(--color-midnight-100, #454771);border-radius:var(--radius-sm, .25rem);background:var(--color-midnight-600, #27283b)}
+.mst-enhancement-cost-route-gain{border-color:var(--color-green-400, #5ac28b)}
+.mst-enhancement-cost-route-index{color:var(--color-neutral-400, #999baa);font-size:var(--font-size-tiny, .6875rem);text-align:center}
+.mst-enhancement-cost-route-op{color:var(--color-space-300, #98a7e9);font-size:var(--font-size-small, .75rem);white-space:nowrap}
+.mst-enhancement-cost-route-desc{display:flex;min-width:0;flex-direction:column;gap:.1rem}
+.mst-enhancement-cost-route-desc strong{overflow-wrap:anywhere;font-size:var(--font-size-small, .75rem);font-weight:400}
+.mst-enhancement-cost-route-desc small{color:var(--color-neutral-300, #b9bbca);font-size:var(--font-size-tiny, .6875rem);overflow-wrap:anywhere}
+.mst-enhancement-cost-route-cost,.mst-enhancement-cost-route-total{display:flex;flex-direction:column;align-items:flex-end;gap:.1rem;text-align:right}
+.mst-enhancement-cost-route-cost small,.mst-enhancement-cost-route-total small{color:var(--color-neutral-400, #999baa);font-size:var(--font-size-tiny, .6875rem)}
+.mst-enhancement-cost-route-cost strong,.mst-enhancement-cost-route-total strong{font-size:var(--font-size-small, .75rem)}
+.mst-enhancement-cost-table-wrap{max-height:16rem;overflow:auto;border:1px solid var(--color-midnight-100, #454771);border-radius:var(--radius-sm, .25rem);scrollbar-color:var(--color-space-300, #98a7e9) transparent;scrollbar-width:thin}
+.mst-enhancement-cost-table{width:100%;border-collapse:collapse;font-size:var(--font-size-small, .75rem)}
+.mst-enhancement-cost-table th,.mst-enhancement-cost-table td{padding:.28rem .45rem;border-bottom:1px solid var(--color-midnight-100, #454771);text-align:right;white-space:nowrap}
+.mst-enhancement-cost-table thead th{position:sticky;top:0;background:var(--color-midnight-700, #20212f);color:var(--color-neutral-300, #b9bbca);font-weight:400}
+.mst-enhancement-cost-table tbody th{color:var(--color-text-dark-mode, #e7e7e7);font-weight:400;text-align:left}
+.mst-enhancement-cost-table tbody td:nth-child(4),.mst-enhancement-cost-table thead th:nth-child(4),.mst-enhancement-cost-table tbody td:last-child,.mst-enhancement-cost-table thead th:last-child{text-align:left;white-space:normal}
+.mst-enhancement-cost-table tbody tr:last-child th,.mst-enhancement-cost-table tbody tr:last-child td{border-bottom:0}
+.mst-enhancement-cost-plans-wrap{max-height:none}
+.mst-enhancement-cost-plans tbody td{text-align:right}
+.mst-enhancement-cost-plans tbody td:last-child,.mst-enhancement-cost-plans thead th:last-child{text-align:left}
+.mst-enhancement-cost-plan-best th,.mst-enhancement-cost-plan-best td{color:var(--color-green-400, #5ac28b)}
+.mst-enhancement-cost-summary{display:grid;grid-template-columns:repeat(auto-fit,minmax(7.5rem,1fr));gap:.35rem}
+.mst-enhancement-cost-metric{display:flex;min-width:0;flex-direction:column;gap:.15rem;padding:.35rem .45rem;border:1px solid var(--color-midnight-100, #454771);border-radius:var(--radius-sm, .25rem);background:var(--color-midnight-600, #27283b)}
+.mst-enhancement-cost-metric small{color:var(--color-neutral-300, #b9bbca);font-size:var(--font-size-tiny, .6875rem)}
+.mst-enhancement-cost-metric strong{overflow-wrap:anywhere;font-size:var(--font-size-small, .75rem)}
+.mst-enhancement-cost-notes{display:flex;flex-direction:column;gap:.15rem}
+.mst-enhancement-cost-note{color:var(--color-neutral-400, #999baa);font-size:var(--font-size-tiny, .6875rem)}
+.mst-enhancement-cost-missing{margin:0;padding-left:1.1rem;color:var(--color-neutral-300, #b9bbca);font-size:var(--font-size-tiny, .6875rem)}`;
+
+  // 目标装备是必选项、放在第一位；已有装备可选（'' = 不用），只能是目标物品本身或它的普通版。
+  const LEVEL_OPTIONS = Array.from({length: MAX_ENHANCEMENT_LEVEL + 1}, (_, index) => index);
+  const MARKET_TAX_PERCENT = MARKET_TAX_RATE * 100;
+  const PICKER_ROLES = Object.freeze({TARGET: 'target', EXISTING: 'existing'});
+  // 生活工具在类型下拉里合并成一项，放在所有部位之后。
+  const PICKER_TOOL_TYPE = '__tools__';
+  // 获取方式 → 文案键；垫子等级另外拼在括号里。
+  const KIND_MESSAGE_KEYS = {
+    [ACQUISITION_KINDS.MARKET]: 'enhancementCostKindMarket',
+    [ACQUISITION_KINDS.MIRROR]: 'enhancementCostKindMirror',
+    [ACQUISITION_KINDS.REFINE]: 'enhancementCostKindRefine',
+    [ACQUISITION_KINDS.UNREFINE]: 'enhancementCostKindUnrefine'
+  };
+  const PLAN_MESSAGE_KEYS = {
+    [PLAN_KEYS.DIRECT]: 'enhancementCostPlanDirect',
+    [PLAN_KEYS.SELF]: 'enhancementCostPlanSelf',
+    [PLAN_KEYS.MAIN]: 'enhancementCostPlanMain',
+    [PLAN_KEYS.PAD]: 'enhancementCostPlanPad'
+  };
+  const STEP_MESSAGE_KEYS = {
+    mirror: 'enhancementCostOpCombine',
+    refine: 'enhancementCostOpRefine',
+    unrefine: 'enhancementCostOpUnrefine',
+    buy: 'enhancementCostOpBuy'
+  };
+
+  function isSkillingToolType(typeHrid) {
+    return String(typeHrid || '').endsWith('_tool');
+  }
+
+  function matchesPickerType(itemDetail, typeValue) {
+    const typeHrid = itemDetail?.equipmentDetail?.type;
+    if (typeValue === PICKER_TOOL_TYPE) return isSkillingToolType(typeHrid);
+    return typeHrid === typeValue;
+  }
+
+  // 这些方法会并到 Feature 实例上（视图里按 feature.xxx() 调用），因此统一用 this.ctx 取服务。
+  const enhancementCostFormatters = {
+    getItemIconHref(itemHrid) {
+      const {utils} = this.ctx;
+      const sprite = utils.getSpriteUrl('items') || '/static/media/items_sprite.f58c9476.svg';
+      return `${sprite}#${utils.substrLastSlash(itemHrid)}`;
+    },
+
+    getItemName(itemHrid) {
+      const {DataHub} = this.ctx;
+      return DataHub.resolveItemName(itemHrid);
+    },
+
+    getItemDetail(itemHrid) {
+      return this.calculator.getItemMap()[itemHrid] || null;
+    },
+
+    getItemSubtitle(itemHrid) {
+      const {DataHub} = this.ctx;
+      const detail = this.getItemDetail(itemHrid);
+      if (!detail) return '';
+      const typeName = DataHub.getLocalizedGameName('equipmentTypeNames', detail.equipmentDetail?.type);
+      return `${typeName} · Lv.${Number(detail.itemLevel || 0)}`;
+    },
+
+    formatCoins(value) {
+      const {utils} = this.ctx;
+      if (value == null || !Number.isFinite(value)) return '—';
+      return utils.formatCompactNumber(value, 3);
+    },
+
+    formatItemLabel(itemHrid, level) {
+      return `${this.getItemName(itemHrid)} +${level}`;
+    },
+
+    formatCount(value) {
+      const {utils} = this.ctx;
+      return utils.formatCompactNumber(Number(value) || 0, 0);
+    },
+
+    // 路线步骤里的版本标签：普通线显示「基础版」，精炼线显示「精炼版」。
+    getLineLabel(result, lineIndex) {
+      const {i18n} = this.ctx;
+      const line = result?.lines?.[lineIndex];
+      return i18n.t(line?.key === 'refined' ? 'enhancementCostLineRefined' : 'enhancementCostLineOriginal');
+    },
+
+    getLineHrid(result, lineIndex) {
+      return result?.lines?.[lineIndex]?.hrid || '';
+    }
+  };
+
+  // enhancement-cost-selection-methods
+  const enhancementCostSelectionMethods = {
+    // 已有装备的候选：不用（''）+ 目标的普通版 + 目标物品本身（目标本身是普通版时只有两项）。
+    // 顺序按游戏的物品顺序（itemDetailMap.sortIndex，普通版在精炼版之前），与目标面板的卡片一致。
+    getExistingOptions() {
+      if (!this.targetHrid) return [];
+      const {normalHrid} = this.calculator.getLineInfo(this.targetHrid);
+      const options = [
+        {hrid: '', noItem: true}
+      ];
+      if (normalHrid !== this.targetHrid) options.push({hrid: normalHrid, labelKey: 'enhancementCostLineOriginal'});
+      options.push({
+        hrid: this.targetHrid,
+        labelKey: this.targetHrid === normalHrid ? 'enhancementCostLineOriginal' : 'enhancementCostLineRefined'
+      });
+      return options;
+    },
+
+    getExistingLevelOptions() {
+      return LEVEL_OPTIONS.filter((level) => level <= this.targetLevel);
+    },
+
+    getResult() {
+      if (!this.targetHrid) return null;
+      // 同一次选择与同一份市场数据只算一次；市场数据重新加载后由调用方清空缓存。
+      const cacheKey = [
+        this.targetHrid, this.targetLevel, this.existingHrid, this.existingLevel, this.buyMode,
+        this.sellMode, this.marketService?.marketTimestamp || 0
+      ].join('|');
+      if (this.resultCache?.key === cacheKey) return this.resultCache.result;
+      const result = this.calculator.calculate({
+        targetHrid: this.targetHrid,
+        targetLevel: this.targetLevel,
+        existingHrid: this.existingHrid,
+        existingLevel: this.existingLevel,
+        buyMode: this.buyMode,
+        sellMode: this.sellMode
+      });
+      this.resultCache = {key: cacheKey, result};
+      return result;
+    },
+
+    // 换目标后，已有装备只有还在候选里才保留，否则回到「不用」；等级不能高于目标。
+    syncExistingSelection() {
+      const options = this.getExistingOptions();
+      if (!options.some((option) => option.hrid === this.existingHrid)) this.existingHrid = '';
+      if (this.existingLevel > this.targetLevel) this.existingLevel = this.targetLevel;
+    },
+
+    selectTargetItem(itemHrid) {
+      this.targetHrid = itemHrid || '';
+      this.syncExistingSelection();
+      this.closePicker();
+    },
+
+    selectExistingItem(itemHrid) {
+      this.existingHrid = itemHrid || '';
+      this.syncExistingSelection();
+      this.closePicker();
+    },
+
+    setTargetLevel(value) {
+      const level = Number(value);
+      if (!Number.isFinite(level)) return;
+      this.targetLevel = Math.min(Math.max(0, Math.trunc(level)), MAX_ENHANCEMENT_LEVEL);
+      this.syncExistingSelection();
+      this.render();
+    },
+
+    setExistingLevel(value) {
+      const level = Number(value);
+      if (!Number.isFinite(level)) return;
+      this.existingLevel = Math.min(Math.max(0, Math.trunc(level)), this.targetLevel);
+      this.render();
+    },
+
+    setPriceMode(kind, value) {
+      if (!Object.values(PRICE_MODES).includes(value)) return;
+      if (kind === 'buy') this.buyMode = value;
+      else this.sellMode = value;
+      this.render();
+    },
+
+    // 两个选择器共用同一个面板：目标列出全部可强化装备，已有装备只列「不用 / 目标物品 / 它的普通版」。
+    openPicker(role) {
+      if (role === PICKER_ROLES.EXISTING && !this.targetHrid) return;
+      this.pickerRole = role;
+      this.pickerQuery = '';
+      this.pickerType = '';
+      this.render();
+      this.root?.querySelector('.mst-picker-search')?.focus();
+    },
+
+    closePicker() {
+      this.pickerRole = '';
+      this.pickerQuery = '';
+      this.pickerType = '';
+      this.render();
+    },
+
+    setPickerType(value) {
+      this.pickerType = value;
+      this.render();
+    },
+
+    setPickerQuery(value) {
+      this.pickerQuery = value;
+      this.render();
+    },
+
+    getPickerOptions() {
+      if (this.pickerRole === PICKER_ROLES.EXISTING) {
+        return this.getExistingOptions().map((option) => ({
+          hrid: option.hrid,
+          noItem: Boolean(option.noItem),
+          labelKey: option.labelKey,
+          detail: option.hrid ? this.getItemDetail(option.hrid) : null
+        }));
+      }
+      const items = this.calculator.getEnhanceableItems();
+      const typeHrid = this.pickerType;
+      const query = String(this.pickerQuery || '')
+        .trim()
+        .toLowerCase();
+      return items.filter((item) => {
+        if (typeHrid && !matchesPickerType(item.detail, typeHrid)) return false;
+        if (!query) return true;
+        const name = String(item.detail.name || '').toLowerCase();
+        const localName = String(this.getItemName(item.hrid) || '').toLowerCase();
+        return name.includes(query) || localName.includes(query) || item.hrid.toLowerCase().includes(query);
+      });
+    },
+
+    // 类型下拉顺序取自游戏 equipmentTypeDetailMap 的 sortIndex；生活工具（*_tool）合并成一个「工具」项放最后。
+    getPickerTypeOptions() {
+      const {DataHub} = this.ctx;
+      const available = new Set(
+        this.calculator
+          .getEnhanceableItems()
+          .map((item) => item.detail.equipmentDetail?.type)
+          .filter(Boolean)
+      );
+      const typeMap = DataHub.getClientDataMap('equipmentTypeDetailMap') || {};
+      const options = Object.values(typeMap)
+        .filter((detail) => detail?.hrid && available.has(detail.hrid) && !isSkillingToolType(detail.hrid))
+        .sort((left, right) => Number(left.sortIndex || 999) - Number(right.sortIndex || 999))
+        .map((detail) => ({
+          value: detail.hrid,
+          label: DataHub.getLocalizedGameName('equipmentTypeNames', detail.hrid)
+        }));
+      const hasTools = [
+        ...available
+      ].some(isSkillingToolType);
+      if (hasTools) options.push({value: PICKER_TOOL_TYPE, label: this.ctx.i18n.t('enhancementCostToolType')});
+      return options;
+    },
+
+    // 路线每一步转成界面文案：操作名 + 消耗描述 + 产出描述。
+    describeStep(step, result) {
+      const {i18n} = this.ctx;
+      const lineHrid = (lineIndex) => this.getLineHrid(result, lineIndex);
+      const label = (lineIndex, level) => this.formatItemLabel(lineHrid(lineIndex), level);
+      const mirrorLabel = `${this.getItemName(PHILOSOPHERS_MIRROR_HRID)} ×1`;
+      if (step.type === 'keep') {
+        return {op: i18n.t('enhancementCostStepKeep'), desc: label(step.lineIndex, step.level), result: ''};
+      }
+      if (step.type === 'sell') {
+        return {
+          op: i18n.t('enhancementCostStepSellOp'),
+          desc: label(step.lineIndex, step.level),
+          result: i18n.t('enhancementCostStepSellResult', this.formatCoins(-step.cost))
+        };
+      }
+      if (step.type === 'buy') {
+        return {op: i18n.t('enhancementCostOpBuy'), desc: label(step.lineIndex, step.level), result: ''};
+      }
+      if (step.type === 'mirror') {
+        const padText = step.padIsHeld
+          ? i18n.t('enhancementCostStepHeldPad', label(0, step.padLevel))
+          : i18n.t('enhancementCostStepPad', label(0, step.padLevel));
+        return {
+          op: i18n.t('enhancementCostOpCombine'),
+          desc: `${padText} + ${mirrorLabel}`,
+          result: label(step.lineIndex, step.level)
+        };
+      }
+      if (step.type === 'refine') {
+        const shardCount = step.shardCount ?? step.plan.inputs[0]?.count ?? 0;
+        const shardName = this.getItemName(step.shardHrid || step.plan.inputs[0]?.itemHrid || '');
+        // 已被解精炼顶掉的量写在括号里，花费只算实际要买的部分。
+        const coveredText =
+          step.shardCovered > 0 ? i18n.t('enhancementCostStepShardCovered', this.formatCount(step.shardCovered)) : '';
+        return {
+          op: i18n.t('enhancementCostOpRefine'),
+          desc: `${shardName} ×${this.formatCount(shardCount)}${coveredText}`,
+          result: label(step.lineIndex, step.level)
+        };
+      }
+      const shardNotes = [];
+      if (step.shardKept > 0) shardNotes.push(i18n.t('enhancementCostStepShardKept', this.formatCount(step.shardKept)));
+      if (step.shardSurplus > 0)
+        shardNotes.push(i18n.t('enhancementCostStepShardSold', this.formatCount(step.shardSurplus)));
+      return {
+        op: i18n.t('enhancementCostOpUnrefine'),
+        desc: label(step.fromLineIndex, step.level),
+        result: `${i18n.t(
+        'enhancementCostStepUnrefineResult',
+        this.getItemName(step.plan.shardHrid),
+        this.formatCount(step.shardReturned ?? step.plan.shardCount)
+      )}${shardNotes.length ? `（${shardNotes.join('，')}）` : ''}`
+      };
+    },
+
+    // 方案的名字：不用已有装备的两条（直接买 / 自己做）标明已经把已有装备卖掉。
+    describePlan(plan) {
+      const {i18n} = this.ctx;
+      const label = i18n.t(PLAN_MESSAGE_KEYS[plan.key] || 'enhancementCostPlanSelf');
+      return plan.usesHeld ? label : i18n.t('enhancementCostPlanSellPrefix', label);
+    },
+
+    // 逐级表的「获取方式」列：来源名称 + 镜子合成的垫子等级。
+    describeAcquisitionKind(row) {
+      const {i18n} = this.ctx;
+      const key = KIND_MESSAGE_KEYS[row.kind];
+      if (!key) return '—';
+      const label = i18n.t(key);
+      return row.padLevel != null ? `${label} · ${i18n.t('enhancementCostKindPad', `+${row.padLevel}`)}` : label;
+    }
+  };
+
+  // enhancement-cost-view
+  const enhancementCostView = {
+    // 选择器卡片：图标 + 名称 + 强化等级，点击卡片打开物品选择面板（没有已有装备时它显示为可选）。
+    renderSelectorCard(feature, role) {
+      const {TemplateRenderer, i18n} = feature.ctx;
+      const isTarget = role === PICKER_ROLES.TARGET;
+      const itemHrid = isTarget ? feature.targetHrid : feature.existingHrid;
+      const detail = itemHrid ? feature.getItemDetail(itemHrid) : null;
+      const levelOptions = isTarget ? LEVEL_OPTIONS : feature.getExistingLevelOptions();
+      const level = isTarget ? feature.targetLevel : feature.existingLevel;
+      const selectable = isTarget || Boolean(feature.targetHrid);
+      const placeholder = isTarget
+        ? i18n.t('enhancementCostChooseTarget')
+        : feature.targetHrid
+          ? i18n.t('enhancementCostExistingNone')
+          : i18n.t('enhancementCostChooseTargetFirst');
+      const showControls = Boolean(detail) && levelOptions.length > 0;
+      return TemplateRenderer.html`
+  <div
+    role="button"
+    tabindex="0"
+    aria-label=${placeholder}
+    class=${`mst-item-select-button${showControls ? '' : ' mst-item-select-empty'}${selectable ? '' : ' mst-item-select-static'}`}
+    @click=${(event) => {
+      if (selectable && !event.target.closest('.mst-item-select-level')) feature.openPicker(role);
+    }}
+    @keydown=${(event) => {
+      if (
+        selectable &&
+        !event.target.closest('.mst-item-select-level') &&
+        (event.key === 'Enter' || event.key === ' ')
+      ) {
+        event.preventDefault();
+        feature.openPicker(role);
+      }
+    }}>
+    <span class="mst-item-icon" .hidden=${!itemHrid}>
+      <svg aria-hidden="true"><use href=${itemHrid ? feature.getItemIconHref(itemHrid) : ''}></use></svg>
+    </span>
+    <span class="mst-item-summary" .hidden=${!itemHrid}>
+      <strong>${itemHrid ? feature.getItemName(itemHrid) : ''}</strong>
+      <small>${feature.getItemSubtitle(itemHrid)}</small>
+    </span>
+    <span class="mst-enhancement-cost-controls" .hidden=${!showControls}>
+      <label class="mst-item-select-level">
+        <span>${i18n.t('enhancementLevel')}</span>
+        <select
+          .value=${String(level)}
+          @change=${(event) => (isTarget ? feature.setTargetLevel(event.currentTarget.value) : feature.setExistingLevel(event.currentTarget.value))}>
+          ${levelOptions.map(
+            (option) =>
+              TemplateRenderer.html`<option value=${String(option)} .selected=${option === level}>+${option}</option>`
+          )}
+        </select>
+      </label>
+    </span>
+    <span class="mst-item-placeholder" .hidden=${Boolean(itemHrid) && levelOptions.length > 0}>${placeholder}</span>
+  </div>`;
+    },
+
+    renderExistingHint(feature) {
+      const {TemplateRenderer, i18n} = feature.ctx;
+      // 常驻节点 + hidden：插槽里不能用空模板与真实模板来回替换（会踩 uhtml 补丁替换的坑）。
+      const show = Boolean(feature.targetHrid);
+      return TemplateRenderer.html`
+  <small class="mst-enhancement-cost-line-hint" .hidden=${!show}>
+    ${i18n.t('enhancementCostExistingHint')}
+  </small>`;
+    },
+
+    renderPriceMode(feature, kind) {
+      const {TemplateRenderer, i18n} = feature.ctx;
+      const value = kind === 'buy' ? feature.buyMode : feature.sellMode;
+      const modes = [
+        {
+          value: PRICE_MODES.AUTO,
+          labelKey: 'enhancementCostPriceAuto',
+          hintKey: 'enhancementCostPriceAutoHint'
+        }, {value: PRICE_MODES.ASK, labelKey: 'enhancementCostPriceAsk', hintKey: 'enhancementCostPriceAskHint'}, {
+          value: PRICE_MODES.BID,
+          labelKey: 'enhancementCostPriceBid',
+          hintKey: 'enhancementCostPriceBidHint'
+        }
+      ];
+      const active = modes.find((mode) => mode.value === value) || modes[0];
+      return TemplateRenderer.html`
+  <label class="mst-enhancement-cost-mode" title=${i18n.t(active.hintKey)}>
+    <span>${i18n.t(kind === 'buy' ? 'enhancementCostBuyMode' : 'enhancementCostSellMode')}</span>
+    <select
+      .value=${value}
+      @change=${(event) => feature.setPriceMode(kind, event.currentTarget.value)}>
+      ${modes.map(
+        (mode) =>
+          TemplateRenderer.html`<option value=${mode.value} .selected=${mode.value === value}>${i18n.t(mode.labelKey)}</option>`
+      )}
+    </select>
+  </label>`;
+    },
+
+    renderPicker(feature) {
+      const {TemplateRenderer, i18n} = feature.ctx;
+      // 面板常驻、用 hidden 开关：收起状态返回空模板会让 uhtml 在补丁替换时出错（已由浏览器验证暴露）。
+      const isOpen = Boolean(feature.pickerRole);
+      const isExistingPicker = feature.pickerRole === PICKER_ROLES.EXISTING;
+      const options = isOpen ? feature.getPickerOptions() : [];
+      const typeOptions = isOpen && !isExistingPicker ? feature.getPickerTypeOptions() : [];
+      const selectedHrid = isExistingPicker ? feature.existingHrid : feature.targetHrid;
+      return TemplateRenderer.html`
+  <div class="mst-picker" .hidden=${!isOpen}>
+    <div class="mst-picker-panel">
+      <div class="mst-picker-filters" .hidden=${isExistingPicker}>
+        <select
+          class="mst-picker-type"
+          .value=${feature.pickerType}
+          @change=${(event) => feature.setPickerType(event.currentTarget.value)}>
+          <option value="">${i18n.t('allEquipmentSlots')}</option>
+          ${typeOptions.map(
+            (entry) =>
+              TemplateRenderer.html`<option value=${entry.value} .selected=${entry.value === feature.pickerType}>${entry.label}</option>`
+          )}
+        </select>
+        <input
+          class="mst-picker-search"
+          type="search"
+          autocomplete="off"
+          placeholder=${i18n.t('searchEquipment')}
+          .value=${feature.pickerQuery}
+          @input=${(event) => feature.setPickerQuery(event.currentTarget.value)}>
+      </div>
+      <div class="mst-picker-options">
+        ${options.map((item) => {
+          const selected = item.hrid === selectedHrid;
+          return TemplateRenderer.html`
+        <button
+          type="button"
+          class=${`mst-picker-option${selected ? ' mst-picker-option-selected' : ''}`}
+          title=${item.noItem ? i18n.t('enhancementCostExistingNoneHint') : feature.getItemName(item.hrid)}
+          .disabled=${selected}
+          @click=${() => (isExistingPicker ? feature.selectExistingItem(item.hrid) : feature.selectTargetItem(item.hrid))}>
+          <span class="mst-picker-level" .hidden=${!item.labelKey}>${item.labelKey ? i18n.t(item.labelKey) : ''}</span>
+          <span class="mst-picker-item-level" .hidden=${!!item.noItem}>Lv.${Number(item.detail?.itemLevel || 0)}</span>
+          <span class="mst-picker-none" .hidden=${!item.noItem}>${i18n.t('enhancementCostExistingNone')}</span>
+          <svg aria-hidden="true" .hidden=${!!item.noItem}><use href=${item.hrid ? feature.getItemIconHref(item.hrid) : ''}></use></svg>
+          <strong .hidden=${!!item.noItem}>${item.hrid ? feature.getItemName(item.hrid) : ''}</strong>
+        </button>`;
+        })}
+        <div class="mst-picker-empty" .hidden=${options.length > 0}>${i18n.t('noEquipmentMatch')}</div>
+      </div>
+      <button type="button" class="mst-picker-close" @click=${() => feature.closePicker()}>
+        ${i18n.t('close')}
+      </button>
+    </div>
+  </div>`;
+    },
+
+    renderRoute(feature, result) {
+      const {TemplateRenderer, i18n} = feature.ctx;
+      const steps = [];
+      let subtotal = 0;
+      result.route.forEach((step, index) => {
+        subtotal += step.cost;
+        const description = feature.describeStep(step, result);
+        const showCost = step.type !== 'keep';
+        steps.push(TemplateRenderer.html`
+    <li class=${step.cost < 0 ? 'mst-enhancement-cost-route-gain' : ''}>
+      <span class="mst-enhancement-cost-route-index">${index + 1}</span>
+      <span class="mst-enhancement-cost-route-op">${description.op}</span>
+      <span class="mst-enhancement-cost-route-desc">
+        <strong>${description.desc}</strong>
+        <small .hidden=${!description.result}>→ ${description.result}</small>
+      </span>
+      <span class="mst-enhancement-cost-route-cost">
+        <small>${i18n.t('enhancementCostStepCost')}</small>
+        <strong>${showCost ? feature.formatCoins(step.cost) : '—'}</strong>
+      </span>
+      <span class="mst-enhancement-cost-route-total">
+        <small>${i18n.t('enhancementCostStepTotal')}</small>
+        <strong>${feature.formatCoins(subtotal)}</strong>
+      </span>
+    </li>`);
+      });
+      return TemplateRenderer.html`
+  <div class="mst-enhancement-cost-section">
+    <div class="mst-enhancement-cost-section-title">
+      ${i18n.t('enhancementCostRouteTitle')}
+      <small>${feature.describePlan(result.routePlan)}</small>
+    </div>
+    <ol class="mst-enhancement-cost-route">${steps}</ol>
+  </div>`;
+    },
+
+    // 全部方案：列出每个候选做法的净花费、用到的镜子与精炼次数，最佳方案高亮并标「最佳」。
+    renderPlans(feature, result) {
+      const {TemplateRenderer, i18n} = feature.ctx;
+      const rows = result.plans.map((plan) => {
+        const available = Number.isFinite(plan.cost);
+        const isBest = plan.key === result.bestKey;
+        const note = isBest ? i18n.t('enhancementCostPlanBest') : available ? '' : i18n.t(plan.reason);
+        return TemplateRenderer.html`
+    <tr class=${isBest ? 'mst-enhancement-cost-plan-best' : ''}>
+      <th scope="row">${feature.describePlan(plan)}</th>
+      <td>${available ? feature.formatCoins(plan.cost) : '—'}</td>
+      <td>${plan.mirrors || '—'}</td>
+      <td>${plan.refines || '—'}</td>
+      <td>${note}</td>
+    </tr>`;
+      });
+      return TemplateRenderer.html`
+  <div class="mst-enhancement-cost-section">
+    <div class="mst-enhancement-cost-section-title">
+      ${i18n.t('enhancementCostPlansTitle')}
+      <small>${i18n.t('enhancementCostPlansHint')}</small>
+    </div>
+    <div class="mst-enhancement-cost-table-wrap mst-enhancement-cost-plans-wrap">
+      <table class="mst-enhancement-cost-table mst-enhancement-cost-plans">
+        <thead><tr>
+            <th>${i18n.t('enhancementCostColumnPlan')}</th>
+            <th title=${i18n.t('enhancementCostColumnPlanCostHint')}>${i18n.t('enhancementCostColumnPlanCost')}</th>
+            <th>${i18n.t('enhancementCostColumnMirrors')}</th>
+            <th>${i18n.t('enhancementCostColumnRefines')}</th>
+            <th>${i18n.t('enhancementCostColumnNote')}</th>
+          </tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div>
+  </div>`;
+    },
+
+    // 逐级表的「最优路线」列：最优路线在该等级做的是哪一步（合成 / 买入 / 精炼 / 解精炼）。
+    describeMark(feature, row, result) {
+      const {i18n} = feature.ctx;
+      const mark = row.mark;
+      if (!mark) return i18n.t('enhancementCostOpNotUsed');
+      const opText = i18n.t(STEP_MESSAGE_KEYS[mark.type] || 'enhancementCostOpBuy');
+      if (mark.lineIndex === result.targetLineIndex) return opText;
+      return `${opText} · ${feature.getLineLabel(result, mark.lineIndex)}`;
+    },
+
+    renderLevelTable(feature, result) {
+      const {TemplateRenderer, i18n} = feature.ctx;
+      const rows = result.levelRows.map((row) => {
+        // 自己做比市场买便宜时用绿色标出（市场缺价时不比较）。
+        const cheaper = row.cost != null && row.marketPrice != null && row.cost < row.marketPrice;
+        return TemplateRenderer.html`
+    <tr>
+      <th scope="row">+${row.level}</th>
+      <td>${feature.formatCoins(row.marketPrice)}</td>
+      <td class=${cheaper ? 'mst-positive' : ''}>${feature.formatCoins(row.cost)}</td>
+      <td>${feature.describeAcquisitionKind(row)}</td>
+      <td>${this.describeMark(feature, row, result)}</td>
+    </tr>`;
+      });
+      return TemplateRenderer.html`
+  <div class="mst-enhancement-cost-section" .hidden=${rows.length === 0}>
+    <div class="mst-enhancement-cost-section-title">
+      ${i18n.t('enhancementCostCompareTitle')}
+      <small>${i18n.t('enhancementCostCompareHint', feature.formatItemLabel(result.targetHrid, result.targetLevel))}</small>
+    </div>
+    <div class="mst-enhancement-cost-table-wrap">
+      <table class="mst-enhancement-cost-table">
+        <thead><tr>
+            <th>${i18n.t('enhancementCostColumnLevel')}</th>
+            <th title=${i18n.t('enhancementCostColumnMarketHint')}>${i18n.t('enhancementCostColumnMarket')}</th>
+            <th title=${i18n.t('enhancementCostColumnAcquireHint')}>${i18n.t('enhancementCostColumnAcquire')}</th>
+            <th title=${i18n.t('enhancementCostColumnKindHint')}>${i18n.t('enhancementCostColumnKind')}</th>
+            <th>${i18n.t('enhancementCostRouteTitle')}</th>
+          </tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div>
+  </div>`;
+    },
+
+    renderSummary(feature, result) {
+      const {TemplateRenderer, i18n} = feature.ctx;
+      const hints = this.renderSummaryHints(feature, result);
+      const directBuyText = result.directBuy
+        ? result.directBuy.sell > 0
+          ? `${feature.formatCoins(result.directBuy.net)}（${feature.formatCoins(result.directBuy.price)} − ${feature.formatCoins(result.directBuy.sell)}）`
+          : feature.formatCoins(result.directBuy.net)
+        : '—';
+      const savedText =
+        result.savings == null
+          ? '—'
+          : result.savings > 0
+            ? feature.formatCoins(result.savings)
+            : i18n.t('enhancementCostSavedBest');
+      const marketText = feature.marketService?.getUpdatedText?.() || i18n.t('marketNoData');
+      return TemplateRenderer.html`
+  <div class="mst-enhancement-cost-section">
+    <div class="mst-enhancement-cost-section-title">
+      ${i18n.t('enhancementCostSummaryTitle')}
+      ${hints}
+    </div>
+    <div class="mst-enhancement-cost-summary">
+      <span class="mst-enhancement-cost-metric" title=${i18n.t('enhancementCostTotalCostHint')}>
+        <small>${i18n.t('enhancementCostTotalCost')}</small>
+        <strong class=${result.bestCost < 0 ? 'mst-positive' : ''}>${feature.formatCoins(result.bestCost)}</strong>
+      </span>
+      <span class="mst-enhancement-cost-metric">
+        <small>${i18n.t('enhancementCostBestPlan')}</small>
+        <strong>${feature.describePlan(result.routePlan)}</strong>
+      </span>
+      <span class="mst-enhancement-cost-metric" title=${i18n.t('enhancementCostDirectBuyHint')}>
+        <small>${i18n.t('enhancementCostDirectBuy')}</small>
+        <strong>${directBuyText}</strong>
+      </span>
+      <span class="mst-enhancement-cost-metric">
+        <small>${i18n.t('enhancementCostSaved')}</small>
+        <strong class=${result.savings > 0 ? 'mst-positive' : ''}>${savedText}</strong>
+      </span>
+      <span class="mst-enhancement-cost-metric">
+        <small>${i18n.t('marketDataTime')}</small>
+        <strong>${marketText}</strong>
+      </span>
+    </div>
+  </div>`;
+    },
+
+    // 汇总标题后的说明：固定写金额单位与税率，另有「已有装备无卖价」这类结果说明。
+    renderSummaryHints(feature, result) {
+      const {TemplateRenderer, i18n} = feature.ctx;
+      const existingLabel = result.existingHrid
+        ? feature.formatItemLabel(result.existingHrid, result.existingLevel)
+        : i18n.t('enhancementCostExistingNone');
+      return TemplateRenderer.html`
+    <small>${i18n.t('enhancementCostMarketHint', Math.round(MARKET_TAX_PERCENT))}</small>
+    ${(result.notes || []).map((note) => TemplateRenderer.html`<small>${i18n.t(note.key, existingLabel)}</small>`)}`;
+    },
+
+    renderNotes(feature, result) {
+      const {TemplateRenderer, i18n} = feature.ctx;
+      const existingLabel = result.existingHrid
+        ? feature.formatItemLabel(result.existingHrid, result.existingLevel)
+        : i18n.t('enhancementCostExistingNone');
+      const notes = (result.notes || []).map(
+        (note) => TemplateRenderer.html`<div class="mst-enhancement-cost-note">${i18n.t(note.key, existingLabel)}</div>`
+      );
+      const marketText = feature.marketService?.getUpdatedText?.() || i18n.t('marketNoData');
+      return TemplateRenderer.html`
+  <div class="mst-enhancement-cost-notes">
+    ${notes}
+    <div class="mst-enhancement-cost-note">
+      ${i18n.t('enhancementCostMarketHint', Math.round(MARKET_TAX_PERCENT))} · ${i18n.t('marketDataTime')} ${marketText}
+    </div>
+  </div>`;
+    },
+
+    renderMissing(feature, missing) {
+      const {TemplateRenderer, i18n} = feature.ctx;
+      return TemplateRenderer.html`
+  <ul class="mst-enhancement-cost-missing">
+    ${missing.map(
+      (entry) =>
+        TemplateRenderer.html`<li>${i18n.t('enhancementCostMissingPrice', feature.formatItemLabel(entry.itemHrid, entry.level))}</li>`
+    )}
+  </ul>`;
+    },
+
+    renderResults(feature) {
+      const {TemplateRenderer, i18n} = feature.ctx;
+      if (!feature.targetHrid) {
+        return TemplateRenderer.html`<div class="mst-enhancement-cost-hint">${i18n.t('enhancementCostChooseTarget')}</div>`;
+      }
+      const result = feature.getResult();
+      if (!result || result.status === 'invalid') {
+        return TemplateRenderer.html`<div class="mst-enhancement-cost-hint">${i18n.t('enhancementCostLevelInvalid')}</div>`;
+      }
+      if (!feature.calculator.hasMarketData()) {
+        return TemplateRenderer.html`<div class="mst-enhancement-cost-hint">${i18n.t('enhancementCostMarketLoading')}</div>`;
+      }
+      if (result.status === 'unreachable') {
+        // 插槽值统一包成单一根节点：本工程内置的 uhtml 构建对多根兄弟节点会渲染为空。
+        return TemplateRenderer.html`
+    <div class="mst-enhancement-cost-result">
+      <div class="mst-enhancement-cost-hint mst-enhancement-cost-warning">
+        <div>${i18n.t('enhancementCostUnreachable')}</div>
+        <small>${i18n.t('enhancementCostUnreachableHint')}</small>
+      </div>
+      ${this.renderMissing(feature, result.missing)}
+      ${this.renderNotes(feature, result)}
+    </div>`;
+      }
+      return TemplateRenderer.html`
+  <div class="mst-enhancement-cost-result">
+    ${this.renderSummary(feature, result)}
+    ${this.renderPlans(feature, result)}
+    ${this.renderRoute(feature, result)}
+    ${this.renderLevelTable(feature, result)}
+  </div>`;
+    },
+
+    getView(feature) {
+      const {TemplateRenderer, i18n} = feature.ctx;
+      return TemplateRenderer.html`
+  <div class=${`mst-enhancement-cost${feature.pickerRole ? ' mst-picker-open' : ''}`}>
+    <div class="mst-config-scroll">
+      <div class="mst-config-row">
+        <section class="mst-item-selector">
+          <span class="mst-item-selector-title">${i18n.t('enhancementCostTarget')}</span>
+          ${this.renderSelectorCard(feature, PICKER_ROLES.TARGET)}
+        </section>
+        <section class="mst-item-selector">
+          <span class="mst-item-selector-title">${i18n.t('enhancementCostExisting')}</span>
+          ${this.renderSelectorCard(feature, PICKER_ROLES.EXISTING)}
+          ${this.renderExistingHint(feature)}
+        </section>
+      </div>
+    </div>
+    <div class="mst-enhancement-cost-modes">
+      ${this.renderPriceMode(feature, 'buy')}
+      ${this.renderPriceMode(feature, 'sell')}
+    </div>
+    <div class="mst-enhancement-cost-results">${this.renderResults(feature)}</div>
+    ${this.renderPicker(feature)}
+  </div>`;
+    }
+  };
+
+  // enhancement-cost-feature
+  class EnhancementCostCalculatorFeature {
+    constructor(ctx, marketService = null) {
+      this.ctx = ctx;
+      this.marketService = marketService;
+      this.calculator = new EnhancementCostCalculator(ctx, marketService);
+      this.root = null;
+      // 目标装备必选；已有装备可选（'' = 不用已有装备）。
+      this.targetHrid = '';
+      this.targetLevel = 0;
+      this.existingHrid = '';
+      this.existingLevel = 0;
+      this.buyMode = PRICE_MODES.AUTO;
+      this.sellMode = PRICE_MODES.AUTO;
+      // 选择面板一次只服务一个选择器：'' / 'target' / 'existing'。
+      this.pickerRole = '';
+      this.pickerQuery = '';
+      this.pickerType = '';
+      this.resultCache = null;
+      this.helpController = null;
+      this.view = enhancementCostView;
+      Object.assign(this, enhancementCostFormatters, enhancementCostSelectionMethods);
+    }
+
+    render() {
+      const {TemplateRenderer} = this.ctx;
+      if (!this.root) return;
+      TemplateRenderer.render(() => this.view.getView(this), this.root);
+    }
+
+    refreshLanguage() {
+      const {i18n} = this.ctx;
+      this.render();
+      const popup = this.root?.closest('.mst-enhancement-cost-dialog');
+      if (!popup) return;
+      const title = popup.querySelector('.swal2-title');
+      if (title) title.textContent = i18n.t('enhancementCostTitle');
+      this.mountHelpPopover(popup);
+    }
+
+    mountHelpPopover(popup) {
+      const {CalculatorHelpPopover, i18n} = this.ctx;
+      this.helpController?.cleanup();
+      this.helpController = CalculatorHelpPopover.mount({
+        popup,
+        title: i18n.t('enhancementCostHelpTitle'),
+        heading: i18n.t('enhancementCostTitle'),
+        content: i18n.t('enhancementCostHelp')
+      });
+    }
+
+    open() {
+      const {Notifier, TemplateRenderer, i18n} = this.ctx;
+      if (!this.calculator.getEnhanceableItems().length) {
+        return Notifier.alert(i18n.t('calculatorDataNotReady'), 'warning');
+      }
+      return Notifier.html({
+        title: i18n.t('enhancementCostTitle'),
+        html: () => TemplateRenderer.html`<div id="mst-enhancement-cost-root"></div>`,
+        width: 'min(46rem, calc(100vw - 1rem))',
+        popupClass: 'mst-enhancement-cost-dialog',
+        icon: 'loadout',
+        didOpen: (popup) => {
+          this.root = popup.querySelector('#mst-enhancement-cost-root');
+          this.resultCache = null;
+          this.render();
+          this.mountHelpPopover(popup);
+          // 市场数据晚于弹窗就绪时补渲染一次，让缺价提示换成真实结论。
+          this.marketService
+            ?.load()
+            .then(() => {
+              this.resultCache = null;
+              this.render();
+            })
+            .catch((error) => {
+              console.warn('[MST] 强化物品价格计算器市场数据加载失败:', error);
+            });
+        },
+        willClose: () => {
+          this.helpController?.cleanup();
+          this.helpController = null;
+          this.root = null;
+          this.resultCache = null;
+          this.pickerRole = '';
+        }
+      });
+    }
+
+    init() {
+      const {CONFIG, LanguageEvents} = this.ctx;
+      LanguageEvents.subscribe(() => this.refreshLanguage());
+      if (!CONFIG?.isGameSite) return;
+      StyleService.ensure('mst-enhancement-cost-style', MST_ENHANCEMENT_COST_CSS);
     }
   }
 
@@ -24017,7 +25968,7 @@
       feature.pickerQuery = '';
       feature.pickerEquipmentType = '';
       feature.render();
-      feature.root?.querySelector('.mst-equipment-compare-picker-search')?.focus();
+      feature.root?.querySelector('.mst-picker-search')?.focus();
     },
 
     closePicker(feature) {
@@ -24080,15 +26031,15 @@
     </span>
     <span class="mst-equipment-compare-metric">
       <small>${i18n.t('roughDpsChange')}</small>
-      <strong class=${`mst-equipment-compare-${dpsTone}`}>${dpsText}</strong>
+      <strong class=${`mst-${dpsTone}`}>${dpsText}</strong>
     </span>
     <span class="mst-equipment-compare-metric">
       <small>${i18n.t('priceDifference')}</small>
-      <strong class=${`mst-equipment-compare-${priceTone}`}>${hasPrice ? feature.formatSignedCompactNumber(result.priceDifference) : i18n.t('marketPriceUnavailable')}</strong>
+      <strong class=${`mst-${priceTone}`}>${hasPrice ? feature.formatSignedCompactNumber(result.priceDifference) : i18n.t('marketPriceUnavailable')}</strong>
     </span>
     <span class="mst-equipment-compare-metric" title=${hasEfficiency ? '' : i18n.t('dpsPerTenMillionHint')}>
       <small>${i18n.t('dpsPerTenMillion')}</small>
-      <strong class="mst-equipment-compare-positive">${hasEfficiency ? feature.formatSignedPercent(result.dpsPerTenMillion, 3) : '—'}</strong>
+      <strong class="mst-positive">${hasEfficiency ? feature.formatSignedPercent(result.dpsPerTenMillion, 3) : '—'}</strong>
     </span>
   </div>`;
     }
@@ -24113,33 +26064,33 @@
       );
       return TemplateRenderer.html`
   <div role="button"
-    class=${`mst-equipment-compare-select-button${itemHrid ? '' : ' mst-equipment-compare-select-empty'}`}
+    class=${`mst-item-select-button${itemHrid ? '' : ' mst-item-select-empty'}`}
     tabindex=${disabled ? '-1' : '0'}
     aria-disabled=${String(disabled)}
     aria-label=${placeholder}
     @click=${(event) => {
-      if (!disabled && !event.target.closest('.mst-equipment-compare-enhancement')) {
+      if (!disabled && !event.target.closest('.mst-item-select-level')) {
         feature.openPicker(mode);
       }
     }}
     @keydown=${(event) => {
       if (
         !disabled &&
-        !event.target.closest('.mst-equipment-compare-enhancement') &&
+        !event.target.closest('.mst-item-select-level') &&
         (event.key === 'Enter' || event.key === ' ')
       ) {
         event.preventDefault();
         feature.openPicker(mode);
       }
     }}>
-    <span class="mst-equipment-compare-icon" .hidden=${!itemHrid}>
+    <span class="mst-item-icon" .hidden=${!itemHrid}>
       <svg aria-hidden="true"><use href=${itemHrid ? feature.getItemIconHref(itemHrid) : ''}></use></svg>
     </span>
-    <span class="mst-equipment-compare-summary-text" .hidden=${!itemHrid}>
+    <span class="mst-item-summary" .hidden=${!itemHrid}>
       <strong>${itemHrid ? feature.getItemName(itemHrid) : ''}</strong>
       <small>${secondaryText}</small>
     </span>
-    <label class="mst-equipment-compare-enhancement" .hidden=${!itemHrid}>
+    <label class="mst-item-select-level" .hidden=${!itemHrid}>
       <span>${i18n.t('enhancementLevel')}</span>
       <select
         .value=${String(enhancementLevel)}
@@ -24149,7 +26100,7 @@
         ${enhancementOptions}
       </select>
     </label>
-    <span class="mst-equipment-compare-placeholder" .hidden=${Boolean(itemHrid)}>${placeholder}</span>
+    <span class="mst-item-placeholder" .hidden=${Boolean(itemHrid)}>${placeholder}</span>
   </div>`;
     },
 
@@ -24175,20 +26126,20 @@
         const selected = itemHrid === selectedValue;
         return TemplateRenderer.html`
     <button type="button"
-      class=${`mst-equipment-compare-picker-option${selected ? ' mst-equipment-compare-picker-option-selected' : ''}`}
+      class=${`mst-picker-option${selected ? ' mst-picker-option-selected' : ''}`}
       title=${feature.getItemName(itemHrid)}
       .disabled=${selected}
       @click=${() => feature.selectPickerOption(itemHrid)}>
-      <span class="mst-equipment-compare-picker-level">+${level}</span>
-      <span class="mst-equipment-compare-picker-item-level">Lv.${Number(itemDetail.itemLevel || 0)}</span>
+      <span class="mst-picker-level">+${level}</span>
+      <span class="mst-picker-item-level">Lv.${Number(itemDetail.itemLevel || 0)}</span>
       <svg aria-hidden="true"><use href=${feature.getItemIconHref(itemHrid)}></use></svg>
       <strong>${feature.getItemName(itemHrid)}</strong>
     </button>`;
       });
       return TemplateRenderer.html`
-  <div class="mst-equipment-compare-picker-options">
+  <div class="mst-picker-options">
     ${pickerOptions}
-    <div class="mst-equipment-compare-picker-empty" .hidden=${options.length > 0}>${i18n.t('noEquipmentMatch')}</div>
+    <div class="mst-picker-empty" .hidden=${options.length > 0}>${i18n.t('noEquipmentMatch')}</div>
   </div>`;
     },
 
@@ -24201,11 +26152,11 @@
             TemplateRenderer.html`<option value=${detail.hrid}>${DataHub.getLocalizedGameName('equipmentTypeNames', detail.hrid)}</option>`
         );
       return TemplateRenderer.html`
-  <div class="mst-equipment-compare-picker" .hidden=${!feature.pickerMode}>
-    <div class="mst-equipment-compare-picker-panel">
-      <div class="mst-equipment-compare-picker-filters">
+  <div class="mst-picker" .hidden=${!feature.pickerMode}>
+    <div class="mst-picker-panel">
+      <div class="mst-picker-filters">
         <select
-          class="mst-equipment-compare-picker-type"
+          class="mst-picker-type"
           .value=${feature.pickerEquipmentType}
           @change=${(event) => {
             feature.pickerEquipmentType = event.currentTarget.value;
@@ -24216,7 +26167,7 @@
           ${renderTypeOptions(equipmentTypes)}
         </select>
         <input
-          class="mst-equipment-compare-picker-search"
+          class="mst-picker-search"
           type="search"
           placeholder=${i18n.t('searchEquipment')}
           autocomplete="off"
@@ -24230,7 +26181,7 @@
       ${this.renderPickerOptions(feature)}
       <button
         type="button"
-        class="mst-equipment-compare-picker-close"
+        class="mst-picker-close"
         @click=${() => feature.closePicker()}
       >${i18n.t('close')}</button>
     </div>
@@ -24256,7 +26207,7 @@
     <th scope="row">${feature.getStatName(row.category, row.key)}</th>
     <td>${feature.formatStatValue(row.key, row.ownedValue)}</td>
     <td>${feature.formatStatValue(row.key, row.comparisonValue)}</td>
-    <td class=${`mst-equipment-compare-difference mst-equipment-compare-${feature.getDifferenceTone(row)}`}>
+    <td class=${`mst-equipment-compare-difference mst-${feature.getDifferenceTone(row)}`}>
       ${row.isNumeric ? feature.formatStatValue(row.key, row.difference, true) : row.isEqual ? '—' : '≠'}
     </td>
   </tr>`)
@@ -24363,10 +26314,10 @@
               !baselineItem
             );
       return TemplateRenderer.html`
-  <div class=${`mst-equipment-compare-view${feature.pickerMode ? ' mst-equipment-compare-picker-open' : ''}`}>
+  <div class=${`mst-equipment-compare-view${feature.pickerMode ? ' mst-picker-open' : ''}`}>
     <div class="mst-equipment-compare-notice">${i18n.t('equipmentComparisonNotice')}</div>
-    <div class="mst-equipment-compare-config-scroll">
-      <div class="mst-equipment-compare-config-row">
+    <div class="mst-config-scroll">
+      <div class="mst-config-row">
         <label class="mst-equipment-compare-preset">
           <span>${i18n.t('combatPreset')}</span>
           <select
@@ -24376,14 +26327,14 @@
             ${presetGroups}
           </select>
         </label>
-        <section class="mst-equipment-compare-selector">
-          <span class="mst-equipment-compare-selector-title">${i18n.t('ownedEquipment')}</span>
+        <section class="mst-item-selector">
+          <span class="mst-item-selector-title">${i18n.t('ownedEquipment')}</span>
           <div class="mst-equipment-compare-target-controls">
             ${baselinePicker}
           </div>
         </section>
-        <section class="mst-equipment-compare-selector">
-          <span class="mst-equipment-compare-selector-title">${i18n.t('comparisonEquipment')}</span>
+        <section class="mst-item-selector">
+          <span class="mst-item-selector-title">${i18n.t('comparisonEquipment')}</span>
           <div class="mst-equipment-compare-target-controls">
             ${comparisonPicker}
           </div>
@@ -24616,7 +26567,6 @@
       this.helpController?.cleanup();
       this.helpController = CalculatorHelpPopover.mount({
         popup,
-        moduleName: 'equipment',
         title: i18n.t('equipmentComparisonHelpTitle'),
         heading: i18n.t('equipmentComparisonTitle'),
         content: i18n.t('equipmentComparisonHelp')
@@ -25533,7 +27483,6 @@
           this.helpController?.cleanup();
           this.helpController = CalculatorHelpPopover.mount({
             popup,
-            moduleName: 'house',
             title: i18n.t('houseCalculatorHelpTitle'),
             heading: i18n.t('title'),
             content: i18n.t('houseCalculatorHelp')
@@ -25602,7 +27551,6 @@
         this.helpController?.cleanup();
         this.helpController = CalculatorHelpPopover.mount({
           popup,
-          moduleName: 'house',
           title: i18n.t('houseCalculatorHelpTitle'),
           heading: i18n.t('title'),
           content: i18n.t('houseCalculatorHelp')
@@ -26324,6 +28272,7 @@
 .mst-market-history-price-mark{margin-left:.15rem;color:var(--color-space-200, #bbc5f1);cursor:help}
 [class*=MarketplacePanel_newListingButtonsContainer__]{position:relative;padding-top:1.05rem}
 .mst-market-history-listing-hint{position:absolute;top:0;z-index:1100;display:flex;align-items:baseline;gap:.6rem;font-size:var(--font-size-base, .875rem);line-height:1.2;white-space:nowrap;pointer-events:none}
+body:has(.mst-swal2-popup) .mst-market-history-listing-hint{z-index:auto}
 .mst-market-history-listing-hint-sell{left:0}
 .mst-market-history-listing-hint-buy{right:0}
 .mst-market-history-listing-hint-item{font-weight:600;font-variant-numeric:tabular-nums;cursor:help;pointer-events:auto}
@@ -26359,8 +28308,6 @@
 .mst-market-history-stat{display:flex;flex-direction:column;gap:.15rem;border:1px solid var(--color-midnight-100, #454771);border-radius:var(--radius-sm, .25rem);padding:.4rem .5rem;background:var(--color-midnight-600, #27283b)}
 .mst-market-history-stat-label{font-size:.78rem;opacity:.8}
 .mst-market-history-stat-value{font-size:1rem;font-weight:600}
-.mst-market-history-stat-positive{color:var(--color-jade-300, #86d7b1)}
-.mst-market-history-stat-negative{color:var(--color-scarlet-300, #ef8f98)}
 .mst-market-history-aux-body{display:flex;flex-direction:column;gap:.6rem;text-align:left}
 .mst-market-history-manage{flex:1 1 auto;min-height:0;overflow:auto;gap:.8rem}
 .mst-market-history-manage-section{display:flex;flex-direction:column;gap:.6rem;border:1px solid var(--color-midnight-100, #454771);border-radius:var(--radius-sm, .25rem);padding:.6rem .7rem;background:var(--color-midnight-600, #27283b)}
@@ -28274,14 +30221,15 @@
     1000
   ];
   // 记录与统计两个页签共用同一套时间范围选项（口径都是创建时间）：
-  // 下拉默认项即「创建时间」（兼作控件标题、不再另加标签），不给「今天」（当天数据通常只有几笔，趋势图看不出东西）。
+  // 下拉默认项即「创建时间」（兼作控件标题、不再另加标签），后面是「今天」与近 N 天、自定义起止。
   const TIME_PRESETS = [
-    'all', '7d', '15d', '30d', '60d',
-    '90d', '180d', 'custom'
+    'all', 'today', '7d', '15d', '30d',
+    '60d', '90d', '180d', 'custom'
   ];
   const TIME_PRESET_DAYS = {'7d': 7, '15d': 15, '30d': 30, '60d': 60, '90d': 90, '180d': 180};
   const TIME_PRESET_LABEL_KEYS = {
     all: 'marketHistoryTimeAll',
+    today: 'marketHistoryTimeToday',
     '7d': 'marketHistoryTime7d',
     '15d': 'marketHistoryTime15d',
     '30d': 'marketHistoryTime30d',
@@ -28464,7 +30412,16 @@
   // 时间范围预设 → 筛选起止时间：记录与统计两个页签共用（口径都是创建时间）。
   function applyTimePreset(filters, now) {
     const days = TIME_PRESET_DAYS[filters.timePreset];
-    if (days) {
+    if (filters.timePreset === 'today') {
+      // 「今天」按本地自然日算：今天 0 点到明天 0 点。上界用 setDate 推、不加减 24 小时，
+      // 夏令时切换日也能跟住自然日边界。
+      const from = new Date(now);
+      from.setHours(0, 0, 0, 0);
+      const to = new Date(from);
+      to.setDate(to.getDate() + 1);
+      filters.timeFrom = from.getTime();
+      filters.timeTo = to.getTime() - 1;
+    } else if (days) {
       filters.timeFrom = now - days * DAY_MS;
       filters.timeTo = null;
     } else if (filters.timePreset === 'custom') {
@@ -30578,7 +32535,7 @@
         ], [
           i18n.t(
             'marketHistoryStatsNet'
-          ), (net > 0 ? '+' : '') + this.formatMoney(net), this.rawValueText(net), net > 0 ? ' mst-market-history-stat-positive' : net < 0 ? ' mst-market-history-stat-negative' : ''
+          ), (net > 0 ? '+' : '') + this.formatMoney(net), this.rawValueText(net), net > 0 ? ' mst-positive' : net < 0 ? ' mst-negative' : ''
         ]
       ].map(
         ([
@@ -32350,7 +34307,6 @@
           this.helpController?.cleanup();
           this.helpController = this.ctx.CalculatorHelpPopover?.mount({
             popup,
-            moduleName: 'subscribe',
             title: i18n.t('subscribeNotificationTitle'),
             heading: i18n.t('subscribeNotificationTitle'),
             content: i18n.t('subscribeNotificationHint')
@@ -32384,7 +34340,6 @@
       this.helpController =
         CalculatorHelpPopover?.mount({
           popup,
-          moduleName: 'subscribe',
           title: i18n.t('subscribeNotificationTitle'),
           heading: i18n.t('subscribeNotificationTitle'),
           content: i18n.t('subscribeNotificationHint')
@@ -32646,6 +34601,7 @@
         combatCalculator,
         abilityCalculator,
         equipmentComparison,
+        enhancementCost,
         dungeonCalculator,
         subscribeNotification,
         marketHistory,
@@ -32659,6 +34615,7 @@
       this.combatCalculator = combatCalculator;
       this.abilityCalculator = abilityCalculator;
       this.equipmentComparison = equipmentComparison;
+      this.enhancementCost = enhancementCost;
       this.dungeonCalculator = dungeonCalculator;
       this.subscribeNotification = subscribeNotification;
       this.marketHistory = marketHistory;
@@ -32701,12 +34658,16 @@
           key: 'equipmentComparison',
           icon: 'loadout',
           handler: () => this.equipmentComparison.open()
+        }, {
+          key: 'enhancementCostCalculator',
+          icon: 'item_category_currency',
+          handler: () => this.enhancementCost.open()
         }, {key: 'dungeonProfitCalculator', icon: 'loot_tracker', handler: () => this.dungeonCalculator.open()}, {
           key: 'combatSimAiwwb',
           icon: 'combat',
           handler: () => this.openCombatSimulator()
-        }, {key: 'changelog', icon: 'patch_notes', handler: () => this.changelog.open()},
-        {
+        },
+        {key: 'changelog', icon: 'patch_notes', handler: () => this.changelog.open()}, {
           key: 'checkUpdate',
           icon: 'news',
           variant: hasUpdate ? 'update' : '',
@@ -33280,6 +35241,7 @@
     ctx.DungeonProfitCalculatorFeature = DungeonProfitCalculatorFeature;
     ctx.DungeonProfitCalculatorService = DungeonProfitCalculatorService;
     ctx.EdsMilkonomyFeature = EdsMilkonomyFeature;
+    ctx.EnhancementCostCalculatorFeature = EnhancementCostCalculatorFeature;
     ctx.EquipmentComparisonFeature = EquipmentComparisonFeature;
     ctx.EquipmentComparisonService = EquipmentComparisonService;
     ctx.HouseCalculator = HouseCalculator;
@@ -33302,40 +35264,79 @@
 .mst-eds-loadout-actions button{width:auto!important;max-width:100%;margin:0;border-color:var(--color-space-400, #7686cc)!important;background:var(--color-midnight-400, #323450)!important;color:var(--color-text-dark-mode, #e7e7e7)!important}
 .mst-eds-loadout-actions button:hover{border-color:var(--color-space-200, #bbc5f1)!important;background:var(--color-midnight-300, #393b5c)!important}`;
 
+  var MST_COMPONENTS_CSS = String.raw`.mst-help-anchor{position:relative;display:inline-flex;width:var(--spacing-lg-plus, 1.25rem);height:var(--spacing-lg-plus, 1.25rem);flex:0 0 auto;align-self:center;align-items:center;pointer-events:auto;vertical-align:middle}
+.mst-help-trigger{display:block;width:var(--spacing-lg-plus, 1.25rem);height:var(--spacing-lg-plus, 1.25rem);min-height:var(--spacing-lg-plus, 1.25rem)!important;box-sizing:border-box;padding:0!important;border:0!important;border-radius:0!important;background:transparent!important;font-size:0!important;line-height:0!important;box-shadow:none!important;cursor:pointer;touch-action:manipulation}
+.mst-help-trigger svg{display:block;width:100%;height:100%;pointer-events:none}
+.mst-help-trigger:hover{filter:brightness(1.12)}
+.mst-help-trigger-error{border-color:#c86b75!important;color:#f4c4ca!important}
+.mst-help-popover{position:fixed;z-index:2;width:max-content;max-width:min(var(--tooltip-max-width, 40ch),calc(100vw - 1rem));max-height:calc(100svh - 1rem);overflow-y:auto;box-sizing:border-box;padding:var(--tooltip-padding-y, .375rem) var(--tooltip-padding-x, .5rem);border:0;border-radius:var(--tooltip-border-radius, .25rem);background:#bbc5f1f2;box-shadow:var(--shadow-md, 2px 2px 10px 6px rgba(0, 0, 0, .3));color:#000;font-size:var(--tooltip-font-size, var(--font-size-base, .875rem));font-weight:var(--font-weight-medium, 500);line-height:var(--line-height-normal, 1.375);text-align:left;user-select:none}
+.mst-help-popover[hidden]{display:none}
+.mst-help-popover-title{margin:0;padding:0;font-size:var(--font-size-md, 1rem);font-weight:var(--font-weight-medium, 500);line-height:var(--line-height-normal, 1.375)}
+.mst-help-popover-content{margin-top:var(--spacing-xs, .25rem);padding-top:var(--spacing-xs, .25rem);border-top:1px solid #000}
+.mst-help-popover-paragraph{margin-top:var(--spacing-xs, .25rem);padding-bottom:var(--spacing-xs, .25rem)}
+.mst-help-popover-error{border-color:#c86b75}
+.mst-config-scroll{max-width:100%;overflow-x:auto;scrollbar-color:var(--color-space-300, #98a7e9) transparent;scrollbar-width:thin}
+.mst-config-row{display:grid;width:max-content;min-width:100%;box-sizing:border-box;grid-template-columns:repeat(2,10.5rem);align-items:stretch;justify-content:center;gap:.65rem;padding-bottom:.15rem}
+.mst-item-selector{display:flex;width:10.5rem;min-width:0;flex-direction:column;gap:.35rem}
+.mst-item-selector-title{font-weight:var(--font-weight-semibold, 600);text-align:center}
+.mst-item-select-button{display:grid;width:100%;height:5.5rem;min-width:0;box-sizing:border-box;grid-template-columns:3.25rem minmax(0,1fr);grid-template-rows:minmax(0,1fr) 1.6rem;align-items:center;column-gap:.45rem;row-gap:.2rem;padding:.4rem .45rem;border:1px solid var(--color-midnight-100, #454771);border-radius:var(--radius-sm, .25rem);background:var(--color-midnight-600, #27283b);color:inherit;font:inherit;text-align:left;cursor:pointer}
+.mst-item-select-button:hover:not(.mst-item-select-empty):not([aria-disabled=true]){border-color:var(--color-space-300, #98a7e9);background:var(--color-midnight-500, #2c2e45)}
+.mst-item-select-button[aria-disabled=true]{opacity:.6;cursor:not-allowed}
+.mst-item-select-empty{display:flex;align-items:center;justify-content:center;border-style:dashed;text-align:center;cursor:default}
+.mst-item-select-static{cursor:default}
+.mst-item-placeholder{color:var(--color-neutral-400, #999baa);font-size:var(--font-size-small, .75rem)}
+.mst-item-select-button>[hidden],.mst-item-icon>[hidden],.mst-item-select-level>[hidden],.mst-picker-option>[hidden],.mst-picker-empty[hidden]{display:none}
+.mst-item-icon{position:relative;width:3.25rem;height:3.25rem;grid-column:1;grid-row:1/-1;align-self:center}
+.mst-item-icon svg{display:block;width:100%;height:100%}
+.mst-item-summary{display:flex;width:100%;min-width:0;grid-column:2;grid-row:1;flex-direction:column;align-items:flex-start;justify-content:center;gap:.12rem}
+.mst-item-summary strong{display:-webkit-box;max-width:100%;overflow:hidden;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow-wrap:anywhere;color:var(--color-text-dark-mode, #e7e7e7);font-size:var(--font-size-small, .75rem);line-height:1.15}
+.mst-item-summary small{display:block;width:100%;overflow:hidden;color:var(--color-neutral-300, #b9bbca);font-size:var(--font-size-tiny, .6875rem);line-height:1.15;text-overflow:ellipsis;white-space:nowrap}
+.mst-item-select-level{display:block;width:3rem;min-width:0;margin:0;color:var(--color-neutral-300, #b9bbca);font-size:var(--font-size-small, .75rem);white-space:nowrap}
+.mst-item-select-button>.mst-item-select-level{grid-column:2;grid-row:2;align-self:end}
+.mst-item-select-level>span{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap}
+.mst-item-select-level select{width:3rem;min-width:0;height:1.6rem;box-sizing:border-box;padding:.1rem .15rem;border:1px solid var(--color-midnight-100, #454771);border-radius:var(--radius-sm, .25rem);background:var(--color-midnight-700, #20212f);color:var(--color-text-dark-mode, #e7e7e7);font:inherit;text-align:center;text-align-last:center}
+.mst-picker{position:absolute;inset:0;z-index:5;display:flex;align-items:flex-start;justify-content:center;background:#0e0f18eb}
+.mst-picker[hidden]{display:none}
+.mst-picker-panel{display:flex;width:100%;height:100%;min-height:0;box-sizing:border-box;flex-direction:column;gap:.4rem;padding:.5rem;border:1px solid var(--color-midnight-100, #454771);border-radius:var(--radius-sm, .25rem);background:var(--color-midnight-600, #27283b);box-shadow:var(--shadow-md, 0 .35rem 1rem rgba(0, 0, 0, .4))}
+.mst-picker-filters{display:flex;min-width:0;gap:.4rem}
+.mst-picker-filters[hidden]{display:none}
+.mst-picker-type{width:10rem;max-width:42%;flex:0 0 auto}
+.mst-picker-search{min-width:0;flex:1}
+.mst-picker-filters select,.mst-picker-filters input{width:100%;min-width:0;height:var(--button-height-normal, 1.875rem);box-sizing:border-box;padding:.2rem .45rem;border:1px solid var(--color-midnight-100, #454771);border-radius:var(--radius-sm, .25rem);background:var(--color-midnight-700, #20212f);color:var(--color-text-dark-mode, #e7e7e7);font:inherit}
+.mst-picker-filters select:focus,.mst-picker-filters input:focus{border-color:var(--color-space-300, #98a7e9);outline:none}
+.mst-picker-options{display:grid;min-height:0;flex:1;grid-template-columns:repeat(auto-fill,6rem);grid-auto-rows:6rem;align-content:start;justify-content:center;gap:.3rem;overflow:auto;scrollbar-color:var(--color-space-300, #98a7e9) transparent;scrollbar-width:thin}
+.mst-picker-option{position:relative;display:flex;min-width:0;min-height:0;box-sizing:border-box;flex-direction:column;align-items:center;justify-content:center;gap:.2rem;padding:.35rem;border:1px solid var(--color-midnight-100, #454771);border-radius:var(--radius-sm, .25rem);background:var(--color-midnight-500, #2c2e45);color:var(--color-text-dark-mode, #e7e7e7);font:inherit;text-align:center;cursor:pointer}
+.mst-picker-option:hover:not(:disabled){border-color:var(--color-space-300, #98a7e9);background:var(--color-midnight-400, #323450)}
+.mst-picker-option:disabled,.mst-picker-option-selected{border-color:var(--color-cowbell, #f6c95c);opacity:.55;cursor:default}
+.mst-picker-option svg{width:2.75rem;height:2.75rem;flex:0 0 2.75rem}
+.mst-picker-option strong{display:-webkit-box;max-width:100%;overflow:hidden;-webkit-box-orient:vertical;-webkit-line-clamp:2;white-space:normal;font-size:var(--font-size-small, .75rem);font-weight:400;line-height:1.1}
+.mst-picker-level,.mst-picker-item-level{position:absolute;top:.25rem;z-index:1;font-size:var(--font-size-tiny, .6875rem);font-weight:600;line-height:1;text-shadow:0 1px 2px #000}
+.mst-picker-level{left:.3rem;color:var(--color-cowbell, #f6c95c)}
+.mst-picker-item-level{right:.3rem;color:var(--color-neutral-200, #d2d3dc)}
+.mst-picker-none{color:var(--color-neutral-300, #b9bbca);font-size:var(--font-size-small, .75rem)}
+.mst-picker-empty{grid-column:1/-1;align-self:center;padding:.6rem;color:var(--color-neutral-400, #999baa);font-size:var(--font-size-small, .75rem);text-align:center}
+.mst-picker-close{align-self:center;min-height:var(--button-height-normal, 1.875rem);padding:.25rem .65rem;border:1px solid var(--color-space-400, #7686cc);border-radius:var(--radius-sm, .25rem);background:var(--color-midnight-400, #323450);color:var(--color-text-dark-mode, #e7e7e7);font:inherit;cursor:pointer}
+.mst-picker-close:hover{border-color:var(--color-space-200, #bbc5f1);background:var(--color-midnight-300, #393b5c)}
+.mst-positive{color:var(--color-jade-300, #86d7b1)}
+.mst-negative{color:var(--color-scarlet-300, #ef8f98)}
+.mst-neutral{color:var(--color-neutral-400, #999baa)}`;
+
   var MST_INTEGRATED_CSS = String.raw`#mst-toolkit-character-dropdown{position:fixed;top:max(.5rem,env(safe-area-inset-top));right:max(.5rem,env(safe-area-inset-right));z-index:2147483200;display:flex;min-width:14rem;max-width:calc(100vw - 1rem);max-width:calc(100dvw - 1rem);max-height:min(26rem,calc(100svh - 5rem));max-height:min(26rem,calc(100dvh - 1rem));overflow:auto;overscroll-behavior:contain;flex-direction:column;gap:.25rem;padding:.5rem;background:var(--color-midnight-600, #27283b);border:1px solid var(--color-midnight-100, #454771);border-radius:var(--radius-sm, .25rem);box-shadow:var(--shadow-md, 0 .35rem 1rem rgba(0, 0, 0, .4));font-family:Roboto,Helvetica,Arial,sans-serif}
 .mst-toolkit-dropdown-title{padding:.35rem .5rem .55rem;border-bottom:1px solid var(--color-midnight-200, #3b3d60);color:var(--color-text-dark-mode, #e7e7e7);font-size:var(--font-size-large, 1rem);font-weight:var(--font-weight-semibold, 600);text-align:center}
 .mst-toolkit-action{display:flex;align-items:center;gap:.5rem;width:100%;min-height:var(--button-height-normal, 1.875rem);margin:0;padding:.25rem .6rem;border:1px solid var(--color-midnight-100, #454771);border-radius:var(--radius-sm, .25rem);background:var(--color-midnight-500, #2c2e45);color:var(--color-text-dark-mode, #e7e7e7);font:inherit;font-size:var(--font-size-base, .875rem);text-align:left;cursor:pointer}
 .mst-toolkit-action svg{width:1.25rem;height:1.25rem;flex:0 0 1.25rem}
 .mst-toolkit-action:hover{border-color:var(--color-space-300, #98a7e9);background:var(--color-midnight-400, #323450)}
 .mst-equipment-compare-view{position:relative;display:flex;min-height:0;box-sizing:border-box;flex-direction:column;gap:.65rem;color:var(--color-text-dark-mode, #e7e7e7);font-family:Roboto,Helvetica,Arial,sans-serif;font-size:var(--font-size-base, .875rem);text-align:left}
-.mst-equipment-compare-view.mst-equipment-compare-picker-open{min-height:min(16rem,calc(100vh - 10rem));min-height:min(16rem,calc(100dvh - 10rem));min-height:min(16rem,calc(100svh - 10rem));max-height:calc(100vh - 10rem);max-height:calc(100dvh - 10rem);max-height:calc(100svh - 10rem);overflow:hidden}
+.mst-equipment-compare-view.mst-picker-open{min-height:min(16rem,calc(100vh - 10rem));min-height:min(16rem,calc(100dvh - 10rem));min-height:min(16rem,calc(100svh - 10rem));max-height:calc(100vh - 10rem);max-height:calc(100dvh - 10rem);max-height:calc(100svh - 10rem);overflow:hidden}
 .mst-equipment-compare-notice{padding:.4rem .55rem;border:1px solid var(--color-midnight-100, #454771);border-left:3px solid var(--color-space-300, #98a7e9);border-radius:var(--radius-sm, .25rem);background:var(--color-midnight-600, #27283b);color:var(--color-neutral-300, #b9bbca);font-size:var(--font-size-small, .75rem);line-height:1.35}
-.mst-equipment-compare-config-scroll{max-width:100%;overflow-x:auto;scrollbar-color:var(--color-space-300, #98a7e9) transparent;scrollbar-width:thin}
-.mst-equipment-compare-config-row{display:grid;width:max-content;min-width:100%;box-sizing:border-box;grid-template-columns:8rem repeat(2,10.5rem);align-items:stretch;justify-content:center;gap:.65rem;padding-bottom:.15rem}
+.mst-equipment-compare-view .mst-config-row{grid-template-columns:8rem repeat(2,10.5rem)}
 .mst-equipment-compare-preset{display:grid;width:8rem;min-width:0;grid-template-rows:auto 1fr;gap:.35rem;color:var(--color-neutral-200, #d2d3dc);font-weight:var(--font-weight-semibold, 600);text-align:center}
 .mst-equipment-compare-preset select{align-self:center}
-.mst-equipment-compare-selector{display:flex;width:10.5rem;min-width:0;flex-direction:column;gap:.35rem}
-.mst-equipment-compare-selector-title{font-weight:var(--font-weight-semibold, 600);text-align:center}
 .mst-equipment-compare-view select{width:100%;height:var(--button-height-normal, 1.875rem);box-sizing:border-box;padding:.2rem .45rem;border:1px solid var(--color-midnight-100, #454771);border-radius:var(--radius-sm, .25rem);background:var(--color-midnight-700, #20212f);color:var(--color-text-dark-mode, #e7e7e7);font:inherit}
 .mst-equipment-compare-view select:focus{border-color:var(--color-space-300, #98a7e9);outline:none}
 .mst-equipment-compare-view select:disabled{opacity:.6;cursor:not-allowed}
 .mst-equipment-compare-target-controls{min-width:0}
 .mst-equipment-compare-target-controls>.mst-equipment-compare-empty{height:5.5rem}
-.mst-equipment-compare-enhancement{display:block;width:3rem;margin:0;color:var(--color-neutral-300, #b9bbca);font-size:var(--font-size-small, .75rem);white-space:nowrap}
-.mst-equipment-compare-enhancement>span{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap}
-.mst-equipment-compare-enhancement select{width:3rem;min-width:0;height:1.6rem;padding:.1rem .15rem;text-align:center;text-align-last:center}
-.mst-equipment-compare-select-button{display:grid;width:100%;height:5.5rem;min-width:0;box-sizing:border-box;grid-template-columns:3.25rem minmax(0,1fr);grid-template-rows:minmax(0,1fr) 1.6rem;align-items:center;column-gap:.45rem;row-gap:.2rem;padding:.4rem .45rem;border:1px solid var(--color-midnight-100, #454771);border-radius:var(--radius-sm, .25rem);background:var(--color-midnight-600, #27283b);color:inherit;font:inherit;text-align:left;cursor:pointer}
-.mst-equipment-compare-select-button:hover:not([aria-disabled=true]){border-color:var(--color-space-300, #98a7e9);background:var(--color-midnight-500, #2c2e45)}
-.mst-equipment-compare-select-button[aria-disabled=true]{opacity:.6;cursor:not-allowed}
-.mst-equipment-compare-select-empty{display:flex;align-items:center;justify-content:center;border-style:dashed;text-align:center}
-.mst-equipment-compare-placeholder{color:var(--color-neutral-400, #999baa);font-size:var(--font-size-small, .75rem)}
-.mst-equipment-compare-select-button>[hidden],.mst-equipment-compare-icon>[hidden],.mst-equipment-compare-picker-option>[hidden],.mst-equipment-compare-picker-empty[hidden]{display:none}
-.mst-equipment-compare-icon{position:relative;width:3.25rem;height:3.25rem;grid-column:1;grid-row:1/-1;align-self:center}
-.mst-equipment-compare-icon svg{display:block;width:100%;height:100%}
-.mst-equipment-compare-summary-text{display:flex;width:100%;min-width:0;grid-column:2;grid-row:1;flex-direction:column;align-items:flex-start;justify-content:center;gap:.12rem}
-.mst-equipment-compare-summary-text strong{display:-webkit-box;max-width:100%;overflow:hidden;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow-wrap:anywhere;color:var(--color-text-dark-mode, #e7e7e7);font-size:var(--font-size-small, .75rem);line-height:1.15}
-.mst-equipment-compare-summary-text small{display:block;width:100%;overflow:hidden;color:var(--color-neutral-300, #b9bbca);font-size:var(--font-size-tiny, .6875rem);line-height:1.15;text-overflow:ellipsis;white-space:nowrap}
-.mst-equipment-compare-select-button>.mst-equipment-compare-enhancement{grid-column:2;grid-row:2;align-self:end}
 .mst-equipment-compare-empty{display:flex;min-height:3.25rem;box-sizing:border-box;align-items:center;justify-content:center;padding:.5rem;border:1px dashed var(--color-midnight-100, #454771);border-radius:var(--radius-sm, .25rem);color:var(--color-neutral-400, #999baa);font-size:var(--font-size-small, .75rem);text-align:center}
 .mst-equipment-compare-results{display:flex;min-width:0;flex-direction:column;gap:.5rem}
 .mst-equipment-compare-metrics{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:.35rem}
@@ -33354,29 +35355,6 @@
 .mst-equipment-compare-table tbody th[scope=row]{color:var(--color-neutral-200, #d2d3dc);font-weight:500}
 .mst-equipment-compare-group th{padding:.25rem .45rem;background:var(--color-midnight-400, #323450);color:var(--color-space-200, #bbc5f1);font-size:var(--font-size-small, .75rem);font-weight:600;text-align:left}
 .mst-equipment-compare-difference{font-weight:600;white-space:nowrap}
-.mst-equipment-compare-positive{color:var(--color-jade-300, #86d7b1)}
-.mst-equipment-compare-negative{color:var(--color-scarlet-300, #ef8f98)}
-.mst-equipment-compare-neutral{color:var(--color-neutral-400, #999baa)}
-.mst-equipment-compare-picker{position:absolute;inset:0;z-index:5;display:flex;align-items:flex-start;justify-content:center;background:#0e0f18eb}
-.mst-equipment-compare-picker[hidden]{display:none}
-.mst-equipment-compare-picker-panel{display:flex;width:100%;height:100%;min-height:0;box-sizing:border-box;flex-direction:column;gap:.4rem;padding:.5rem;border:1px solid var(--color-midnight-100, #454771);border-radius:var(--radius-sm, .25rem);background:var(--color-midnight-600, #27283b);box-shadow:var(--shadow-md, 0 .35rem 1rem rgba(0, 0, 0, .4))}
-.mst-equipment-compare-picker-filters{display:flex;min-width:0;gap:.4rem}
-.mst-equipment-compare-picker-type,.mst-equipment-compare-picker-search{height:var(--button-height-normal, 1.875rem);box-sizing:border-box;padding:.2rem .45rem;border:1px solid var(--color-midnight-100, #454771);border-radius:var(--radius-sm, .25rem);background:var(--color-midnight-700, #20212f);color:var(--color-text-dark-mode, #e7e7e7);font:inherit}
-.mst-equipment-compare-picker-type{width:10rem;max-width:42%;flex:0 0 auto}
-.mst-equipment-compare-picker-search{min-width:0;flex:1}
-.mst-equipment-compare-picker-type:focus,.mst-equipment-compare-picker-search:focus{border-color:var(--color-space-300, #98a7e9);outline:none}
-.mst-equipment-compare-picker-options{display:grid;min-height:0;flex:1;grid-template-columns:repeat(auto-fill,6rem);grid-auto-rows:6rem;align-content:start;justify-content:center;gap:.3rem;overflow:auto}
-.mst-equipment-compare-picker-option{position:relative;display:flex;min-width:0;min-height:0;box-sizing:border-box;flex-direction:column;align-items:center;justify-content:center;gap:.2rem;padding:.35rem;border:1px solid var(--color-midnight-100, #454771);border-radius:var(--radius-sm, .25rem);background:var(--color-midnight-500, #2c2e45);color:var(--color-text-dark-mode, #e7e7e7);font:inherit;text-align:center;cursor:pointer}
-.mst-equipment-compare-picker-option:hover:not(:disabled){border-color:var(--color-space-300, #98a7e9);background:var(--color-midnight-400, #323450)}
-.mst-equipment-compare-picker-option-selected{border-color:var(--color-cowbell, #f6c95c);opacity:.55;cursor:default}
-.mst-equipment-compare-picker-option svg{width:2.75rem;height:2.75rem;flex:0 0 2.75rem}
-.mst-equipment-compare-picker-option strong{display:-webkit-box;max-width:100%;overflow:hidden;-webkit-box-orient:vertical;-webkit-line-clamp:2;white-space:normal;font-size:var(--font-size-small, .75rem);line-height:1.1}
-.mst-equipment-compare-picker-level,.mst-equipment-compare-picker-item-level{position:absolute;top:.25rem;z-index:1;color:var(--color-cowbell, #f6c95c);font-size:var(--font-size-tiny, .6875rem);font-weight:600;line-height:1;text-shadow:0 1px 2px #000}
-.mst-equipment-compare-picker-level{left:.3rem}
-.mst-equipment-compare-picker-item-level{right:.3rem;color:var(--color-neutral-200, #d2d3dc)}
-.mst-equipment-compare-picker-empty{grid-column:1/-1;align-self:center;color:var(--color-neutral-300, #b9bbca);text-align:center}
-.mst-equipment-compare-picker-close{align-self:center;min-height:var(--button-height-normal, 1.875rem);padding:.25rem .65rem;border:1px solid var(--color-space-400, #7686cc);border-radius:var(--radius-sm, .25rem);background:var(--color-midnight-400, #323450);color:var(--color-text-dark-mode, #e7e7e7);font:inherit;cursor:pointer}
-.mst-equipment-compare-picker-close:hover{border-color:var(--color-space-200, #bbc5f1);background:var(--color-midnight-300, #393b5c)}
 .mst-upgrade-calculator{position:relative;color:var(--color-text-dark-mode, #e7e7e7);font-family:Roboto,Helvetica,Arial,sans-serif;font-size:var(--font-size-base, .875rem);text-align:left}
 .mst-upgrade-calculator button{min-height:var(--button-height-normal, 1.875rem);padding:.25rem .65rem;border:1px solid var(--color-space-400, #7686cc);border-radius:var(--radius-sm, .25rem);background:var(--color-midnight-400, #323450);color:var(--color-text-dark-mode, #e7e7e7);font:inherit;cursor:pointer}
 .mst-upgrade-calculator button:hover{border-color:var(--color-space-200, #bbc5f1);background:var(--color-midnight-300, #393b5c)}
@@ -33422,17 +35400,6 @@
 .mst-swal2-theme .swal2-title:has(.mst-dialog-title-icon){display:flex!important;align-items:center;gap:.6rem}
 .mst-dialog-title-icon{display:inline-flex;width:1.25rem;height:1.25rem;flex:0 0 auto;align-self:center}
 .mst-dialog-title-icon svg{width:100%;height:100%}
-.mst-combat-help-anchor,.mst-ability-help-anchor,.mst-equipment-help-anchor,.mst-dungeon-help-anchor,.mst-house-help-anchor,.mst-subscribe-help-anchor{position:relative;display:inline-flex;width:var(--spacing-lg-plus, 1.25rem);height:var(--spacing-lg-plus, 1.25rem);flex:0 0 auto;align-self:center;align-items:center;pointer-events:auto;vertical-align:middle}
-.mst-combat-help-trigger,.mst-ability-help-trigger,.mst-equipment-help-trigger,.mst-dungeon-help-trigger,.mst-house-help-trigger,.mst-subscribe-help-trigger{display:block;width:var(--spacing-lg-plus, 1.25rem);height:var(--spacing-lg-plus, 1.25rem);min-height:var(--spacing-lg-plus, 1.25rem)!important;box-sizing:border-box;padding:0!important;border:0!important;border-radius:0!important;background:transparent!important;font-size:0!important;line-height:0!important;box-shadow:none!important;cursor:pointer;touch-action:manipulation}
-.mst-combat-help-trigger svg,.mst-ability-help-trigger svg,.mst-equipment-help-trigger svg,.mst-dungeon-help-trigger svg,.mst-house-help-trigger svg,.mst-subscribe-help-trigger svg{display:block;width:100%;height:100%;pointer-events:none}
-.mst-combat-help-trigger:hover,.mst-ability-help-trigger:hover,.mst-equipment-help-trigger:hover,.mst-dungeon-help-trigger:hover,.mst-house-help-trigger:hover,.mst-subscribe-help-trigger:hover{filter:brightness(1.12)}
-.mst-combat-help-trigger-error,.mst-ability-help-trigger-error,.mst-equipment-help-trigger-error,.mst-dungeon-help-trigger-error,.mst-house-help-trigger-error{border-color:#c86b75!important;color:#f4c4ca!important}
-.mst-combat-help-popover,.mst-ability-help-popover,.mst-equipment-help-popover,.mst-dungeon-help-popover,.mst-house-help-popover,.mst-subscribe-help-popover{position:fixed;z-index:2;width:max-content;max-width:min(var(--tooltip-max-width, 40ch),calc(100vw - 1rem));max-height:calc(100svh - 1rem);overflow-y:auto;box-sizing:border-box;padding:var(--tooltip-padding-y, .375rem) var(--tooltip-padding-x, .5rem);border:0;border-radius:var(--tooltip-border-radius, .25rem);background:#bbc5f1f2;box-shadow:var(--shadow-md, 2px 2px 10px 6px rgba(0, 0, 0, .3));color:#000;font-size:var(--tooltip-font-size, var(--font-size-base, .875rem));font-weight:var(--font-weight-medium, 500);line-height:var(--line-height-normal, 1.375);text-align:left;user-select:none}
-.mst-combat-help-popover[hidden],.mst-ability-help-popover[hidden],.mst-equipment-help-popover[hidden],.mst-dungeon-help-popover[hidden],.mst-house-help-popover[hidden],.mst-subscribe-help-popover[hidden]{display:none}
-.mst-combat-help-popover-title,.mst-ability-help-popover-title,.mst-equipment-help-popover-title,.mst-dungeon-help-popover-title,.mst-house-help-popover-title,.mst-subscribe-help-popover-title{margin:0;padding:0;font-size:var(--font-size-md, 1rem);font-weight:var(--font-weight-medium, 500);line-height:var(--line-height-normal, 1.375)}
-.mst-combat-help-popover-content,.mst-ability-help-popover-content,.mst-equipment-help-popover-content,.mst-dungeon-help-popover-content,.mst-house-help-popover-content,.mst-subscribe-help-popover-content{margin-top:var(--spacing-xs, .25rem);padding-top:var(--spacing-xs, .25rem);border-top:1px solid #000}
-.mst-combat-help-popover-paragraph,.mst-ability-help-popover-paragraph,.mst-equipment-help-popover-paragraph,.mst-dungeon-help-popover-paragraph,.mst-house-help-popover-paragraph,.mst-subscribe-help-popover-paragraph{margin-top:var(--spacing-xs, .25rem);padding-bottom:var(--spacing-xs, .25rem)}
-.mst-combat-help-popover-error,.mst-ability-help-popover-error,.mst-equipment-help-popover-error,.mst-dungeon-help-popover-error,.mst-house-help-popover-error{border-color:#c86b75}
 .mst-combat-upgrade-calculator .mst-calculator-table-wrap{max-height:min(28rem,calc(100svh - 19rem))}
 .mst-combat-upgrade-calculator .mst-calculator-table{min-width:54rem;table-layout:fixed}
 .mst-combat-upgrade-calculator .mst-calculator-table th,.mst-combat-upgrade-calculator .mst-calculator-table td{box-sizing:border-box;padding:.25rem .3rem;text-align:center;vertical-align:middle}
@@ -33624,8 +35591,6 @@
 .mst-dungeon-batch-value div{white-space:nowrap}
 .mst-dungeon-batch-line{display:flex;align-items:baseline;justify-content:flex-end;gap:.25rem}
 .mst-dungeon-batch-line small{color:var(--color-neutral-400, #999baa);font-size:var(--font-size-tiny, .6875rem)}
-.mst-dungeon-batch-cost{color:var(--color-scarlet-300, #ef8f98)}
-.mst-dungeon-batch-profit{color:var(--color-jade-300, #86d7b1)}
 .mst-dungeon-batch-expected{color:var(--color-neutral-100, #ececf1)}
 .mst-dungeon-batch-action{width:2.4rem}
 .mst-dungeon-batch-empty td{padding:1.2rem 1rem;color:var(--color-neutral-300, #b9bbca);text-align:center}
@@ -33697,7 +35662,7 @@ to{transform:translateY(0);opacity:1}
   // app-styles
   function installAppStyles() {
     // 所有样式在构建期转成字符串，运行时只注入一次，避免重复覆盖游戏页面。
-    const css = MST_APP_BASE_CSS + MST_LANGUAGE_TOGGLE_CSS + MST_SWAL_THEME_CSS + MST_INTEGRATED_CSS;
+    const css = MST_APP_BASE_CSS + MST_LANGUAGE_TOGGLE_CSS + MST_SWAL_THEME_CSS + MST_INTEGRATED_CSS + MST_COMPONENTS_CSS;
     StyleService.ensure('mst-integrated-style', css);
   }
 
@@ -33850,6 +35815,7 @@ to{transform:translateY(0);opacity:1}
         CombatSimulationService,
         EquipmentComparisonService,
         EquipmentComparisonFeature,
+        EnhancementCostCalculatorFeature,
         ToolkitMenuFeature,
         ChangelogFeature,
         UpdateCheckerFeature,
@@ -33870,6 +35836,7 @@ to{transform:translateY(0);opacity:1}
       const combatSimulationService = new CombatSimulationService(this.ctx);
       const equipmentComparisonService = new EquipmentComparisonService(marketDataService, combatSimulationService);
       const equipmentComparison = new EquipmentComparisonFeature(this.ctx, marketDataService, equipmentComparisonService);
+      const enhancementCost = new EnhancementCostCalculatorFeature(this.ctx, marketDataService);
       const subscribeNotification = new SubscribeNotificationFeature(this.ctx);
       const marketHistory = new MarketHistoryFeature();
       const changelog = new ChangelogFeature(this.ctx);
@@ -33880,6 +35847,7 @@ to{transform:translateY(0);opacity:1}
         combatCalculator,
         abilityCalculator,
         equipmentComparison,
+        enhancementCost,
         dungeonCalculator,
         subscribeNotification,
         marketHistory,
@@ -33895,6 +35863,7 @@ to{transform:translateY(0);opacity:1}
         combatCalculator,
         abilityCalculator,
         equipmentComparison,
+        enhancementCost,
         dungeonCalculator,
         subscribeNotification,
         marketHistory,
@@ -33906,6 +35875,7 @@ to{transform:translateY(0);opacity:1}
       abilityCalculator.init();
       dungeonCalculator.init();
       equipmentComparison.init();
+      enhancementCost.init();
       toolkitMenu.init();
       changelog.init();
       updateChecker.init();
