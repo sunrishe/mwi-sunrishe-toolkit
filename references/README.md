@@ -25,3 +25,4 @@
 - 自动测试可以读取本目录，避免依赖开发者机器上的外部路径。
 - 核对游戏源码时以 `static/js/main.*.chunk.js` 中的实际引用为准：`asset-manifest.json` 与 media 目录、JS 引用可能不一致，不要用它判断资源路径。
 - 更新参考资料时，应同时更新相关测试和文档中说明的来源路径。
+- 更新 `game-data/init_character_data.json` 后执行 `yarn prune:character-data`，脚本会删除 MST 不使用的账号、聊天、好友和公会社交节点，并匿名化角色 ID、名称与装备 hash；装备、配装、物品、技能、房屋等公开数据会保留。

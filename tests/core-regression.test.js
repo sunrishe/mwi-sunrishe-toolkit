@@ -707,6 +707,126 @@ test('剪贴板解析分别识别数量前置、数量后置、限量和每小�
   ]);
 });
 
+test('剪贴板解析支持物品名与数量分行', () => {
+  const feature = loadClipboardParser();
+  const result = feature.parseClipboardCartText('5\r\n\r\nMagic Log+12\r\nCoffee\r\n+6\r\n7/H\r\nCedar Log');
+
+  assert.deepEqual(JSON.parse(JSON.stringify(result.items)), [
+    {
+      match: '5\r\n\r\nMagic Log+12',
+      name: 'Magic Log',
+      enhancementLevel: 12,
+      count: 5,
+      isLimit: false,
+      isHour: false,
+      quantity: 5
+    }, {
+      match: 'Coffee\r\n+6',
+      name: 'Coffee',
+      enhancementLevel: 0,
+      count: 6,
+      isLimit: true,
+      isHour: false,
+      quantity: 6
+    }, {
+      match: '7/H\r\nCedar Log',
+      name: 'Cedar Log',
+      enhancementLevel: 0,
+      count: 7,
+      isLimit: false,
+      isHour: true,
+      quantity: 168
+    }
+  ]);
+
+  const replenish = feature.parseClipboardCartText('补充2天\n5/H\nMagic Log+12');
+  assert.deepEqual(JSON.parse(JSON.stringify(replenish.replenish)), {
+    open: true,
+    hour: 48,
+    match: '补充2天'
+  });
+  assert.equal(replenish.items[0].name, 'Magic Log');
+  assert.equal(replenish.items[0].enhancementLevel, 12);
+  assert.equal(replenish.items[0].quantity, 240);
+});
+
+test('剪贴板文本导入保留强化等级并扣减对应等级库存', async () => {
+  const addedItems = [];
+  const toasts = [];
+  const feature = new (vm.runInNewContext(
+    `${readVmSource('src/common/ui.js')}
+        ClipboardCartImportFeature;`,
+    {}
+  ))(
+    {
+      CONFIG: {},
+      DataHub: {
+        initClientDataFromCache() {},
+        refreshI18nIndexes() {},
+        getItemDetail() {
+          return null;
+        },
+        ensureItemHrid(value) {
+          return value.toLowerCase() === 'magic log' ? '/items/magic_log' : null;
+        },
+        resolveItemName() {
+          return 'Magic Log';
+        }
+      },
+      CharacterDataService: {
+        getInventoryCount(itemHrid, level) {
+          assert.equal(itemHrid, '/items/magic_log');
+          assert.equal(level, 12);
+          return 3;
+        }
+      },
+      MarketMateBridge: {
+        isReady() {
+          return true;
+        },
+        addToCart(items) {
+          addedItems.push(...items);
+          return {ok: true, added: items.length, skipped: 0};
+        }
+      },
+      i18n: {
+        locale: 'zh-CN',
+        t(key, ...args) {
+          return [
+            key, ...args
+          ].join(':');
+        }
+      },
+      utils: {
+        async readClipboard() {
+          return '+5\nMagic Log+12';
+        },
+        normalizeItemHrid(value) {
+          return value;
+        }
+      }
+    },
+    {
+      toast(message, type) {
+        toasts.push({message, type});
+      }
+    }
+  );
+
+  await feature.importFromClipboard();
+  assert.deepEqual(JSON.parse(JSON.stringify(addedItems)), [
+    {
+      itemId: '/items/magic_log',
+      name: 'Magic Log',
+      iconRef: '/items/magic_log',
+      enhancementLevel: 12,
+      quantity: 2,
+      source: 'mst_clipboard'
+    }
+  ]);
+  assert.equal(toasts.at(-1).type, 'success');
+});
+
 test('公共集合转换统一兼容数组、Map、普通对象和空值', () => {
   const utils = loadUtils();
   const array = [

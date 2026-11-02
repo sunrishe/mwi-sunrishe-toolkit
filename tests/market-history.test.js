@@ -2100,7 +2100,7 @@ test('市场交易记录：界面布局约束（紧凑工具栏 / 固定列宽 /
   // 帮助页签：说明食用工具桥接脚本的接入与双向迁移，@require 行固定在已发布的提交。
   assert.match(moduleSourceFile, /marketHistoryTabHelp/);
   assert.match(moduleSourceFile, /helpTemplate\(\)/);
-  assert.match(moduleSourceFile, /EDIBLE_BRIDGE_PINNED_COMMIT = '4851b0229332a561424e4713fe11851c944f94b2'/);
+  assert.match(moduleSourceFile, /EDIBLE_BRIDGE_PINNED_COMMIT = '86f489919a81c8d80fd0a0b1ae77d330d3585028'/);
   assert.match(moduleSourceFile, /jsdelivr\.net\/gh\/sunrishe\/mwi-sunrishe-toolkit@/);
   assert.match(moduleSourceFile, /EDIBLE_BRIDGE_REQUIRE_LINE/);
   assert.match(moduleSourceFile, /copyBridgeRequireLine/);

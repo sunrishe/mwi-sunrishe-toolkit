@@ -3,6 +3,15 @@
 // 版本说明只写用户可感知的变化，按模块合并（同一模块的改动合并为一条），更新版本时先改 docs/changelog.md，再同步这里并补英文。
 export const CHANGELOG_VERSIONS = [
   {
+    version: '2.22.1',
+    date: '2026-11-02',
+    notes: [
+      {
+        zh: 'MWI 市场伴侣剪贴板导入：修复物品名与数量分行时无法导入的问题；带强化等级的物品会按对应等级加入购物车。',
+        en: 'MWI Market Mate Clipboard Import: fixed imports failing when an item name and quantity are on separate lines, and enhanced items now keep their enhancement level in the cart.'
+      }
+    ]
+  }, {
     version: '2.22.0',
     date: '2026-10-16',
     notes: [
@@ -81,7 +90,8 @@ export const CHANGELOG_VERSIONS = [
         en: 'Fixed: jumping from the ability upgrade calculator to a market item could leave the order book stuck on "Loading".'
       }
     ]
-  }, {
+  },
+  {
     version: '2.19.0',
     date: '2026-10-11',
     notes: [
@@ -99,8 +109,7 @@ export const CHANGELOG_VERSIONS = [
         en: 'The Dungeon Profit Calculator now switches between a single map and batch mode with tabs at the top, opening on the first tab, Batch Simulation; parameters of both modes are still saved automatically.'
       }
     ]
-  },
-  {
+  }, {
     version: '2.18.0',
     date: '2026-10-01',
     notes: [
@@ -173,7 +182,8 @@ export const CHANGELOG_VERSIONS = [
         en: 'Dungeon Profit adds an "Exclude cowbell value" option (off by default): when checked, cowbells and bags of cowbells are excluded from profit and their value in the results and drop table shows as 0.'
       }
     ]
-  }, {
+  },
+  {
     version: '2.16.0',
     date: '2026-09-08',
     notes: [
@@ -191,8 +201,7 @@ export const CHANGELOG_VERSIONS = [
         en: 'Every Toolkit dialog now shows the same icon as its menu entry, making dialogs and menu entries easy to match.'
       }
     ]
-  },
-  {
+  }, {
     version: '2.15.0',
     date: '2026-08-28',
     notes: [
@@ -243,7 +252,8 @@ export const CHANGELOG_VERSIONS = [
         en: 'Dungeon Profit improvements: the dungeon dropdown now shows D1-D4 numbers to match the in-game dungeon map, and the results area has a new "Drops" tab listing items, drop rates, expected quantities, and best-ask/best-bid prices per standard and refined chest, with details on hover; prices are calculated from market quotes before tax.'
       }
     ]
-  }, {
+  },
+  {
     version: '2.11.1',
     date: '2026-08-18',
     notes: [
@@ -255,8 +265,7 @@ export const CHANGELOG_VERSIONS = [
         en: 'When several copies of this script are installed (e.g. the release and a local dev build), the Add to Cart button now appears consistently without the copies interfering with each other.'
       }
     ]
-  },
-  {
+  }, {
     version: '2.11.0',
     date: '2026-08-18',
     notes: [
@@ -317,7 +326,8 @@ export const CHANGELOG_VERSIONS = [
         en: 'Fixed cowbell value sometimes being calculated as 0: when a bag of cowbells has no market price it falls back to the official guide price and then to the market snapshot trade price (about 1.075M coins per bag), with cowbells at one tenth, so it no longer shows 0.'
       }
     ]
-  }, {
+  },
+  {
     version: '2.9.1',
     date: '2026-08-11',
     notes: [
@@ -326,8 +336,7 @@ export const CHANGELOG_VERSIONS = [
         en: 'Character profile caching optimized: only the fields needed by the card are cached, greatly reducing cache size, and the oldest profiles are cleaned up when the limit is exceeded or browser storage is low.'
       }
     ]
-  },
-  {
+  }, {
     version: '2.9.0',
     date: '2026-08-05',
     notes: [
@@ -366,7 +375,8 @@ export const CHANGELOG_VERSIONS = [
         en: 'Improved dialog positioning on small screens and mobile browsers so the ability picker and Toolkit menu stay within the visible area.'
       }
     ]
-  }, {
+  },
+  {
     version: '2.7.20',
     date: '2026-08-02',
     notes: [
@@ -394,8 +404,7 @@ export const CHANGELOG_VERSIONS = [
         en: 'Overall experience: the interface language follows the game in real time, and dialogs, mobile display, official Chinese terms, and market price directions are unified; best sell/buy prices display as 左一/右一 in Chinese, following game conventions.'
       }
     ]
-  },
-  {
+  }, {
     version: '1.2.7',
     date: '2026-05-07',
     legacy: true,
@@ -442,7 +451,8 @@ export const CHANGELOG_VERSIONS = [
         en: 'Fixed Milkonomy sync failing when no loadout had ever been configured.'
       }
     ]
-  }, {
+  },
+  {
     version: '1.0.1',
     date: '2026-04-15',
     legacy: true,
@@ -452,8 +462,7 @@ export const CHANGELOG_VERSIONS = [
         en: 'Fixed the Chinese mirror site being unusable.'
       }
     ]
-  },
-  {
+  }, {
     version: '1.0.0',
     date: '2026-04-15',
     legacy: true,

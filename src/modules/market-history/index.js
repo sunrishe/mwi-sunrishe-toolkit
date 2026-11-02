@@ -61,9 +61,9 @@ import {
 } from './store.js';
 
 const SAVE_DEBOUNCE_MS = 500;
-// 帮助页签里给出的食用工具桥接脚本地址：固定在提交 4851b02（桥接脚本 v1.2.0），
+// 帮助页签里给出的食用工具桥接脚本地址：固定在提交 86f4899（桥接脚本 v1.2.0），
 // 内容不随仓库后续更新而变，避免用户拿到改到一半的版本。
-const EDIBLE_BRIDGE_PINNED_COMMIT = '4851b0229332a561424e4713fe11851c944f94b2';
+const EDIBLE_BRIDGE_PINNED_COMMIT = '86f489919a81c8d80fd0a0b1ae77d330d3585028';
 const EDIBLE_BRIDGE_URL =
   'https://cdn.jsdelivr.net/gh/sunrishe/mwi-sunrishe-toolkit@' +
   EDIBLE_BRIDGE_PINNED_COMMIT +

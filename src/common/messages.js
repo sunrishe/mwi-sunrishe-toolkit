@@ -879,8 +879,8 @@ export const MARKET_HISTORY_MESSAGES = {
     en: 'Copied — paste it into the Edible Tools script header'
   },
   marketHistoryHelpBridgePinned: {
-    zh: '上面的地址固定在提交 4851b02（桥接脚本 v1.2.0），内容不会随仓库更新而变；食用工具自身更新脚本后，需要重新加这一行。',
-    en: 'The URL is pinned to commit 4851b02 (bridge v1.2.0) and will not change; re-add the line after Edible Tools updates its own script.'
+    zh: '上面的地址固定在提交 86f4899（桥接脚本 v1.2.0），内容不会随仓库更新而变；食用工具自身更新脚本后，需要重新加这一行。',
+    en: 'The URL is pinned to commit 86f4899 (bridge v1.2.0) and will not change; re-add the line after Edible Tools updates its own script.'
   },
   marketHistoryHelpBridgeStep2: {
     zh: '在食用工具里导出：打开食用工具设置面板 → 银河奶牛数据库 → 市场数据，点「导出到 MST 交易记录」，得到 MWI_Market_History_from_Edible_Tools_<时间>.json。',

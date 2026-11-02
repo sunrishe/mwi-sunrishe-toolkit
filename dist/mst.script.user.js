@@ -3,7 +3,7 @@
 // @name:zh-CN         MWI Sunrishe 工具箱
 // @name:en            MWI Sunrishe Toolkit
 // @namespace          http://tampermonkey.net/
-// @version            2.22.0
+// @version            2.22.1
 // @description        MWI Sunrishe 综合工具箱：提供角色/队伍名片、技能/房屋/战斗升级规划、装备提升计算器、地下城收益、配装同步和市场伴侣增强。
 // @description:zh-CN  MWI Sunrishe 综合工具箱：提供角色/队伍名片、技能/房屋/战斗升级规划、装备提升计算器、地下城收益、配装同步和市场伴侣增强。
 // @description:en     MST toolkit for character/party cards, ability/house/combat upgrade planning, equipment comparison, dungeon profit, loadout sync, and Market Mate enhancements.
@@ -16,7 +16,7 @@
 // @website            https://home.greasyfork.org.cn/zh-hans/info#/zh-CN/scripts/574037
 // @require            https://cdn.jsdelivr.net/npm/html-to-image@1.11.13/dist/html-to-image.js
 // @require            https://cdn.jsdelivr.net/npm/sweetalert2@11
-// @require            https://cdn.jsdelivr.net/gh/sunrishe/mwi-sunrishe-toolkit@d2d2cf9f83bac1372495e586b751cc1eddf00697/vendor/uhtml/uhtml.iife.min.js
+// @require            https://cdn.jsdelivr.net/gh/sunrishe/mwi-sunrishe-toolkit@73a013419e1b9018d227ac67154258175e18fb7a/vendor/uhtml/uhtml.iife.min.js
 // @match              https://milkywayidle.com/*
 // @match              https://milkywayidlecn.com/*
 // @match              https://test.milkywayidle.com/*
@@ -55,7 +55,7 @@
   'use strict';
 
   // 构建脚本会静态替换这个占位符，业务代码不直接读取 Node 环境变量。
-  const PACKAGE_VERSION = "2.22.0";
+  const PACKAGE_VERSION = "2.22.1";
 
   const BUILD_FLAGS = Object.freeze({
     // 目前只有语言切换按钮需要区分 dev/prod：正式包不展示该调试入口。
@@ -2713,8 +2713,8 @@
       en: 'Copied — paste it into the Edible Tools script header'
     },
     marketHistoryHelpBridgePinned: {
-      zh: '上面的地址固定在提交 4851b02（桥接脚本 v1.2.0），内容不会随仓库更新而变；食用工具自身更新脚本后，需要重新加这一行。',
-      en: 'The URL is pinned to commit 4851b02 (bridge v1.2.0) and will not change; re-add the line after Edible Tools updates its own script.'
+      zh: '上面的地址固定在提交 86f4899（桥接脚本 v1.2.0），内容不会随仓库更新而变；食用工具自身更新脚本后，需要重新加这一行。',
+      en: 'The URL is pinned to commit 86f4899 (bridge v1.2.0) and will not change; re-add the line after Edible Tools updates its own script.'
     },
     marketHistoryHelpBridgeStep2: {
       zh: '在食用工具里导出：打开食用工具设置面板 → 银河奶牛数据库 → 市场数据，点「导出到 MST 交易记录」，得到 MWI_Market_History_from_Edible_Tools_<时间>.json。',
@@ -4229,33 +4229,32 @@
 
     parseClipboardCartText(text) {
       const replenish = {open: false, hour: 24};
-      const lines = String(text || '')
-        .split(/\r?\n/)
-        .map((line) => line.trim())
-        .filter(Boolean);
-      const replenishMatch = lines[0]?.match(/^补充(?<days>\d+(?:\.\d+)?)天$/);
+      let content = String(text || '');
+      const replenishMatch = content.match(/^\s*(补充(?<days>\d+(?:\.\d+)?)天)(?:\r?\n|$)/);
       if (replenishMatch) {
         replenish.open = true;
         replenish.hour = parseFloat(replenishMatch.groups.days) * 24;
-        replenish.match = lines.shift();
+        replenish.match = replenishMatch[1];
+        content = content.substring(replenishMatch[0].length);
       }
 
-      const countFirstPattern =
-        /^(?<limit>\+?)(?<count>\d+(?:\.\d+)?)(?<hour>\/h)?\s+(?<name>.+?)(?:\+(?<level>\d{0,2}))?$/i;
-      const nameFirstPattern =
-        /^(?<name>.+?)(?:\+(?<level>\d{0,2}))?\s+(?<limit>\+?)(?<count>\d+(?:\.\d+)?)(?<hour>\/h)?$/i;
+      // 保留原脚本的整段匹配：\s+ 要允许物品名与数量跨行，不能先按行拆开。
+      const itemPattern =
+        /(?:(?<=^|\r?\n)\s*?((\+?)(\d+(?:\.\d+)?)(\/[hH])?\s+(.+?)(?:\+(\d{0,2}))?)\s*?(?=$|\r?\n))|(?:(?<=^|\r?\n)\s*((.+?)(?:\+(\d{0,2}))?\s+(\+?)(\d+(?:\.\d+)?)(\/[hH])?)\s*?(?=$|\r?\n))/g;
       const items = [];
-      for (const line of lines) {
-        const match = line.match(countFirstPattern) || line.match(nameFirstPattern);
-        if (!match?.groups) continue;
-        const count = parseFloat(match.groups.count);
-        const isHour = replenish.open || Boolean(match.groups.hour);
+      for (const match of content.matchAll(itemPattern)) {
+        const isCountFirst = match[1] != null;
+        const count = parseFloat(isCountFirst ? match[3] : match[11]);
+        const hour = isCountFirst ? match[4] : match[12];
+        const rawName = isCountFirst ? match[5] : match[8];
+        if (!rawName || !Number.isFinite(count)) continue;
+        const isHour = replenish.open || Boolean(hour);
         items.push({
-          match: line,
-          name: match.groups.name,
-          enhancementLevel: parseInt(match.groups.level || 0, 10),
+          match: isCountFirst ? match[1] : match[7],
+          name: rawName,
+          enhancementLevel: parseInt((isCountFirst ? match[6] : match[9]) || 0, 10),
           count,
-          isLimit: !isHour && match.groups.limit === '+',
+          isLimit: !isHour && (isCountFirst ? match[2] : match[10]) === '+',
           isHour,
           quantity: isHour ? Math.ceil(replenish.hour * count) : count
         });
@@ -4299,6 +4298,7 @@
             itemId: hrid,
             name: DataHub.resolveItemName(hrid),
             iconRef: hrid,
+            enhancementLevel: item.enhancementLevel || 0,
             quantity,
             source: 'mst_clipboard'
           });
@@ -7466,6 +7466,15 @@
   // 版本说明只写用户可感知的变化，按模块合并（同一模块的改动合并为一条），更新版本时先改 docs/changelog.md，再同步这里并补英文。
   const CHANGELOG_VERSIONS = [
     {
+      version: '2.22.1',
+      date: '2026-11-02',
+      notes: [
+        {
+          zh: 'MWI 市场伴侣剪贴板导入：修复物品名与数量分行时无法导入的问题；带强化等级的物品会按对应等级加入购物车。',
+          en: 'MWI Market Mate Clipboard Import: fixed imports failing when an item name and quantity are on separate lines, and enhanced items now keep their enhancement level in the cart.'
+        }
+      ]
+    }, {
       version: '2.22.0',
       date: '2026-10-16',
       notes: [
@@ -7544,7 +7553,8 @@
           en: 'Fixed: jumping from the ability upgrade calculator to a market item could leave the order book stuck on "Loading".'
         }
       ]
-    }, {
+    },
+    {
       version: '2.19.0',
       date: '2026-10-11',
       notes: [
@@ -7562,8 +7572,7 @@
           en: 'The Dungeon Profit Calculator now switches between a single map and batch mode with tabs at the top, opening on the first tab, Batch Simulation; parameters of both modes are still saved automatically.'
         }
       ]
-    },
-    {
+    }, {
       version: '2.18.0',
       date: '2026-10-01',
       notes: [
@@ -7636,7 +7645,8 @@
           en: 'Dungeon Profit adds an "Exclude cowbell value" option (off by default): when checked, cowbells and bags of cowbells are excluded from profit and their value in the results and drop table shows as 0.'
         }
       ]
-    }, {
+    },
+    {
       version: '2.16.0',
       date: '2026-09-08',
       notes: [
@@ -7654,8 +7664,7 @@
           en: 'Every Toolkit dialog now shows the same icon as its menu entry, making dialogs and menu entries easy to match.'
         }
       ]
-    },
-    {
+    }, {
       version: '2.15.0',
       date: '2026-08-28',
       notes: [
@@ -7706,7 +7715,8 @@
           en: 'Dungeon Profit improvements: the dungeon dropdown now shows D1-D4 numbers to match the in-game dungeon map, and the results area has a new "Drops" tab listing items, drop rates, expected quantities, and best-ask/best-bid prices per standard and refined chest, with details on hover; prices are calculated from market quotes before tax.'
         }
       ]
-    }, {
+    },
+    {
       version: '2.11.1',
       date: '2026-08-18',
       notes: [
@@ -7718,8 +7728,7 @@
           en: 'When several copies of this script are installed (e.g. the release and a local dev build), the Add to Cart button now appears consistently without the copies interfering with each other.'
         }
       ]
-    },
-    {
+    }, {
       version: '2.11.0',
       date: '2026-08-18',
       notes: [
@@ -7780,7 +7789,8 @@
           en: 'Fixed cowbell value sometimes being calculated as 0: when a bag of cowbells has no market price it falls back to the official guide price and then to the market snapshot trade price (about 1.075M coins per bag), with cowbells at one tenth, so it no longer shows 0.'
         }
       ]
-    }, {
+    },
+    {
       version: '2.9.1',
       date: '2026-08-11',
       notes: [
@@ -7789,8 +7799,7 @@
           en: 'Character profile caching optimized: only the fields needed by the card are cached, greatly reducing cache size, and the oldest profiles are cleaned up when the limit is exceeded or browser storage is low.'
         }
       ]
-    },
-    {
+    }, {
       version: '2.9.0',
       date: '2026-08-05',
       notes: [
@@ -7829,7 +7838,8 @@
           en: 'Improved dialog positioning on small screens and mobile browsers so the ability picker and Toolkit menu stay within the visible area.'
         }
       ]
-    }, {
+    },
+    {
       version: '2.7.20',
       date: '2026-08-02',
       notes: [
@@ -7857,8 +7867,7 @@
           en: 'Overall experience: the interface language follows the game in real time, and dialogs, mobile display, official Chinese terms, and market price directions are unified; best sell/buy prices display as 左一/右一 in Chinese, following game conventions.'
         }
       ]
-    },
-    {
+    }, {
       version: '1.2.7',
       date: '2026-05-07',
       legacy: true,
@@ -7905,7 +7914,8 @@
           en: 'Fixed Milkonomy sync failing when no loadout had ever been configured.'
         }
       ]
-    }, {
+    },
+    {
       version: '1.0.1',
       date: '2026-04-15',
       legacy: true,
@@ -7915,8 +7925,7 @@
           en: 'Fixed the Chinese mirror site being unusable.'
         }
       ]
-    },
-    {
+    }, {
       version: '1.0.0',
       date: '2026-04-15',
       legacy: true,
@@ -30208,9 +30217,9 @@ body:has(.mst-swal2-popup) .mst-market-history-listing-hint{z-index:auto}
   // 「管理」页签的数据修复用于清理历史版本写下的结构性问题数据，见 store.js 的 repair 段。
 
   const SAVE_DEBOUNCE_MS = 500;
-  // 帮助页签里给出的食用工具桥接脚本地址：固定在提交 4851b02（桥接脚本 v1.2.0），
+  // 帮助页签里给出的食用工具桥接脚本地址：固定在提交 86f4899（桥接脚本 v1.2.0），
   // 内容不随仓库后续更新而变，避免用户拿到改到一半的版本。
-  const EDIBLE_BRIDGE_PINNED_COMMIT = '4851b0229332a561424e4713fe11851c944f94b2';
+  const EDIBLE_BRIDGE_PINNED_COMMIT = '86f489919a81c8d80fd0a0b1ae77d330d3585028';
   const EDIBLE_BRIDGE_URL =
     'https://cdn.jsdelivr.net/gh/sunrishe/mwi-sunrishe-toolkit@' +
     EDIBLE_BRIDGE_PINNED_COMMIT +

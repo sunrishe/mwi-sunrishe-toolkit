@@ -226,33 +226,32 @@ export class ClipboardCartImportFeature {
 
   parseClipboardCartText(text) {
     const replenish = {open: false, hour: 24};
-    const lines = String(text || '')
-      .split(/\r?\n/)
-      .map((line) => line.trim())
-      .filter(Boolean);
-    const replenishMatch = lines[0]?.match(/^补充(?<days>\d+(?:\.\d+)?)天$/);
+    let content = String(text || '');
+    const replenishMatch = content.match(/^\s*(补充(?<days>\d+(?:\.\d+)?)天)(?:\r?\n|$)/);
     if (replenishMatch) {
       replenish.open = true;
       replenish.hour = parseFloat(replenishMatch.groups.days) * 24;
-      replenish.match = lines.shift();
+      replenish.match = replenishMatch[1];
+      content = content.substring(replenishMatch[0].length);
     }
 
-    const countFirstPattern =
-      /^(?<limit>\+?)(?<count>\d+(?:\.\d+)?)(?<hour>\/h)?\s+(?<name>.+?)(?:\+(?<level>\d{0,2}))?$/i;
-    const nameFirstPattern =
-      /^(?<name>.+?)(?:\+(?<level>\d{0,2}))?\s+(?<limit>\+?)(?<count>\d+(?:\.\d+)?)(?<hour>\/h)?$/i;
+    // 保留原脚本的整段匹配：\s+ 要允许物品名与数量跨行，不能先按行拆开。
+    const itemPattern =
+      /(?:(?<=^|\r?\n)\s*?((\+?)(\d+(?:\.\d+)?)(\/[hH])?\s+(.+?)(?:\+(\d{0,2}))?)\s*?(?=$|\r?\n))|(?:(?<=^|\r?\n)\s*((.+?)(?:\+(\d{0,2}))?\s+(\+?)(\d+(?:\.\d+)?)(\/[hH])?)\s*?(?=$|\r?\n))/g;
     const items = [];
-    for (const line of lines) {
-      const match = line.match(countFirstPattern) || line.match(nameFirstPattern);
-      if (!match?.groups) continue;
-      const count = parseFloat(match.groups.count);
-      const isHour = replenish.open || Boolean(match.groups.hour);
+    for (const match of content.matchAll(itemPattern)) {
+      const isCountFirst = match[1] != null;
+      const count = parseFloat(isCountFirst ? match[3] : match[11]);
+      const hour = isCountFirst ? match[4] : match[12];
+      const rawName = isCountFirst ? match[5] : match[8];
+      if (!rawName || !Number.isFinite(count)) continue;
+      const isHour = replenish.open || Boolean(hour);
       items.push({
-        match: line,
-        name: match.groups.name,
-        enhancementLevel: parseInt(match.groups.level || 0, 10),
+        match: isCountFirst ? match[1] : match[7],
+        name: rawName,
+        enhancementLevel: parseInt((isCountFirst ? match[6] : match[9]) || 0, 10),
         count,
-        isLimit: !isHour && match.groups.limit === '+',
+        isLimit: !isHour && (isCountFirst ? match[2] : match[10]) === '+',
         isHour,
         quantity: isHour ? Math.ceil(replenish.hour * count) : count
       });
@@ -296,6 +295,7 @@ export class ClipboardCartImportFeature {
           itemId: hrid,
           name: DataHub.resolveItemName(hrid),
           iconRef: hrid,
+          enhancementLevel: item.enhancementLevel || 0,
           quantity,
           source: 'mst_clipboard'
         });
